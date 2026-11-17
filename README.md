@@ -26,7 +26,7 @@ Araba gövdesi şimdilik motorun araç şablonundaki spor araba (`Content/Vehicl
 | Kamera mesafesi (yakın/uzak) | C | Sağ çubuğa bas |
 | Arabayı düzelt | R | Y (üst tuş) |
 
-**Drift:** 30 km/s üstünde direksiyonu kır, el frenini kısa çek, bırak. Gazla kaymayı sürdür, kayma yönüne doğru kontra kır. Gazı kesince araç tutuşa döner.
+**Drift:** 30 km/s üstünde direksiyonu kır, Space'e bas, bırak. Kayma yönüne kontra kırdıkça drift sürer. Direksiyonu düzeltip gaza basınca araç toparlanır ve hızlanır.
 
 ## Test Haritası
 

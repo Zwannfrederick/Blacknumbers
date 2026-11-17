@@ -36,8 +36,8 @@ Ayar gerekirse (editörde `BNVehiclePawn` ve harita içindeki `DayNightCycle` ak
 
 | His | Ayar |
 |---|---|
-| Drift çok kolay / zor | `Handling → Drift → RearGripScale` (0,45; düşük = daha kaygan) ve `EnterSlipDegrees` |
-| Drift'ten çıkış | `Drift → ExitSlipDegrees` |
+| Drift çok kolay / zor | `Handling → Drift → RearGripScale` (0,45; düşük = daha kaygan) |
+| Drift'ten çıkış hızı | `Drift → GripRecoverSeconds` (1 sn; Space bırakılıp direksiyon düzeltilince arka tutuşun geri gelme süresi) |
 | Kamera | `Camera → ChaseDistances`, `DriftCameraBlend`, `BaseFov/MaxFov` |
 | Ses seviyesi | `EngineAudio → MasterGain` |
 | Gece karanlığı | `DayNightCycle → Look → NightMinExposureEV100` (3; düşük = daha aydınlık gece) |
@@ -51,6 +51,7 @@ Ayar gerekirse (editörde `BNVehiclePawn` ve harita içindeki `DayNightCycle` ak
 | `World.TimeOfDay` | Saat matematiği, pozlama tabanının güneşe bağlı geçişi | — |
 | `World.LightsFollowNight` | Gece başlatılınca sokak lambaları ve araba farları **ilk karede** yanık; öğlen sönük; gece tekrar yanık | 26 lamba + far/stop |
 | `Vehicle.WheelsAligned` | Sürüşte dört tekerlek de arabanın yan ekseninde dönüyor, jantlar dışa bakıyor | hizalama 1,0000 |
+| `Vehicle.DriftExitAccelerates` | Drift'te Space bırakılıp direksiyon düzeltilip tam gaz verilince araç hızlanır | +26,5 km/s / 2,5 sn |
 | `Vehicle.HandbrakeNoSpin` | 80 km/s'de tam kırma + W basılıyken 1,5 sn el freni: spin yok, bırakınca toparlanıyor (30/60 FPS'te de) | en fazla ~33° |
 | `Vehicle.DrivesForward` | Araç doğuyor, 0-100 süresi 4,5-8 sn, düzlükte zıplama yok, virajda kayma sınırlı | 0-100 **5,48 sn**, dikey 10,8 cm/s, kayma 1,5° / 12,6° |
 | `Vehicle.Drift` | El freni + direksiyonla drift başlar (>20°), gaz + kontra ile ≥1 sn tutulur, spin yok (<75°), gaz kesince ≤3 sn'de tutuş | 20,9°, 2,44 sn tutuldu, tutuş 0,26 sn |
@@ -112,7 +113,7 @@ Ayar gerekirse (editörde `BNVehiclePawn` ve harita içindeki `DayNightCycle` ak
 - `ABNVehiclePawn`: görünmez tekerlek iskeleti (`SKM_SportsCar`) + statik gövde, cam ve tekerlek modelleri; takip kamerası; kodla kurulan Enhanced Input.
 - Motor: 400 Nm, 7000 rpm, kendi tork eğrisi (boş kalırsa Chaos motoru kapatır), 5 ileri otomatik vites, geri vites sınırı 35 km/s.
 - Lastik: ön 2,0 / arka 2,2 sürtünme çarpanı; tüm tekerlekler ABS, arkada patinaj önleyici; hıza duyarlı direksiyon eğrisi (MPH).
-- **Drift yardımı** (`FBNDriftTuning`): hızlıyken el freni çekilince ya da kayma 20°'yi geçince arka tutuş ×0,45'e iner ve arka patinaj önleyici kapanır; kayma 6°'nin altına düşünce eski hâline döner. El freni arka ABS'yi devre dışı bırakır. Kaymanın kendisi Chaos fiziğidir, betiklenmiş hareket yoktur.
+- **Drift yardımı** (`FBNDriftTuning`): hızlıyken el freni basılıyken arka tutuş ×0,45'e iner ve arka patinaj önleyici kapanır. Bırakınca tutuş 1 sn'de tam değere döner; sürücü kontra kırıyorsa (direksiyon kayma yönünde) bekler ve drift sürer. El freni arka ABS'yi devre dışı bırakır. Kaymanın kendisi Chaos fiziğidir, betiklenmiş hareket yoktur.
 - Yüzeyler: `PM_Asphalt` 1,0, `PM_Concrete` 0,85, `PM_Dirt` 0,6, `PM_Grass` 0,45. Chaos bu sürtünmeyi tekerlek tutuşuna doğrudan uygular.
 - Fizik 30 FPS altında ağır çekime geçer (motorun 1/30 sn fizik adımı sınırı). Async sabit adım denendi, bu davranışı değiştirmediği için geri alındı.
 
@@ -124,6 +125,7 @@ Ayar gerekirse (editörde `BNVehiclePawn` ve harita içindeki `DayNightCycle` ak
 | Space'e basınca araç "kafayı yiyor" | Fizikte spin üretilemedi (30/60/sınırsız FPS). En olası sebep yalpalayan tekerlekler ve sert drift kamerası | Tekerlekler düzeltildi, drift kamerası yumuşatıldı (0,5 → 0,3) | `HandbrakeNoSpin` |
 | Bazı yerlerde çimen sesi | Ses sentezinde iki gürültü katmanı (motor pürüzü, lastik) hışırtı gibi duyuluyordu; düşük hızda gövde kayma açısı da tetikliyordu | Gürültü kaldırıldı, lastik sesi tonlu cıyaklama; yalnızca yerdeyken, 15 km/s üstünde, 10° üstü kaymada | `EngineSoundMapping` |
 | Gece farlar yok | Yoktu | Gece kendiliğinden yanan farlar ve stop lambaları | `LightsFollowNight` |
+| Drift'te Space bırakınca hızlanamıyorum | Drift tutuşu kayma 6°'nin altına inene kadar sürüyordu; gaz arkayı boşa döndürüp kaymayı besliyordu (55 → 21 km/s) | Drift tutuşu el frenine bağlı; bırakınca 1 sn'de geri gelir, kontra kırılıyorsa drift tutulur | `DriftExitAccelerates` |
 
 ## Bilinen Sınırlar
 

@@ -19,20 +19,20 @@ struct FBNDriftTuning
 {
 	GENERATED_BODY()
 
-	/** Slip angle at which the rear switches to drift grip. Pulling the handbrake at speed also does. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "1", Units = "Degrees"))
-	float EnterSlipDegrees = 20.f;
-
-	/** Below this slip angle the rear gets its full grip and traction control back. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0", Units = "Degrees"))
-	float ExitSlipDegrees = 6.f;
-
+	/** The handbrake only starts a drift above this speed. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0"))
 	float MinSpeedKmh = 30.f;
 
-	/** Rear tyre grip while drifting, relative to normal. Lower = longer, easier slides. */
+	/** Rear tyre grip while the handbrake is held at speed, relative to normal. Lower = easier slides. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.1", ClampMax = "1"))
 	float RearGripScale = 0.45f;
+
+	/**
+	 * After releasing the handbrake the rear grip ramps back to full over this long, unless the driver is
+	 * countersteering (which holds the drift). Straightening up and flooring it pulls the car out of the slide.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.05", Units = "Seconds"))
+	float GripRecoverSeconds = 1.f;
 };
 
 /**
@@ -138,10 +138,11 @@ private:
 	void OnBrake(const FInputActionValue& Value);
 	void OnHandbrake(const FInputActionValue& Value);
 
-	void UpdateDrift();
-	void SetRearDriftGrip(bool bDrift);
+	void UpdateDrift(float DeltaSeconds);
 
 	bool bDrifting = false;
+	/** 0 = drift grip, 1 = full rear grip; last value sent to the physics wheels. */
+	float RearGripBlend = 1.f;
 	bool bRearAbsBypassed = false;
 	int32 ChaseDistanceIndex = 0;
 

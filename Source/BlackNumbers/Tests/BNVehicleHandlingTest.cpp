@@ -257,6 +257,95 @@ bool FBNVehicleHandbrakeTest::RunTest(const FString& Parameters)
 
 namespace
 {
+	// Drift exit: kick a drift, release the handbrake, straighten and floor it.
+	constexpr float ExitKickSeconds = 0.7f;
+	constexpr float ExitPowerSeconds = 2.5f;
+	constexpr float MinExitSpeedGainKmh = 10.f;
+
+	struct FExitState
+	{
+		enum class EPhase { Place, Settle, Accelerate, Kick, Power } Phase = EPhase::Place;
+		double PhaseStart = 0.0;
+		float ReleaseSpeed = 0.f;
+	};
+}
+
+// Releasing the handbrake and flooring it must pull the car out of the slide and accelerate it.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNVehicleDriftExitTest, "BlackNumbers.Vehicle.DriftExitAccelerates",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNVehicleDriftExitTest::RunTest(const FString& Parameters)
+{
+	StartTestTrack(*this);
+
+	const TSharedRef<FExitState> State = MakeShared<FExitState>();
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]()
+	{
+		using EPhase = FExitState::EPhase;
+		ABNVehiclePawn* Car = FindPlayerCar();
+		if (!Car)
+		{
+			AddError(TEXT("Player car disappeared"));
+			return true;
+		}
+		UChaosWheeledVehicleMovementComponent* Move = Car->GetChaosMovement();
+		const double Now = Car->GetWorld()->GetTimeSeconds();
+		const float InPhase = static_cast<float>(Now - State->PhaseStart);
+		auto Enter = [&](EPhase Phase) { State->Phase = Phase; State->PhaseStart = Now; };
+
+		switch (State->Phase)
+		{
+		case EPhase::Place:
+			PlaceStopped(*Car, SkidpadStart, SkidpadYaw);
+			Enter(EPhase::Settle);
+			return false;
+		case EPhase::Settle:
+			if (InPhase >= SettleSeconds)
+			{
+				Move->SetThrottleInput(1.f);
+				Enter(EPhase::Accelerate);
+			}
+			return false;
+		case EPhase::Accelerate:
+			if (Car->GetSpeedKmh() >= EntrySpeedKmh || InPhase > EntryTimeoutSeconds)
+			{
+				Move->SetThrottleInput(KickThrottle);
+				Move->SetSteeringInput(1.f);
+				Move->SetHandbrakeInput(true);
+				Enter(EPhase::Kick);
+			}
+			return false;
+		case EPhase::Kick:
+			if (InPhase >= ExitKickSeconds)
+			{
+				Move->SetHandbrakeInput(false);
+				Move->SetSteeringInput(0.f);
+				Move->SetThrottleInput(1.f);
+				State->ReleaseSpeed = Car->GetSpeedKmh();
+				Enter(EPhase::Power);
+			}
+			return false;
+		case EPhase::Power:
+			if (InPhase < ExitPowerSeconds)
+			{
+				return false;
+			}
+			break;
+		}
+
+		const float Gain = Car->GetSpeedKmh() - State->ReleaseSpeed;
+		UE_LOG(LogTemp, Display, TEXT("BN drift exit test: %.1f km/h at release, %.1f km/h after %.1fs full throttle (%+.1f), slip %.1f deg, drifting %d"),
+			State->ReleaseSpeed, Car->GetSpeedKmh(), ExitPowerSeconds, Gain, Car->GetSlipAngleDegrees(), Car->IsDrifting());
+		TestTrue(TEXT("car accelerates out of a drift once the handbrake is released"), Gain >= MinExitSpeedGainKmh);
+		return true;
+	}));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
+	return true;
+}
+
+namespace
+{
 	constexpr float ReverseSeconds = 4.f;
 	constexpr float MinReverseKmh = 10.f;
 }
