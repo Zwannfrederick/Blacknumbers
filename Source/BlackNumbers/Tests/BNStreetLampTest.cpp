@@ -34,9 +34,9 @@ namespace
 	}
 }
 
-// Starts the level at night (regression: lamps must be lit on the first frame, not after the first
-// day/night change), then flips to noon and back to night.
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNStreetLampTest, "BlackNumbers.World.StreetLampsFollowNight",
+// Starts the level at night (regression: lamps and car lights must be on from the first frame, not after
+// the first day/night change), then flips to noon and back to night.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNStreetLampTest, "BlackNumbers.World.LightsFollowNight",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 
 bool FBNStreetLampTest::RunTest(const FString& Parameters)
@@ -63,12 +63,16 @@ bool FBNStreetLampTest::RunTest(const FString& Parameters)
 		const int32 WrongAtStart = CountWrongLamps(*World, true);
 		TestTrue(TEXT("test track has street lamps"), WrongAtStart >= 0);
 		TestEqual(TEXT("lamps lit on the first frame of a night start"), WrongAtStart, 0);
+		const ABNVehiclePawn* Car = FindPlayerCar();
+		TestTrue(TEXT("car lights on at a night start"), Car && Car->AreLightsOn());
 
 		Cycle->SetTimeOfDay(NoonHour);
 		TestEqual(TEXT("lamps off at noon"), CountWrongLamps(*World, false), 0);
+		TestTrue(TEXT("car lights off at noon"), Car && !Car->AreLightsOn());
 
 		Cycle->SetTimeOfDay(NightHour);
 		TestEqual(TEXT("lamps back on at night"), CountWrongLamps(*World, true), 0);
+		TestTrue(TEXT("car lights back on at night"), Car && Car->AreLightsOn());
 		return true;
 	}));
 

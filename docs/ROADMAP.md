@@ -68,6 +68,7 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 - [ ] Yol ağı: kavşaklar, ana cadde, ara sokaklar, otoyol rampası
 - [ ] Bölge düzeni: yarış rotaları ve kaçış yolları için kısa yollar
 - [ ] Performans bütçesi: düşük donanımda 60 FPS hedefi, ölçüm testi
+- [ ] Kırılabilir dekor: sokak lambaları, bariyer, çöp kutusu çarpınca devrilir/parçalanır (performans bütçesine göre)
 - [ ] Şehrin kimliği netleşince (Q-02) sanat yönü: dönem, mimari, renk paleti
 
 **Bitti sayılır:** Faz 2'deki yarışlar bu bölgeye taşınır, bölge serbest dolaşılabilir.

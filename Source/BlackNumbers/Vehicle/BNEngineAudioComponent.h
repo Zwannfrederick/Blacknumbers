@@ -21,7 +21,8 @@ namespace BNEngineSound
 	/** Straight six, four-stroke: three firings per crank revolution. */
 	constexpr float FiringsPerRevolution = 3.f;
 
-	FBNEngineSoundTargets Evaluate(float Rpm, float MaxRpm, float Throttle, float SlipDegrees, float SpeedKmh);
+	/** bOnGround: no tyre sound while airborne. */
+	FBNEngineSoundTargets Evaluate(float Rpm, float MaxRpm, float Throttle, float SlipDegrees, float SpeedKmh, bool bOnGround = true);
 }
 
 /**
@@ -62,6 +63,6 @@ private:
 	float CurrentEngineGain = 0.f;
 	float CurrentSkidGain = 0.f;
 	float Phase = 0.f;
-	float SkidLowpass = 0.f;
-	FRandomStream Noise{ 1234 };
+	float SquealPhase = 0.f;
+	float WobblePhase = 0.f;
 };

@@ -156,6 +156,107 @@ bool FBNVehicleDriftTest::RunTest(const FString& Parameters)
 
 namespace
 {
+	// Handbrake abuse: what a player does when mashing Space at speed with full lock and W held down.
+	constexpr float AbuseEntrySpeedKmh = 80.f;
+	constexpr float AbuseHoldSeconds = 1.5f;
+	constexpr float AbuseRecoverSeconds = 2.5f;
+	constexpr float SpunSlipDegrees = 90.f;
+	constexpr float SettledSlipDegrees = 15.f;
+
+	struct FAbuseState
+	{
+		enum class EPhase { Place, Settle, Accelerate, Hold, Recover } Phase = EPhase::Place;
+		double PhaseStart = 0.0;
+		float MaxSlip = 0.f;
+		float MaxSkid = 0.f;
+		float MaxWheelSlip = 0.f;
+	};
+}
+
+// Holding the handbrake with full lock must give a big slide, not a spin the player cannot catch.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNVehicleHandbrakeTest, "BlackNumbers.Vehicle.HandbrakeNoSpin",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNVehicleHandbrakeTest::RunTest(const FString& Parameters)
+{
+	StartTestTrack(*this);
+
+	const TSharedRef<FAbuseState> State = MakeShared<FAbuseState>();
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]()
+	{
+		using EPhase = FAbuseState::EPhase;
+		ABNVehiclePawn* Car = FindPlayerCar();
+		if (!Car)
+		{
+			AddError(TEXT("Player car disappeared"));
+			return true;
+		}
+		UChaosWheeledVehicleMovementComponent* Move = Car->GetChaosMovement();
+		const double Now = Car->GetWorld()->GetTimeSeconds();
+		const float InPhase = static_cast<float>(Now - State->PhaseStart);
+		const float Slip = FMath::Abs(SignedSlipDegrees(*Car)) * (FMath::Abs(Car->GetSpeedKmh()) > MinSpeedForSlipKmh);
+		auto Enter = [&](EPhase Phase) { State->Phase = Phase; State->PhaseStart = Now; };
+		if (State->Phase == EPhase::Hold || State->Phase == EPhase::Recover)
+		{
+			State->MaxSlip = FMath::Max(State->MaxSlip, Slip);
+			for (int32 i = 0; i < Move->GetNumWheels(); ++i)
+			{
+				State->MaxSkid = FMath::Max(State->MaxSkid, Move->GetWheelState(i).SkidMagnitude);
+				State->MaxWheelSlip = FMath::Max(State->MaxWheelSlip, Move->GetWheelState(i).SlipMagnitude);
+			}
+		}
+
+		switch (State->Phase)
+		{
+		case EPhase::Place:
+			PlaceStopped(*Car, SkidpadStart, SkidpadYaw);
+			Enter(EPhase::Settle);
+			return false;
+		case EPhase::Settle:
+			if (InPhase >= SettleSeconds)
+			{
+				Move->SetThrottleInput(1.f);
+				Enter(EPhase::Accelerate);
+			}
+			return false;
+		case EPhase::Accelerate:
+			if (Car->GetSpeedKmh() >= AbuseEntrySpeedKmh || InPhase > EntryTimeoutSeconds)
+			{
+				// Throttle stays pinned: players hold W while mashing Space.
+				Move->SetSteeringInput(1.f);
+				Move->SetHandbrakeInput(true);
+				Enter(EPhase::Hold);
+			}
+			return false;
+		case EPhase::Hold:
+			if (InPhase >= AbuseHoldSeconds)
+			{
+				Move->SetHandbrakeInput(false);
+				Move->SetSteeringInput(0.f);
+				Enter(EPhase::Recover);
+			}
+			return false;
+		case EPhase::Recover:
+			if (InPhase < AbuseRecoverSeconds)
+			{
+				return false;
+			}
+			break;
+		}
+
+		UE_LOG(LogTemp, Display, TEXT("BN handbrake test: max slip %.1f deg, settled at %.1f deg, %.1f km/h | max wheel skid %.2f, max wheel slip %.2f"),
+			State->MaxSlip, Slip, Car->GetSpeedKmh(), State->MaxSkid, State->MaxWheelSlip);
+		TestTrue(TEXT("car does not spin round under handbrake + full lock"), State->MaxSlip < SpunSlipDegrees);
+		TestTrue(TEXT("car settles once the handbrake is released"), Slip < SettledSlipDegrees);
+		return true;
+	}));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
+	return true;
+}
+
+namespace
+{
 	constexpr float ReverseSeconds = 4.f;
 	constexpr float MinReverseKmh = 10.f;
 }

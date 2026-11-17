@@ -6,22 +6,25 @@
 namespace
 {
 	constexpr float IdleGain = 0.3f;
-	constexpr float SkidStartSlipDegrees = 8.f;
+	/** Below this the body slip angle is noise (parking, bumps), not a slide. */
+	constexpr float SkidStartSlipDegrees = 10.f;
 	constexpr float SkidFullSlipDegrees = 30.f;
-	constexpr float SkidFullSpeedKmh = 40.f;
+	constexpr float SkidMinSpeedKmh = 15.f;
+	constexpr float SkidFullSpeedKmh = 50.f;
 	/** Pitch/volume glide time; short enough to hear gear changes as a drop. */
 	constexpr float SmoothSeconds = 0.03f;
 	constexpr int32 Harmonics = 6;
 	constexpr float EngineMix = 0.32f;
 	constexpr float SkidMix = 0.25f;
-	/** Roughness (combustion noise) added on top of the harmonics, scaled by gain. */
-	constexpr float Roughness = 0.25f;
-	constexpr float SkidLowpassCoefficient = 0.25f;
+	/** Tyre squeal: a tone that bends a little, not a noise bed (noise read as rustling grass). */
+	constexpr float SquealHz = 820.f;
+	constexpr float SquealWobbleHz = 7.f;
+	constexpr float SquealWobbleDepth = 0.04f;
 }
 
 namespace BNEngineSound
 {
-	FBNEngineSoundTargets Evaluate(float Rpm, float MaxRpm, float Throttle, float SlipDegrees, float SpeedKmh)
+	FBNEngineSoundTargets Evaluate(float Rpm, float MaxRpm, float Throttle, float SlipDegrees, float SpeedKmh, bool bOnGround)
 	{
 		FBNEngineSoundTargets Out;
 		Out.FiringHz = FMath::Max(Rpm, 0.f) / 60.f * FiringsPerRevolution;
@@ -30,7 +33,9 @@ namespace BNEngineSound
 		Out.EngineGain = FMath::Clamp(FMath::Lerp(IdleGain, 1.f, FMath::Clamp(Throttle, 0.f, 1.f)) * (0.75f + 0.25f * RpmFraction), 0.f, 1.f);
 		const float SlipAmount = FMath::GetMappedRangeValueClamped(
 			FVector2f(SkidStartSlipDegrees, SkidFullSlipDegrees), FVector2f(0.f, 1.f), FMath::Abs(SlipDegrees));
-		Out.SkidGain = SlipAmount * FMath::Clamp(FMath::Abs(SpeedKmh) / SkidFullSpeedKmh, 0.f, 1.f);
+		const float SpeedAmount = FMath::GetMappedRangeValueClamped(
+			FVector2f(SkidMinSpeedKmh, SkidFullSpeedKmh), FVector2f(0.f, 1.f), FMath::Abs(SpeedKmh));
+		Out.SkidGain = bOnGround ? SlipAmount * SpeedAmount : 0.f;
 		return Out;
 	}
 }
@@ -54,7 +59,7 @@ void UBNEngineAudioComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 	UChaosWheeledVehicleMovementComponent* Move = Car->GetChaosMovement();
 	Targets = BNEngineSound::Evaluate(Move->GetEngineRotationSpeed(), Move->GetEngineMaxRotationSpeed(),
-		Move->GetThrottleInput(), Car->GetSlipAngleDegrees(), Car->GetSpeedKmh());
+		Move->GetThrottleInput(), Car->GetSlipAngleDegrees(), Car->GetSpeedKmh(), Move->IsMovingOnGround());
 	TargetHz.store(Targets.FiringHz, std::memory_order_relaxed);
 	TargetEngineGain.store(Targets.EngineGain * MasterGain, std::memory_order_relaxed);
 	TargetSkidGain.store(Targets.SkidGain * MasterGain, std::memory_order_relaxed);
@@ -86,11 +91,12 @@ int32 UBNEngineAudioComponent::OnGenerateAudio(float* OutAudio, int32 NumSamples
 		{
 			Engine += FMath::Sin(UE_TWO_PI * k * Phase) / k;
 		}
-		Engine *= 1.f + Roughness * CurrentEngineGain * Noise.FRandRange(-1.f, 1.f);
 
-		SkidLowpass += (Noise.FRandRange(-1.f, 1.f) - SkidLowpass) * SkidLowpassCoefficient;
+		WobblePhase = FMath::Frac(WobblePhase + SquealWobbleHz / SampleRateHz);
+		SquealPhase = FMath::Frac(SquealPhase + SquealHz * (1.f + SquealWobbleDepth * FMath::Sin(UE_TWO_PI * WobblePhase)) / SampleRateHz);
+		const float Squeal = FMath::Sin(UE_TWO_PI * SquealPhase) + 0.3f * FMath::Sin(UE_TWO_PI * 2.f * SquealPhase);
 
-		OutAudio[i] = EngineMix * CurrentEngineGain * Engine * 0.5f + SkidMix * CurrentSkidGain * SkidLowpass;
+		OutAudio[i] = EngineMix * CurrentEngineGain * Engine * 0.5f + SkidMix * CurrentSkidGain * Squeal * 0.7f;
 	}
 	return NumSamples;
 }

@@ -8,6 +8,7 @@ class UBNEngineAudioComponent;
 class UCameraComponent;
 class UChaosWheeledVehicleMovementComponent;
 class UInputMappingContext;
+class ULocalLightComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
 struct FInputActionValue;
@@ -48,6 +49,7 @@ public:
 	ABNVehiclePawn();
 
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void BeginPlay() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
@@ -102,13 +104,23 @@ public:
 
 	/** While drifting the camera turns this fraction of the slip angle toward the travel direction. */
 	UPROPERTY(EditAnywhere, Category = "Camera", meta = (ClampMin = "0", ClampMax = "1"))
-	float DriftCameraBlend = 0.5f;
+	float DriftCameraBlend = 0.3f;
 
 	UPROPERTY(EditAnywhere, Category = "Camera", meta = (ClampMin = "0.1"))
-	float DriftCameraInterpSpeed = 3.f;
+	float DriftCameraInterpSpeed = 2.f;
 
 	UFUNCTION(BlueprintCallable, Category = "Camera")
 	void CycleChaseDistance();
+
+	/** Head and tail lights; switched by the level's ABNDayNightCycle (on at night). */
+	UFUNCTION(BlueprintCallable, Category = "Lights")
+	void SetLightsOn(bool bOn);
+
+	UFUNCTION(BlueprintPure, Category = "Lights")
+	bool AreLightsOn() const;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Lights")
+	TArray<TObjectPtr<ULocalLightComponent>> CarLights;
 
 	/** Field of view widens from BaseFov to MaxFov as speed approaches FovMaxSpeedKmh. */
 	UPROPERTY(EditAnywhere, Category = "Camera")

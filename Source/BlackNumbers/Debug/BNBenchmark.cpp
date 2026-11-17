@@ -10,6 +10,7 @@
 #include "Engine/GameViewportClient.h"
 #include "UnrealClient.h"
 #include "EngineUtils.h"
+#include "Camera/CameraActor.h"
 #include "Camera/PlayerCameraManager.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
@@ -35,6 +36,8 @@ namespace
 		float Yaw;
 		float Hour;
 		bool bDrive;
+		/** Car-local position of a fixed inspection camera looking at the car; zero = normal chase camera. */
+		FVector InspectFrom = FVector::ZeroVector;
 	};
 
 	const FScenario Scenarios[] = {
@@ -42,6 +45,10 @@ namespace
 		{ TEXT("street_night"), FVector(-9000.f, -12500.f, 60.f), 0.f, 22.f, false },
 		{ TEXT("hairpin_dusk"), FVector(7000.f, -12500.f, 60.f), 0.f, 18.5f, false },
 		{ TEXT("runway_drive_night"), FVector(-18000.f, 0.f, 60.f), 0.f, 22.f, true },
+		// Visual checks: wheel rims face outward on both sides, headlights on at night.
+		{ TEXT("inspect_left_side"), FVector(-9000.f, -12500.f, 60.f), 0.f, 13.f, false, FVector(0.f, -650.f, 120.f) },
+		{ TEXT("inspect_right_side"), FVector(-9000.f, -12500.f, 60.f), 0.f, 13.f, false, FVector(0.f, 650.f, 120.f) },
+		{ TEXT("inspect_front_night"), FVector(-9000.f, -12500.f, 60.f), 0.f, 22.f, false, FVector(900.f, 150.f, 150.f) },
 	};
 
 	constexpr double WarmupSeconds = 3.0;
@@ -103,6 +110,19 @@ namespace
 
 	void Place(ABNVehiclePawn& Car, const FScenario& Scenario)
 	{
+		APlayerController* PC = Car.GetWorld()->GetFirstPlayerController();
+		if (Scenario.InspectFrom.IsZero())
+		{
+			PC->SetViewTarget(&Car);
+		}
+		else
+		{
+			const FTransform CarPose(FRotator(0.f, Scenario.Yaw, 0.f), Scenario.Location);
+			const FVector Eye = CarPose.TransformPosition(Scenario.InspectFrom);
+			const FRotator Look = (Scenario.Location + FVector(0.f, 0.f, 40.f) - Eye).Rotation();
+			PC->SetViewTarget(Car.GetWorld()->SpawnActor<ACameraActor>(Eye, Look));
+		}
+
 		Car.SetActorLocationAndRotation(Scenario.Location, FRotator(0.f, Scenario.Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
 		Car.GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
 		Car.GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);

@@ -7,7 +7,10 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
+#include "Components/PointLightComponent.h"
+#include "Components/SpotLightComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "EngineUtils.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/PlayerController.h"
@@ -17,6 +20,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "Vehicle/BNEngineAudioComponent.h"
 #include "Vehicle/BNVehicleWheels.h"
+#include "World/BNDayNightCycle.h"
 
 namespace
 {
@@ -24,7 +28,17 @@ namespace
 	constexpr float AirborneAngularDamping = 3.f;
 	constexpr float MinSpeedForSlipKmh = 5.f;
 	constexpr int32 FirstRearWheel = 2; // wheel setups: FL, FR, BL, BR
+	/** Rest rotation of every Phys_Wheel_* bone in component space (measured; see Vehicle.WheelsAligned). */
+	const FRotator WheelBoneRest(0.f, -90.f, 90.f);
 	const TCHAR* const WheelBones[] = { TEXT("Phys_Wheel_FL"), TEXT("Phys_Wheel_FR"), TEXT("Phys_Wheel_BL"), TEXT("Phys_Wheel_BR") };
+
+	// Light placement from SM_SportsCar bounds: nose at x ~ +247 cm, tail at x ~ -223 cm.
+	constexpr float HeadlightCandelas = 8000.f;
+	constexpr float HeadlightRange = 5000.f;
+	const FLinearColor HeadlightColour(1.f, 0.95f, 0.85f);
+	constexpr float TaillightCandelas = 40.f;
+	constexpr float TaillightRange = 400.f;
+	const FLinearColor TaillightColour(1.f, 0.05f, 0.02f);
 
 	UStaticMeshComponent* MakeBodyPart(AActor& Owner, USceneComponent* Parent, const TCHAR* Name, UStaticMesh* Mesh, FName Bone = NAME_None)
 	{
@@ -108,10 +122,12 @@ ABNVehiclePawn::ABNVehiclePawn()
 	for (int32 i = 0; i < UE_ARRAY_COUNT(WheelBones); ++i)
 	{
 		UStaticMeshComponent* Wheel = MakeBodyPart(*this, Body, *FString::Printf(TEXT("Wheel_%s"), WheelBones[i] + 11), WheelMesh.Object, WheelBones[i]);
-		if (i % 2 == 1)
-		{
-			Wheel->SetRelativeRotation(FRotator(0.f, 180.f, 0.f)); // right-hand wheels: rim faces outward
-		}
+		// The Phys_Wheel_* bones rest at (P 0, Y -90, R 90) in component space, so undo that to line the
+		// mesh axle (its local Y) up with the car's lateral axis; the bone's spin then turns the wheel about it.
+		// SM_SportsCar_Wheel is a right-hand wheel (rim toward +Y, asset bounds origin y = +9.6 cm), so the
+		// left wheels (FL, BL) also turn 180 degrees to face their rims outward. Guarded by Vehicle.WheelsAligned.
+		const FQuat Outward = (i % 2 == 0) ? FRotator(0.f, 180.f, 0.f).Quaternion() : FQuat::Identity;
+		Wheel->SetRelativeRotation(WheelBoneRest.Quaternion().Inverse() * Outward);
 		WheelMeshes.Add(Wheel);
 	}
 
@@ -132,6 +148,60 @@ ABNVehiclePawn::ABNVehiclePawn()
 
 	EngineAudio = CreateDefaultSubobject<UBNEngineAudioComponent>(TEXT("EngineAudio"));
 	EngineAudio->SetupAttachment(Body);
+
+	for (const float Side : { -1.f, 1.f })
+	{
+		USpotLightComponent* Head = CreateDefaultSubobject<USpotLightComponent>(Side < 0.f ? TEXT("HeadlightL") : TEXT("HeadlightR"));
+		Head->SetupAttachment(Body);
+		Head->SetRelativeLocation(FVector(230.f, Side * 75.f, 70.f));
+		Head->SetRelativeRotation(FRotator(-4.f, 0.f, 0.f));
+		Head->SetIntensityUnits(ELightUnits::Candelas);
+		Head->SetIntensity(HeadlightCandelas);
+		Head->SetLightColor(HeadlightColour);
+		Head->SetAttenuationRadius(HeadlightRange);
+		Head->SetInnerConeAngle(14.f);
+		Head->SetOuterConeAngle(32.f);
+		CarLights.Add(Head);
+
+		UPointLightComponent* Tail = CreateDefaultSubobject<UPointLightComponent>(Side < 0.f ? TEXT("TaillightL") : TEXT("TaillightR"));
+		Tail->SetupAttachment(Body);
+		Tail->SetRelativeLocation(FVector(-230.f, Side * 80.f, 85.f));
+		Tail->SetIntensityUnits(ELightUnits::Candelas);
+		Tail->SetIntensity(TaillightCandelas);
+		Tail->SetLightColor(TaillightColour);
+		Tail->SetAttenuationRadius(TaillightRange);
+		CarLights.Add(Tail);
+	}
+	for (ULocalLightComponent* Light : CarLights)
+	{
+		Light->SetCastShadows(false); // ponytail: shadowless car lights; a shadowed headlight is a High/Ultra option
+		Light->SetVisibility(false);
+	}
+}
+
+void ABNVehiclePawn::BeginPlay()
+{
+	Super::BeginPlay();
+
+	TActorIterator<ABNDayNightCycle> Cycle(GetWorld());
+	if (Cycle)
+	{
+		Cycle->OnNightChanged.AddDynamic(this, &ABNVehiclePawn::SetLightsOn);
+		SetLightsOn(Cycle->IsNight());
+	}
+}
+
+void ABNVehiclePawn::SetLightsOn(bool bOn)
+{
+	for (ULocalLightComponent* Light : CarLights)
+	{
+		Light->SetVisibility(bOn);
+	}
+}
+
+bool ABNVehiclePawn::AreLightsOn() const
+{
+	return CarLights.Num() > 0 && CarLights[0]->IsVisible();
 }
 
 void ABNVehiclePawn::CycleChaseDistance()

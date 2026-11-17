@@ -44,12 +44,14 @@ Ayar gerekirse (editörde `BNVehiclePawn` ve harita içindeki `DayNightCycle` ak
 
 ## Otomatik Testler
 
-`Tools/run_tests.sh` derler ve hepsini çalıştırır. Son çalıştırma: **9/9 geçti** (2026-11-17).
+`Tools/run_tests.sh` derler ve hepsini çalıştırır. Son çalıştırma: **11/11 geçti** (2026-11-17).
 
 | Test | Ne doğrular | Son ölçüm |
 |---|---|---|
 | `World.TimeOfDay` | Saat matematiği, pozlama tabanının güneşe bağlı geçişi | — |
-| `World.StreetLampsFollowNight` | Gece başlatılınca lambalar **ilk karede** yanık; öğlen sönük; gece tekrar yanık | 26 lamba |
+| `World.LightsFollowNight` | Gece başlatılınca sokak lambaları ve araba farları **ilk karede** yanık; öğlen sönük; gece tekrar yanık | 26 lamba + far/stop |
+| `Vehicle.WheelsAligned` | Sürüşte dört tekerlek de arabanın yan ekseninde dönüyor, jantlar dışa bakıyor | hizalama 1,0000 |
+| `Vehicle.HandbrakeNoSpin` | 80 km/s'de tam kırma + W basılıyken 1,5 sn el freni: spin yok, bırakınca toparlanıyor (30/60 FPS'te de) | en fazla ~33° |
 | `Vehicle.DrivesForward` | Araç doğuyor, 0-100 süresi 4,5-8 sn, düzlükte zıplama yok, virajda kayma sınırlı | 0-100 **5,48 sn**, dikey 10,8 cm/s, kayma 1,5° / 12,6° |
 | `Vehicle.Drift` | El freni + direksiyonla drift başlar (>20°), gaz + kontra ile ≥1 sn tutulur, spin yok (<75°), gaz kesince ≤3 sn'de tutuş | 20,9°, 2,44 sn tutuldu, tutuş 0,26 sn |
 | `Vehicle.Reverse` | Dururken fren = geri vites, geri hız sınırı | **-25,8 km/s**, vites R |
@@ -67,12 +69,13 @@ Ayar gerekirse (editörde `BNVehiclePawn` ve harita içindeki `DayNightCycle` ak
 | Direksiyon tepkisi | `DrivesForward` (tam kırma), `Drift` |
 | Fren | `SurfaceGrip` |
 | Geri vites | `Reverse` |
-| Drift | `Drift` (başlatma, sürdürme, spin yok) |
+| Drift | `Drift` (başlatma, sürdürme, spin yok), `HandbrakeNoSpin` |
 | Tutuşa dönüş | `Drift` (son aşama) |
 | Gösterge doğruluğu | `DashAndAudioFollowCar` |
 | Ses parametreleri | `EngineSoundMapping`, `DashAndAudioFollowCar` |
-| Gece-gündüz geçişi, ilk kare ışığı | `TimeOfDay`, `StreetLampsFollowNight` |
-| Lambalar | `StreetLampsFollowNight` |
+| Gece-gündüz geçişi, ilk kare ışığı | `TimeOfDay`, `LightsFollowNight` |
+| Lambalar ve farlar | `LightsFollowNight` |
+| Tekerlek montajı | `WheelsAligned` + benchmark yan görüntüleri |
 | Yüzey davranışı | `SurfaceGrip` |
 | Harita yükleme | Her PIE testi `/Game/Maps/TestTrack` yükler |
 | Temel performans | `Tools/benchmark.sh` (elle; ~2 dk, GPU gerekir) |
@@ -113,8 +116,18 @@ Ayar gerekirse (editörde `BNVehiclePawn` ve harita içindeki `DayNightCycle` ak
 - Yüzeyler: `PM_Asphalt` 1,0, `PM_Concrete` 0,85, `PM_Dirt` 0,6, `PM_Grass` 0,45. Chaos bu sürtünmeyi tekerlek tutuşuna doğrudan uygular.
 - Fizik 30 FPS altında ağır çekime geçer (motorun 1/30 sn fizik adımı sınırı). Async sabit adım denendi, bu davranışı değiştirmediği için geri alındı.
 
+## Düzeltilen Hatalar (kullanıcı testi, 2026-11-17)
+
+| Şikâyet | Kök neden | Düzeltme | Koruyan test |
+|---|---|---|---|
+| Tekerlekler ters takılı | Tekerlek kemikleri bileşen uzayında (Y -90, R 90) dönük; telafi edilmemişti. Sol/sağ yön de tersti. Tekerlekler dönerken para gibi yalpalıyordu | Kemik dinlenme dönüşünün tersi + sol tekerleklere 180° | `WheelsAligned` |
+| Space'e basınca araç "kafayı yiyor" | Fizikte spin üretilemedi (30/60/sınırsız FPS). En olası sebep yalpalayan tekerlekler ve sert drift kamerası | Tekerlekler düzeltildi, drift kamerası yumuşatıldı (0,5 → 0,3) | `HandbrakeNoSpin` |
+| Bazı yerlerde çimen sesi | Ses sentezinde iki gürültü katmanı (motor pürüzü, lastik) hışırtı gibi duyuluyordu; düşük hızda gövde kayma açısı da tetikliyordu | Gürültü kaldırıldı, lastik sesi tonlu cıyaklama; yalnızca yerdeyken, 15 km/s üstünde, 10° üstü kaymada | `EngineSoundMapping` |
+| Gece farlar yok | Yoktu | Gece kendiliğinden yanan farlar ve stop lambaları | `LightsFollowNight` |
+
 ## Bilinen Sınırlar
 
+- Sokak lambaları ve dekor kırılmaz (yol haritası Faz 3).
 - Araba motorun şablonundaki geçici spor araba. Lisans: Unreal Engine EULA kapsamında, UE projelerinde kullanılabilir.
 - Çevre gri kutu: pencere, tabela ve gece ışıklı bina cephesi yok. Dekor basit şekillerden.
 - Drift hissi yalnızca betikle ölçüldü. Drift sırasında hız kaybı belirgin (70 → ~37 km/s).

@@ -14,6 +14,9 @@ bool FBNEngineSoundMappingTest::RunTest(const FString& Parameters)
 	const FBNEngineSoundTargets Coasting = BNEngineSound::Evaluate(6000.f, MaxRpm, 0.f, 0.f, 80.f);
 	const FBNEngineSoundTargets Drifting = BNEngineSound::Evaluate(5000.f, MaxRpm, 0.6f, 25.f, 60.f);
 	const FBNEngineSoundTargets SpinningStill = BNEngineSound::Evaluate(3000.f, MaxRpm, 1.f, 25.f, 0.f);
+	const FBNEngineSoundTargets Crawling = BNEngineSound::Evaluate(1500.f, MaxRpm, 0.2f, 25.f, 8.f);
+	const FBNEngineSoundTargets Airborne = BNEngineSound::Evaluate(5000.f, MaxRpm, 0.6f, 25.f, 60.f, false);
+	const FBNEngineSoundTargets SmallSlip = BNEngineSound::Evaluate(4000.f, MaxRpm, 0.5f, 8.f, 60.f);
 
 	TestEqual(TEXT("six-cylinder idle fires at rpm / 20"), Idle.FiringHz, 45.f);
 	TestTrue(TEXT("pitch rises with rpm"), Revving.FiringHz > Idle.FiringHz);
@@ -22,6 +25,9 @@ bool FBNEngineSoundMappingTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("no tyre noise when gripping"), Revving.SkidGain, 0.f);
 	TestTrue(TEXT("tyres scrub in a drift"), Drifting.SkidGain > 0.5f);
 	TestEqual(TEXT("no skid sound when not moving"), SpinningStill.SkidGain, 0.f);
+	TestEqual(TEXT("no skid sound when crawling (slip angle is meaningless at walking pace)"), Crawling.SkidGain, 0.f);
+	TestEqual(TEXT("no skid sound in the air"), Airborne.SkidGain, 0.f);
+	TestEqual(TEXT("no skid sound for ordinary cornering slip"), SmallSlip.SkidGain, 0.f);
 	return true;
 }
 
