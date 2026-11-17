@@ -38,14 +38,14 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 
 **Amaç:** Arabayı bitmiş bir sokakta, gece ve gündüz sürmenin iyi hissettirmesi. Ayrıntılı durum ve test kaydı: [PHASE1.md](PHASE1.md).
 
-- [ ] Asfalt, beton, toprak, çim malzemeleri ve **fiziksel malzemeleri** (tutuşu gerçekten değiştirir)
-- [ ] Yol çizgileri, kaldırımlar, drift'e uygun virajlı bir tur, gri kutu binalar, basit dekor
-- [ ] Gece kendiliğinden yanan sodyum sokak lambaları, ilk karede doğru durum
-- [ ] Sürüş: el freniyle drift başlatma, sürdürme, kontra, tutuşa dönüş; geri vites; hıza duyarlı direksiyon
-- [ ] Kamera: ayarlanabilir mesafe, hıza bağlı FOV, drift'te sakin takip
-- [ ] Motor sesi (devir, gaz, yük, vites) ve lastik sürtünme sesi, özgün sentez
-- [ ] HUD: hız, vites, devir (araç durumundan okunur)
-- [ ] Bağımsız oyunda (editör dışı) performans ölçümü ve kaydı
+- [x] Asfalt, beton, toprak, çim malzemeleri ve **fiziksel malzemeleri** (tutuşu gerçekten değiştirir)
+- [x] Yol çizgileri, kaldırımlar, drift'e uygun virajlı bir tur, gri kutu binalar, basit dekor
+- [x] Gece kendiliğinden yanan sodyum sokak lambaları, ilk karede doğru durum
+- [~] Sürüş: el freniyle drift başlatma, sürdürme, kontra, tutuşa dönüş; geri vites; hıza duyarlı direksiyon *(testler geçiyor, elle his testi bekliyor)*
+- [~] Kamera: ayarlanabilir mesafe, hıza bağlı FOV, drift'te sakin takip *(uygulandı, elle test bekliyor)*
+- [~] Motor sesi (devir, gaz, yük, vites) ve lastik sürtünme sesi, özgün sentez *(parametreler testli, kulakla dinlenmedi)*
+- [x] HUD: hız, vites, devir (araç durumundan okunur)
+- [x] Bağımsız oyunda (editör dışı) performans ölçümü ve kaydı *(1080p ~210 FPS, GPU ~4,3 ms)*
 
 **Bitti sayılır:** [PHASE1.md](PHASE1.md) içindeki kabul kriterlerinin tamamı doğrulanmış olur.
 
@@ -168,4 +168,5 @@ Bu sorular cevaplanmadan ilgili faz tamamlanamaz. Cevaplar hikâye dokümanını
 | Tarih | Değişiklik |
 |---|---|
 | 2026-11-17 | İlk sürüm. Faz 0 tamam, Faz 1 başladı (sokak lambası sınıfı). |
+| 2026-11-17 | Faz 1 uygulandı; 3 kabul kriteri elle test bekliyor (bkz. PHASE1.md). |
 | 2026-11-17 | Faz 1 kapsamı genişletildi (fiziksel malzemeler, drift, ses, HUD, performans ölçümü). Faz 7, 7A/7B/7C olarak bölündü. Şehir ve trafik önerileri eklendi. |
