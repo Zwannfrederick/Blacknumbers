@@ -6,3 +6,4 @@ DerivedDataCache/
 *.code-workspace
 Makefile
 CMakeLists.txt
+__pycache__/
