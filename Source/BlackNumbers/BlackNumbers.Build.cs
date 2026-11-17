@@ -1,0 +1,17 @@
+using UnrealBuildTool;
+
+public class BlackNumbers : ModuleRules
+{
+	public BlackNumbers(ReadOnlyTargetRules Target) : base(Target)
+	{
+		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+		PublicIncludePaths.Add(ModuleDirectory);
+		PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "ChaosVehicles" });
+
+		if (Target.bBuildEditor)
+		{
+			// Driving smoke test runs the map in PIE.
+			PrivateDependencyModuleNames.Add("UnrealEd");
+		}
+	}
+}

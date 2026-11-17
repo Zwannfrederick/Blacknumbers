@@ -1,0 +1,126 @@
+#include "World/BNDayNightCycle.h"
+
+#include "Components/DirectionalLightComponent.h"
+#include "Components/ExponentialHeightFogComponent.h"
+#include "Components/SkyLightComponent.h"
+#include "Engine/DirectionalLight.h"
+#include "Engine/ExponentialHeightFog.h"
+#include "Engine/PostProcessVolume.h"
+#include "Engine/SkyLight.h"
+#include "EngineUtils.h"
+#include "HAL/IConsoleManager.h"
+
+ABNDayNightCycle::ABNDayNightCycle()
+{
+	PrimaryActorTick.bCanEverTick = true;
+	Keys = BNTimeOfDay::MakeDefaultKeys();
+}
+
+void ABNDayNightCycle::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	Keys.Sort([](const FBNTimeOfDayKey& A, const FBNTimeOfDayKey& B) { return A.Hour < B.Hour; });
+	LastCaptureHour = -100.f;
+	bIsNight = BNTimeOfDay::IsNight(TimeOfDay);
+	ApplyLook();
+}
+
+void ABNDayNightCycle::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	if (!bPaused)
+	{
+		SetTimeOfDay(TimeOfDay + DeltaSeconds * 24.f / (DayLengthMinutes * 60.f));
+	}
+}
+
+void ABNDayNightCycle::SetTimeOfDay(float Hour)
+{
+	TimeOfDay = BNTimeOfDay::WrapHour(Hour);
+	ApplyLook();
+
+	const bool bNowNight = BNTimeOfDay::IsNight(TimeOfDay);
+	if (bNowNight != bIsNight)
+	{
+		bIsNight = bNowNight;
+		OnNightChanged.Broadcast(bIsNight);
+	}
+}
+
+void ABNDayNightCycle::ApplyLook()
+{
+	const FBNTimeOfDayKey Look = BNTimeOfDay::Evaluate(Keys, TimeOfDay);
+	const float SunPitch = BNTimeOfDay::SunPitchDegrees(TimeOfDay);
+	const float SunElevation = BNTimeOfDay::SunElevationDegrees(TimeOfDay);
+
+	if (Sun)
+	{
+		Sun->SetActorRotation(FRotator(SunPitch, SunYaw, 0.f));
+		if (UDirectionalLightComponent* Light = Cast<UDirectionalLightComponent>(Sun->GetLightComponent()))
+		{
+			Light->SetAtmosphereSunLight(true);
+			Light->SetAtmosphereSunLightIndex(0);
+			Light->SetIntensity(Look.SunIntensity * BNTimeOfDay::HorizonFade(SunElevation));
+			Light->SetLightColor(Look.SunColor);
+		}
+	}
+
+	if (Moon)
+	{
+		Moon->SetActorRotation(FRotator(SunPitch + 180.f, SunYaw, 0.f));
+		if (UDirectionalLightComponent* Light = Cast<UDirectionalLightComponent>(Moon->GetLightComponent()))
+		{
+			Light->SetAtmosphereSunLight(true);
+			Light->SetAtmosphereSunLightIndex(1);
+			Light->SetIntensity(Look.MoonIntensity * BNTimeOfDay::HorizonFade(-SunElevation));
+		}
+	}
+
+	if (SkyLight && SkyLight->GetLightComponent())
+	{
+		USkyLightComponent* Sky = SkyLight->GetLightComponent();
+		Sky->SetIntensity(Look.SkyLightIntensity);
+
+		float HoursSinceCapture = FMath::Abs(TimeOfDay - LastCaptureHour);
+		HoursSinceCapture = FMath::Min(HoursSinceCapture, 24.f - HoursSinceCapture);
+		if (HoursSinceCapture >= SkyRecaptureHours)
+		{
+			Sky->RecaptureSky();
+			LastCaptureHour = TimeOfDay;
+		}
+	}
+
+	if (Fog && Fog->GetComponent())
+	{
+		Fog->GetComponent()->SetFogDensity(Look.FogDensity);
+		Fog->GetComponent()->SetFogInscatteringColor(Look.FogColor);
+	}
+
+	if (PostProcess)
+	{
+		FPostProcessSettings& Settings = PostProcess->Settings;
+		Settings.bOverride_ColorGain = true;
+		Settings.ColorGain = FVector4(Look.ColorGain.R, Look.ColorGain.G, Look.ColorGain.B, 1.f);
+		Settings.bOverride_ColorSaturation = true;
+		Settings.ColorSaturation = FVector4(Look.Saturation, Look.Saturation, Look.Saturation, 1.f);
+		Settings.bOverride_AutoExposureBias = true;
+		Settings.AutoExposureBias = Look.ExposureBias;
+	}
+}
+
+static FAutoConsoleCommandWithWorldAndArgs GBNSetTimeCommand(
+	TEXT("bn.SetTime"),
+	TEXT("bn.SetTime <0-24>  Set time of day on every day/night cycle in the world."),
+	FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+	{
+		if (!World || Args.Num() != 1 || !Args[0].IsNumeric())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Usage: bn.SetTime <0-24>"));
+			return;
+		}
+		const float Hour = FCString::Atof(*Args[0]);
+		for (TActorIterator<ABNDayNightCycle> It(World); It; ++It)
+		{
+			It->SetTimeOfDay(Hour);
+		}
+	}));

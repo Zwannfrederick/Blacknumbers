@@ -1,0 +1,8 @@
+Binaries/
+Intermediate/
+Saved/
+DerivedDataCache/
+.vscode/
+*.code-workspace
+Makefile
+CMakeLists.txt
