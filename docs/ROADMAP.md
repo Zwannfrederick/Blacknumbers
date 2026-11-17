@@ -36,17 +36,18 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 
 ## Faz 1 — İlk Sokak ve Sürüş Hissi
 
-**Amaç:** Arabayı gerçek bir sokakta, gece ve gündüz sürmenin iyi hissettirmesi.
+**Amaç:** Arabayı bitmiş bir sokakta, gece ve gündüz sürmenin iyi hissettirmesi. Ayrıntılı durum ve test kaydı: [PHASE1.md](PHASE1.md).
 
-- [ ] Asfalt, beton, şerit boyası malzemeleri (motorun gürültü dokularından, dış varlık gerektirmez)
-- [ ] İlk cadde: 4 şerit, kaldırımlar, gri kutu binalar *(test pistinin yanında)*
-- [~] Gece kendiliğinden yanan sodyum sokak lambaları *(sınıf yazıldı, haritaya eklenmedi)*
-- [ ] HUD: hız, vites, devir
-- [ ] Motor sesi (devre bağlı, en basit hâliyle)
-- [ ] Drift'e uygun yol tutuş: el freniyle kontrollü kayma, kaymadan çıkış
-- [ ] Kamera: hıza ve kaymaya göre ince ayar
+- [ ] Asfalt, beton, toprak, çim malzemeleri ve **fiziksel malzemeleri** (tutuşu gerçekten değiştirir)
+- [ ] Yol çizgileri, kaldırımlar, drift'e uygun virajlı bir tur, gri kutu binalar, basit dekor
+- [ ] Gece kendiliğinden yanan sodyum sokak lambaları, ilk karede doğru durum
+- [ ] Sürüş: el freniyle drift başlatma, sürdürme, kontra, tutuşa dönüş; geri vites; hıza duyarlı direksiyon
+- [ ] Kamera: ayarlanabilir mesafe, hıza bağlı FOV, drift'te sakin takip
+- [ ] Motor sesi (devir, gaz, yük, vites) ve lastik sürtünme sesi, özgün sentez
+- [ ] HUD: hız, vites, devir (araç durumundan okunur)
+- [ ] Bağımsız oyunda (editör dışı) performans ölçümü ve kaydı
 
-**Bitti sayılır:** Oyuncu caddede gece sürerken lambalar yanar, hız göstergesi çalışır, el freniyle drift yapılabilir.
+**Bitti sayılır:** [PHASE1.md](PHASE1.md) içindeki kabul kriterlerinin tamamı doğrulanmış olur.
 
 ## Faz 2 — Yarış Çekirdeği
 
@@ -109,16 +110,34 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 
 ## Faz 7 — Perde 3–5: Demir ve Son Kovalamaca
 
-**Amaç:** Hikâyenin doruk noktası.
+Üç bağımsız doğrulanabilir alt faza bölünür. Her biri bir öncekinin üzerine kurulur.
 
-- [ ] Kimlik ifşası: büyük ve oynanabilir bir olay (C06)
-- [ ] Heat 6–10: Demir sahaya iner, taktikler sertleşir, emir **CANLI**
-- [ ] Mekanikçiyle barışma → **Tier 6** (sadece Mekanikçiden, dengeli fizik)
-- [ ] Son yarış ve Liderin delillerle teslim edilmesi
-- [ ] **Özel Kademe** final kovalamacası: polisi yenerek değil, **rota seçimi ve beceriyle** kaçış. Eşin yardımı.
-- [ ] Tahribatın sonuçları: hasarlı sokaklar ve haber yayınları (oynanıştaki kapsamı S-14'e bağlı)
+### Faz 7A — Kimlik İfşası ve Heat 6
 
-**Bitti sayılır:** Oyun Liderin teslim edilmesine ve Özel Kademeden kaçışa kadar oynanır.
+- [ ] Kahramanın kimliğinin ifşası: büyük ve oynanabilir bir olay (R4, C06)
+- [ ] Heat 6 açılır. Demir sahaya iner, emri **CANLI**
+- [ ] Hikâye durum makinesine bağlanır (ifşa bayrağı → Heat 6)
+- [ ] Polis telsizinde Demir'in kişisel katılımı duyulur
+
+**Kabul:** İfşa olayı oynanır. Olaydan önce Heat 6'ya çıkılamaz, sonra çıkılabilir (otomatik test). Heat 6 kovalamacası Heat 5'ten ölçülebilir biçimde zordur (araç sayısı, taktik).
+
+### Faz 7B — Heat 7–10, Barışma ve Tier 6
+
+- [ ] Heat 7–10 kademeleri: giderek sofistikeleşen taktikler, emir hâlâ **CANLI**
+- [ ] Mekanikçiyle tam barışma (R6, C08); öncesinde kademeli tutum değişimi
+- [ ] **Tier 6** parçaları yalnızca Mekanikçiden, yalnızca barışmadan sonra
+- [ ] Tier 6 dengeli fiziği korur (sürüş testlerinin sınırları içinde kalır)
+
+**Kabul:** Barışmadan önce Tier 6 satın alınamaz, sonra alınabilir (otomatik test). Tier 6 takılı araç sürüş testlerini geçer. Heat 7–10 veri olarak tanımlıdır ve her kademe bir öncekinden zordur.
+
+### Faz 7C — Final Yarışı, Özel Kademe ve Sonuçlar
+
+- [ ] Son yarış ve Liderin **delillerle** teslim edilmesi (R8, C09–C11)
+- [ ] **Özel Kademe** final kovalamacası: polisi yenerek değil, **rota seçimi ve beceriyle** kaçış; Demir'in "ÖLÜ YA DA DİRİ" emri
+- [ ] Eşin kaçışa yardımı (biçimi S-13'e bağlı)
+- [ ] Tahribatın anlatı sonuçları (oynanıştaki kapsamı S-14'e bağlı)
+
+**Kabul:** Özel Kademe yalnızca final kovalamacasında açılır (otomatik test). Kaçış en az iki farklı rota ile tamamlanabilir. Kovalamaca Heat 10'dan ölçülebilir biçimde yoğundur. Liderin teslimi, toplanan delillere bağlıdır (delil eksikse yüzleşme açılmaz).
 
 ## Faz 8 — Epilog, Sinematikler ve Cila
 
@@ -135,17 +154,18 @@ Bu sorular cevaplanmadan ilgili faz tamamlanamaz. Cevaplar hikâye dokümanını
 
 | Soru | Engellediği faz | Neden |
 |---|---|---|
-| Q-02 Şehrin adı ve kimliği | Faz 3 sanat yönü | Mimari, dönem, palet buna bağlı |
+| Q-02 Şehrin adı ve kimliği. Bölge önerisi: [PROPOSALS.md](PROPOSALS.md#şehir-bölgeleri) | Faz 3 sanat yönü | Mimari, dönem, palet buna bağlı |
 | Q-04, Q-05 16 üyenin kimliği ve verdikleri deliller | Faz 6 | Rakip verisi ve delil zinciri |
 | S-03 Lider 16'nın içinde mi (#1), üstünde mi? | Faz 6 | Liste yapısı ve final yarışı |
 | S-08 Heat 1–5'te polis Kahramanı kim olarak kovalar? | Faz 4 telsiz/anlatı | Kovalamacanın anlatı çerçevesi |
 | S-10 Son yarış ile Liderle yüzleşme aynı olay mı? | Faz 7 | Final kurgusu |
 | S-14 Tahribat oynanışta da görünecek mi? | Faz 7 | Hasar sistemi gerekip gerekmediği |
 | Q-11 Final yarış rotası ve kaçış sekansı | Faz 7 | Şehir düzeni bunu taşımalı (Faz 3'te yer ayrılır) |
-| Hikâyede yer almayan sivil trafik olacak mı? | Faz 3 | Şehrin canlılığı ve performans bütçesi |
+| Sivil trafik olacak mı? Öneri: [PROPOSALS.md](PROPOSALS.md#sivil-trafik) | Faz 3 (temel), Faz 4 (polise tepki) | Şehrin canlılığı ve performans bütçesi |
 
 ## Değişiklik Günlüğü
 
 | Tarih | Değişiklik |
 |---|---|
 | 2026-11-17 | İlk sürüm. Faz 0 tamam, Faz 1 başladı (sokak lambası sınıfı). |
+| 2026-11-17 | Faz 1 kapsamı genişletildi (fiziksel malzemeler, drift, ses, HUD, performans ölçümü). Faz 7, 7A/7B/7C olarak bölündü. Şehir ve trafik önerileri eklendi. |

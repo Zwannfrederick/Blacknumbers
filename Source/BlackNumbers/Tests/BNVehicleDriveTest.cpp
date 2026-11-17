@@ -3,16 +3,12 @@
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
 #include "ChaosWheeledVehicleMovementComponent.h"
-#include "Editor.h"
-#include "GameFramework/PlayerController.h"
-#include "Tests/AutomationCommon.h"
-#include "Tests/AutomationEditorCommon.h"
-#include "Vehicle/BNVehiclePawn.h"
+#include "Tests/BNPlayTestUtils.h"
+
+using namespace BNPlayTest;
 
 namespace
 {
-	constexpr float SpawnTimeoutSeconds = 30.f;
-	constexpr float SettleSeconds = 1.f;
 	/** Stops at 100 km/h or after this long; ~100 m of the 380 m start straight. */
 	constexpr float DriveTimeoutSeconds = 10.f;
 	/** Mid-2000s sports car: 0-100 km/h in roughly 4.5-8 s. Faster means wheelspin-y and arcade-light. */
@@ -31,13 +27,6 @@ namespace
 	constexpr float PowerTurnSeconds = 3.f;
 	constexpr float MaxPowerTurnSlipDegrees = 20.f;
 
-	ABNVehiclePawn* FindPlayerCar()
-	{
-		const UWorld* World = GEditor ? GEditor->PlayWorld.Get() : nullptr;
-		const APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
-		return PC ? Cast<ABNVehiclePawn>(PC->GetPawn()) : nullptr;
-	}
-
 	struct FDriveRun
 	{
 		double StartTime = -1.0;
@@ -49,14 +38,6 @@ namespace
 		double PowerTurnStart = -1.0;
 		float MaxPowerTurnSlipDegrees = 0.f;
 	};
-
-	/** Angle between where the car points and where it is actually going, on the ground plane. */
-	float SlipAngleDegrees(const AActor& Car)
-	{
-		const FVector Velocity = Car.GetVelocity().GetSafeNormal2D();
-		const FVector Forward = Car.GetActorForwardVector().GetSafeNormal2D();
-		return FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(Velocity, Forward), -1.f, 1.f)));
-	}
 }
 
 // Plays the test track in PIE and floors the throttle on flat ground. Checks the car drives at all
@@ -66,26 +47,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNVehicleDriveTest, "BlackNumbers.Vehicle.Driv
 
 bool FBNVehicleDriveTest::RunTest(const FString& Parameters)
 {
-	ADD_LATENT_AUTOMATION_COMMAND(FEditorLoadMap(TEXT("/Game/Maps/TestTrack")));
-	ADD_LATENT_AUTOMATION_COMMAND(FStartPIECommand(false));
-
-	const double WaitStart = FPlatformTime::Seconds();
-	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, WaitStart]()
-	{
-		if (FindPlayerCar())
-		{
-			return true;
-		}
-		if (FPlatformTime::Seconds() - WaitStart > SpawnTimeoutSeconds)
-		{
-			AddError(TEXT("Player was not spawned into an ABNVehiclePawn"));
-			return true;
-		}
-		return false;
-	}));
-
-	// Let the car drop onto its suspension before measuring.
-	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(SettleSeconds));
+	StartTestTrack(*this);
 
 	const TSharedRef<FDriveRun> Run = MakeShared<FDriveRun>();
 	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, Run]()
