@@ -61,7 +61,7 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 - [x] Yarışlar veri olarak tanımlanır (`UBNRaceDefinition`: rota, disiplin, tur, süre, yarış çizgisi, rakip becerileri) — *ödül alanları Faz 5 ile eklenecek*
 
 **Bitti sayılır:** Aynı bölgede bir Sprint, bir Pist ve bir Drift yarışı baştan sona oynanır.
-*Durum: otomatik testler geçiyor (rakipler oval pisti 2 tur kendi başına bitiriyor). Proje sahibinin üç yarışı oynaması bekleniyor. Ayrıntı: [PHASE2.md](PHASE2.md).*
+*Durum: otomatik testler geçiyor (rakipler oval pisti 2 tur kendi başına bitiriyor), 3 rakiple 1080p'de ~195 FPS. Proje sahibinin üç yarışı oynaması bekleniyor. Ayrıntı: [PHASE2.md](PHASE2.md).*
 
 ## Faz 3 — Şehir Dikey Dilimi
 

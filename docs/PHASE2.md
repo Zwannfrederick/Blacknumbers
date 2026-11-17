@@ -1,6 +1,6 @@
 # Faz 2 — Yarış Çekirdeği: Durum ve Test Kaydı
 
-**Durum:** Uygulandı. Otomatik testlerin hepsi geçiyor (19/19). Proje sahibinin üç yarışı oynaması bekleniyor. Performans ölçümü de bekliyor (aşağıda).
+**Durum:** Uygulandı. Otomatik testlerin hepsi geçiyor (19/19) ve performans ölçüldü. Proje sahibinin üç yarışı oynaması bekleniyor.
 
 ## Kabul Kriterleri
 
@@ -14,7 +14,7 @@
 | Sıralama (POS x/y, bitişte 1ST/2ND…) | ✅ otomatik | `Race.SprintFromBeacon`, `Race.RivalsFinishCircuit` |
 | Yarıştan çıkma (Backspace / View) | ✅ otomatik | `Race.AbandonEndsRace` |
 | Üç yarış baştan sona **oynanır** | ⏳ proje sahibi | Elle test, aşağıda |
-| 1080p'de 60 FPS, rakiplerle birlikte | ⏳ ölçülemedi | NVIDIA sürücüsü güncellenmiş, yeniden başlatma gerekiyor (`nvidia-smi`: *Driver/library version mismatch*). Rakipsiz son ölçüm: ~200 FPS. |
+| 1080p'de 60 FPS, rakiplerle birlikte | ✅ ölçüldü | 3 rakipli `circuit_race_dusk`: 195 FPS, p99 8,3 ms, 16,7 ms'yi aşan kare %0. Aşağıya bakın. |
 
 ## Elle Test Talimatları
 
@@ -24,6 +24,20 @@
 3. **Runway Sprint:** düzlüğün sağındaki sütun. Bitişte rakipler kayma pistinde durur.
 4. **Skidpad Drift:** rakipsiz, 60 sn puan.
 5. Herhangi bir yarışta **Backspace**: "RACE ABANDONED", 6 sn sonra rakipler kaybolur.
+
+## Performans (2026-11-17, RTX 3050 Ti Laptop, 1080p, Vulkan, `Tools/benchmark.sh`)
+
+Ölçüm sırasında aynı GPU'da Unreal Editor de açıktı. Sonuçlar bu yüzden temkinli (en kötü durum) kabul edilmeli. VRAM tepe değeri (1856 MiB, tüm cihaz) editörün yaklaşık 960 MiB'ını da içeriyor. Oyunun kendisi Faz 1'deki gibi ~900 MiB.
+
+| Senaryo | Ort. FPS | p99 ms | >16,7 ms | Oyun ms | GPU ms |
+|---|---|---|---|---|---|
+| street_day | 209,9 | 8,51 | %0,1 | 2,69 | 4,22 |
+| street_night | 177,5 | 11,24 | %0,2 | 2,64 | 5,17 |
+| hairpin_dusk | 198,0 | 8,88 | %0 | 2,59 | 4,62 |
+| runway_drive_night | 221,1 | 7,46 | %0 | 2,84 | 4,10 |
+| circuit_race_dusk (**3 rakip**) | 195,2 | 8,32 | %0 | 3,42 | 4,66 |
+
+3 rakip oyun iş parçacığına kare başına ~0,8 ms ekliyor (2,6 → 3,4 ms). 60 FPS bütçesi 16,7 ms, yani bol pay var. Ekran görüntüsünde rakipler düzlüğün sonunda, HUD `POS 4/4` gösteriyor.
 
 ## Rakip Yapay Zekâ
 
