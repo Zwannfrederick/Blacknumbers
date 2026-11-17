@@ -171,6 +171,7 @@ Bu sorular cevaplanmadan ilgili faz tamamlanamaz. Cevaplar hikâye dokümanını
 | Tarih | Değişiklik |
 |---|---|
 | 2026-11-17 | İlk sürüm. Faz 0 tamam, Faz 1 başladı (sokak lambası sınıfı). |
+| 2026-11-17 | Sahip geri bildirimi: NFS tarzı drift, daha hızlı rakipler, gün batımı geçişi yumuşatıldı, ışık önceliği uyarısı giderildi. |
 | 2026-11-17 | Faz 2 ikinci parça: rakip YZ (3 rakip, beceri, sollama), sıralama, yarıştan çıkma tuşu. Sahibin oyun testi bekleniyor. |
 | 2026-11-17 | Faz 2 ilk parça: yarış altyapısı, Sprint/Pist/Drift, test pistinde 3 yarış. Rakip YZ sırada. |
 | 2026-11-17 | Faz 1 tamamlandı: otomatik testler + proje sahibinin sürüş testi. |

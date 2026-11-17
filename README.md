@@ -34,7 +34,7 @@ Araba gövdesi şimdilik motorun araç şablonundaki spor araba (`Content/Vehicl
 | Arabayı düzelt | R | Y (üst tuş) |
 | Yarıştan çık | Backspace | View (sol menü tuşu) |
 
-**Drift:** 30 km/s üstünde direksiyonu kır, Space'e bas, bırak. Kayma yönüne kontra kırdıkça drift sürer. Direksiyonu düzeltip gaza basınca araç toparlanır ve hızlanır.
+**Drift (NFS tarzı):** 30 km/s üstünde direksiyonu kır ve Space'e dokun. Direksiyonu virajın içine doğru tuttukça drift sürer, ne kadar kırarsan açı o kadar büyür. Gaz hızı korur. Direksiyonu bırakınca ya da kontra kırınca araç toparlanıp hızlanır.
 
 ## Test Haritası
 

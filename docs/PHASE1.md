@@ -36,8 +36,9 @@ Ayar gerekirse (editörde `BNVehiclePawn` ve harita içindeki `DayNightCycle` ak
 
 | His | Ayar |
 |---|---|
-| Drift çok kolay / zor | `Handling → Drift → RearGripScale` (0,45; düşük = daha kaygan) |
-| Drift'ten çıkış hızı | `Drift → GripRecoverSeconds` (1 sn; Space bırakılıp direksiyon düzeltilince arka tutuşun geri gelme süresi) |
+| Drift açısı | `Handling → Drift → MinAngleDegrees / MaxAngleDegrees` (15° / 45°; direksiyonun ne kadar kırıldığına göre) |
+| Drift çizgisinin darlığı | `Drift → LineTightness` (1,6; yüksek = daha dar daire) |
+| Drift'te hız korunması | `Drift → Thrust` (1100 cm/s²; girişteki hıza kadar) |
 | Kamera | `Camera → ChaseDistances`, `DriftCameraBlend`, `BaseFov/MaxFov` |
 | Ses seviyesi | `EngineAudio → MasterGain` |
 | Gece karanlığı | `DayNightCycle → Look → NightMinExposureEV100` (3; düşük = daha aydınlık gece) |
@@ -113,7 +114,7 @@ Ayar gerekirse (editörde `BNVehiclePawn` ve harita içindeki `DayNightCycle` ak
 - `ABNVehiclePawn`: görünmez tekerlek iskeleti (`SKM_SportsCar`) + statik gövde, cam ve tekerlek modelleri; takip kamerası; kodla kurulan Enhanced Input.
 - Motor: 400 Nm, 7000 rpm, kendi tork eğrisi (boş kalırsa Chaos motoru kapatır), 5 ileri otomatik vites, geri vites sınırı 35 km/s.
 - Lastik: ön 2,0 / arka 2,2 sürtünme çarpanı; tüm tekerlekler ABS, arkada patinaj önleyici; hıza duyarlı direksiyon eğrisi (MPH).
-- **Drift yardımı** (`FBNDriftTuning`): hızlıyken el freni basılıyken arka tutuş ×0,45'e iner ve arka patinaj önleyici kapanır. Bırakınca tutuş 1 sn'de tam değere döner; sürücü kontra kırıyorsa (direksiyon kayma yönünde) bekler ve drift sürer. El freni arka ABS'yi devre dışı bırakır. Kaymanın kendisi Chaos fiziğidir, betiklenmiş hareket yoktur.
+- **Drift yardımı** (`FBNDriftTuning`): hızlıyken el freni basılıyken arka tutuş ×0,45'e iner ve arka patinaj önleyici kapanır. Bırakınca tutuş 1 sn'de tam değere döner; sürücü kontra kırıyorsa (direksiyon kayma yönünde) bekler ve drift sürer. El freni arka ABS'yi devre dışı bırakır. Kaymanın kendisi Chaos fiziğidir, betiklenmiş hareket yoktur. *(Faz 2'de proje sahibinin isteğiyle NFS tarzı drift yardımıyla değiştirildi, bkz. [PHASE2.md](PHASE2.md).)*
 - Yüzeyler: `PM_Asphalt` 1,0, `PM_Concrete` 0,85, `PM_Dirt` 0,6, `PM_Grass` 0,45. Chaos bu sürtünmeyi tekerlek tutuşuna doğrudan uygular.
 - Fizik 30 FPS altında ağır çekime geçer (motorun 1/30 sn fizik adımı sınırı). Async sabit adım denendi, bu davranışı değiştirmediği için geri alındı.
 

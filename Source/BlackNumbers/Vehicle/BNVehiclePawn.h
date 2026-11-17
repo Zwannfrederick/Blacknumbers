@@ -13,26 +13,53 @@ class USpringArmComponent;
 class UStaticMeshComponent;
 struct FInputActionValue;
 
-/** Arcade drift assist on top of Chaos tyre physics: the slide itself stays physical. */
+/**
+ * Arcade (NFS-style) drift. Steering + handbrake at speed starts it; while the wheel is held into the turn the
+ * assist holds the slide (angle set by how far the wheel is turned) and the throttle keeps the speed up.
+ * Letting go of the wheel or countersteering unwinds it and the car grips up and drives on.
+ */
 USTRUCT(BlueprintType)
 struct FBNDriftTuning
 {
 	GENERATED_BODY()
 
-	/** The handbrake only starts a drift above this speed. */
+	/** The handbrake only starts a drift above this speed; below 2/3 of it a drift ends. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0"))
 	float MinSpeedKmh = 30.f;
 
-	/** Rear tyre grip while the handbrake is held at speed, relative to normal. Lower = easier slides. */
+	/** Drift angle with the wheel just into the turn, and at full lock. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "5", ClampMax = "60", Units = "Degrees"))
+	float MinAngleDegrees = 15.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "5", ClampMax = "70", Units = "Degrees"))
+	float MaxAngleDegrees = 45.f;
+
+	/** How fast the car's angle follows the target (1/s). Higher = snappier. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.5"))
+	float AngleGain = 4.f;
+
+	/**
+	 * The direction of travel swings toward where the car points at this many degrees per second per degree
+	 * of drift angle: sets how tight the drift line is. Higher = tighter circle.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.1"))
+	float LineTightness = 1.6f;
+
+	/** Throttle push along the drift (cm/s^2 at full throttle) against the speed the slide scrubs off, up to the entry speed. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0"))
+	float Thrust = 1100.f;
+
+	/** The drift ends once it has unwound below this angle. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "1", Units = "Degrees"))
+	float ExitAngleDegrees = 6.f;
+
+	/** Rear tyre grip during a drift, relative to normal: low so the tyres do not fight the assist. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.1", ClampMax = "1"))
 	float RearGripScale = 0.45f;
 
-	/**
-	 * After releasing the handbrake the rear grip ramps back to full over this long, unless the driver is
-	 * countersteering (which holds the drift). Straightening up and flooring it pulls the car out of the slide.
-	 */
+	/** After a drift the rear grip ramps back to full over this long. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.05", Units = "Seconds"))
-	float GripRecoverSeconds = 1.f;
+	float GripRecoverSeconds = 0.6f;
 };
 
 /**
@@ -63,6 +90,13 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
 	bool IsDrifting() const { return bDrifting; }
+
+	/**
+	 * Any wheel touching the ground. (The movement component's IsMovingOnGround() is the generic pawn one and
+	 * is always false for Chaos vehicles.)
+	 */
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsOnGround() const;
 
 	/** Signed angle between heading and travel, positive when sliding to the right. 0 when nearly stopped. */
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
@@ -150,12 +184,20 @@ private:
 	void OnHandbrake(const FInputActionValue& Value);
 
 	void UpdateDrift(float DeltaSeconds);
+	/** Holds the slide at TargetSlip (signed degrees): turns the car and its direction of travel directly. */
+	void ApplyDriftAssist(float DeltaSeconds, float TargetSlip, float Throttle);
+	void SetRearGrip(float Blend);
 
 	bool bDrifting = false;
 	bool bInputLocked = false;
 	/** 0 = drift grip, 1 = full rear grip; last value sent to the physics wheels. */
 	float RearGripBlend = 1.f;
 	bool bRearAbsBypassed = false;
+	bool bRearTractionControl = true;
+	/** +1 for a drift turning left (sliding right, positive slip), -1 for one turning right. */
+	float DriftDirection = 0.f;
+	/** Ground speed (cm/s) when the drift started; the throttle keeps the drift up to it. */
+	float DriftEntrySpeed = 0.f;
 	int32 ChaseDistanceIndex = 0;
 
 	/** Owns the runtime-created input actions through its key mappings. */

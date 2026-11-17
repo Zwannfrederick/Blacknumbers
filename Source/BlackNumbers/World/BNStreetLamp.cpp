@@ -1,6 +1,7 @@
 #include "World/BNStreetLamp.h"
 
 #include "Components/SpotLightComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
@@ -15,6 +16,11 @@ namespace
 	const FLinearColor SodiumColor(1.f, 0.55f, 0.2f);
 	constexpr float LampCandelas = 3000.f;
 	constexpr float LampRadius = 2500.f;
+	constexpr float WarmUpSeconds = 4.f;
+	constexpr float CoolDownSeconds = 1.5f;
+	/** Photocells differ: each lamp switches up to this long after the cycle says so. */
+	constexpr float MaxSwitchDelaySeconds = 2.5f;
+	const FName GlowEmissiveParam(TEXT("Emissive"));
 
 	UStaticMeshComponent* MakePart(AActor& Owner, USceneComponent* Parent, const TCHAR* Name, UStaticMesh* Mesh,
 		const FVector& Location, const FVector& Scale)
@@ -34,6 +40,8 @@ ABNStreetLamp::ABNStreetLamp()
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
 
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bStartWithTickEnabled = false; // ticks only while warming up or cooling down
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 
 	// Basic shapes are 100 cm with a centred pivot.
@@ -66,22 +74,58 @@ void ABNStreetLamp::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// One cycle per level drives every lamp.
+	GlowMaterial = Glow->CreateAndSetMaterialInstanceDynamic(0);
+	if (GlowMaterial)
+	{
+		GlowMaterial->GetVectorParameterValue(FHashedMaterialParameterInfo(GlowEmissiveParam), GlowEmissive);
+	}
+
+	// One cycle per level drives every lamp. At level start lamps are already in their final state.
 	TActorIterator<ABNDayNightCycle> Cycle(GetWorld());
 	if (Cycle)
 	{
 		Cycle->OnNightChanged.AddDynamic(this, &ABNStreetLamp::SetLit);
-		SetLit(Cycle->IsNight());
+		bLit = Cycle->IsNight();
+		Brightness = bLit ? 1.f : 0.f;
+	}
+	ApplyBrightness();
+}
+
+void ABNStreetLamp::Tick(float DeltaSeconds)
+{
+	Super::Tick(DeltaSeconds);
+	if (SwitchDelay > 0.f)
+	{
+		SwitchDelay -= DeltaSeconds;
+		return;
+	}
+	Brightness = FMath::FInterpConstantTo(Brightness, bLit ? 1.f : 0.f, DeltaSeconds, 1.f / (bLit ? WarmUpSeconds : CoolDownSeconds));
+	ApplyBrightness();
+	if (Brightness == (bLit ? 1.f : 0.f))
+	{
+		SetActorTickEnabled(false);
 	}
 }
 
-void ABNStreetLamp::SetLit(bool bLit)
+void ABNStreetLamp::ApplyBrightness()
 {
-	Light->SetVisibility(bLit);
-	Glow->SetVisibility(bLit);
+	const bool bOn = Brightness > 0.f;
+	Light->SetVisibility(bOn);
+	Light->SetIntensity(LampCandelas * Brightness);
+	Glow->SetVisibility(bOn);
+	if (GlowMaterial)
+	{
+		GlowMaterial->SetVectorParameterValue(GlowEmissiveParam, GlowEmissive * Brightness);
+	}
 }
 
-bool ABNStreetLamp::IsLit() const
+void ABNStreetLamp::SetLit(bool bInLit)
 {
-	return Light->IsVisible();
+	if (bInLit == bLit)
+	{
+		return;
+	}
+	bLit = bInLit;
+	SwitchDelay = FMath::FRandRange(0.f, MaxSwitchDelaySeconds);
+	SetActorTickEnabled(true);
 }

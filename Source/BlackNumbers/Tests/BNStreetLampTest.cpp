@@ -2,6 +2,8 @@
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
+#include "Components/DirectionalLightComponent.h"
+#include "Engine/DirectionalLight.h"
 #include "EngineUtils.h"
 #include "Tests/BNPlayTestUtils.h"
 #include "World/BNDayNightCycle.h"
@@ -14,6 +16,8 @@ namespace
 	constexpr float NightHour = 22.f;
 	constexpr float NoonHour = 12.f;
 	constexpr int32 MinLampsOnTrack = 20;
+	/** Longest switch delay + warm-up, plus slack. */
+	constexpr float WarmedUpAfterSeconds = 8.f;
 
 	ABNDayNightCycle* FindCycle(UWorld& World)
 	{
@@ -60,6 +64,13 @@ bool FBNStreetLampTest::RunTest(const FString& Parameters)
 			AddError(TEXT("Test track has no day/night cycle"));
 			return true;
 		}
+		// Equal priorities make the renderer pick the brighter of sun and moon as its main light, which flips at
+		// dusk (a visible pop) and puts a "multiple directional lights are competing" warning on screen.
+		const UDirectionalLightComponent* SunLight = Cycle->Sun ? Cast<UDirectionalLightComponent>(Cycle->Sun->GetLightComponent()) : nullptr;
+		const UDirectionalLightComponent* MoonLight = Cycle->Moon ? Cast<UDirectionalLightComponent>(Cycle->Moon->GetLightComponent()) : nullptr;
+		TestTrue(TEXT("sun outranks moon as the main directional light"),
+			SunLight && MoonLight && SunLight->ForwardShadingPriority > MoonLight->ForwardShadingPriority);
+
 		const int32 WrongAtStart = CountWrongLamps(*World, true);
 		TestTrue(TEXT("test track has street lamps"), WrongAtStart >= 0);
 		TestEqual(TEXT("lamps lit on the first frame of a night start"), WrongAtStart, 0);
@@ -69,10 +80,47 @@ bool FBNStreetLampTest::RunTest(const FString& Parameters)
 		Cycle->SetTimeOfDay(NoonHour);
 		TestEqual(TEXT("lamps off at noon"), CountWrongLamps(*World, false), 0);
 		TestTrue(TEXT("car lights off at noon"), Car && !Car->AreLightsOn());
+		return true;
+	}));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(WarmedUpAfterSeconds));
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this]()
+	{
+		UWorld* World = PlayWorld();
+		ABNDayNightCycle* Cycle = World ? FindCycle(*World) : nullptr;
+		const ABNVehiclePawn* Car = FindPlayerCar();
+		if (!Cycle)
+		{
+			AddError(TEXT("Day/night cycle gone"));
+			return true;
+		}
+		int32 StillGlowing = 0;
+		for (TActorIterator<ABNStreetLamp> It(World); It; ++It)
+		{
+			StillGlowing += It->GetBrightness() > 0.f;
+		}
+		TestEqual(TEXT("lamps fully dark a few seconds after noon"), StillGlowing, 0);
 
 		Cycle->SetTimeOfDay(NightHour);
 		TestEqual(TEXT("lamps back on at night"), CountWrongLamps(*World, true), 0);
 		TestTrue(TEXT("car lights back on at night"), Car && Car->AreLightsOn());
+		bool bAnyAtFull = false;
+		for (TActorIterator<ABNStreetLamp> It(World); It; ++It)
+		{
+			bAnyAtFull |= It->GetBrightness() >= 1.f;
+		}
+		TestFalse(TEXT("lamps warm up instead of popping on"), bAnyAtFull);
+		return true;
+	}));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(WarmedUpAfterSeconds));
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this]()
+	{
+		UWorld* World = PlayWorld();
+		int32 Dim = 0;
+		for (TActorIterator<ABNStreetLamp> It(World); It; ++It)
+		{
+			Dim += It->GetBrightness() < 1.f;
+		}
+		TestEqual(TEXT("every lamp fully warmed up a few seconds later"), Dim, 0);
 		return true;
 	}));
 

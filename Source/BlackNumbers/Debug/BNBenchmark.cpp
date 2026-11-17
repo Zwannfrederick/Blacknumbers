@@ -42,9 +42,14 @@ namespace
 		FVector InspectFrom = FVector::ZeroVector;
 		/** Starts the circuit race (keep last: the race keeps running into later scenarios). */
 		bool bStartCircuitRace = false;
+		/** Runs the clock with this day length (time-lapse); 0 holds the hour. */
+		float DayLengthMinutes = 0.f;
 	};
 
 	const FScenario Scenarios[] = {
+		// First, while caches are cold, as for a player's first sunset. 1-minute day: the 10 s measurement runs
+		// ~18:00 -> 22:00, through sunset and the street lamps coming on.
+		{ TEXT("sunset_timelapse"), FVector(-9000.f, -12500.f, 60.f), 0.f, 16.8f, false, FVector::ZeroVector, false, 1.f },
 		{ TEXT("street_day"), FVector(-9000.f, -12500.f, 60.f), 0.f, 13.f, false },
 		{ TEXT("street_night"), FVector(-9000.f, -12500.f, 60.f), 0.f, 22.f, false },
 		{ TEXT("hairpin_dusk"), FVector(7000.f, -12500.f, 60.f), 0.f, 18.5f, false },
@@ -60,6 +65,8 @@ namespace
 	constexpr double MeasureSeconds = 10.0;
 	constexpr double ScreenshotDelaySeconds = 1.0;
 	constexpr double FrameBudgetMs = 1000.0 / 60.0;
+	/** Frames slower than this are logged with the time of day, to find hitches. */
+	constexpr float HitchMs = 25.f;
 
 	struct FFrameSample { float FrameMs, GameMs, RenderMs, GpuMs; };
 
@@ -101,10 +108,10 @@ namespace
 		{
 			TotalMs += Ms;
 		}
-		return FString::Printf(TEXT("| %s | %d | %.1f | %.2f | %.2f | %.2f | %.2f | %.1f%% | %.2f | %.2f | %.2f |\n"),
+		return FString::Printf(TEXT("| %s | %d | %.1f | %.2f | %.2f | %.2f | %.2f | %.1f%% | %.2f | %.2f | %.2f | %.1f |\n"),
 			Scenario.Name, Frames.Num(), 1000.0 * N / FMath::Max(TotalMs, 1.0), TotalMs / N,
 			Percentile(FrameMs, 0.5f), Percentile(FrameMs, 0.95f), Percentile(FrameMs, 0.99f),
-			100.0 * OverBudget / N, Game / N, Render / N, Gpu / N);
+			100.0 * OverBudget / N, Game / N, Render / N, Gpu / N, Percentile(FrameMs, 1.f));
 	}
 
 	ABNVehiclePawn* PlayerCar(UWorld* World)
@@ -134,7 +141,11 @@ namespace
 		Car.GetChaosMovement()->SetThrottleInput(Scenario.bDrive ? 1.f : 0.f);
 		for (TActorIterator<ABNDayNightCycle> It(Car.GetWorld()); It; ++It)
 		{
-			It->bPaused = true;
+			It->bPaused = Scenario.DayLengthMinutes <= 0.f;
+			if (!It->bPaused)
+			{
+				It->DayLengthMinutes = Scenario.DayLengthMinutes;
+			}
 			It->SetTimeOfDay(Scenario.Hour);
 		}
 		for (TActorIterator<ABNRaceEvent> It(Car.GetWorld()); It && Scenario.bStartCircuitRace; ++It)
@@ -193,6 +204,13 @@ namespace
 		case FRun::EStep::Measure:
 			Run.Frames.Add({ DeltaSeconds * 1000.f, FPlatformTime::ToMilliseconds(GGameThreadTime),
 				FPlatformTime::ToMilliseconds(GRenderThreadTime), FPlatformTime::ToMilliseconds(RHIGetGPUFrameCycles(0)) });
+			if (DeltaSeconds * 1000.f > HitchMs)
+			{
+				TActorIterator<ABNDayNightCycle> Cycle(World);
+				UE_LOG(LogTemp, Display, TEXT("bn.Benchmark %s: hitch %.1f ms (game %.1f, render %.1f, gpu %.1f) at %.2f h"), Scenario.Name,
+					DeltaSeconds * 1000.f, Run.Frames.Last().GameMs, Run.Frames.Last().RenderMs, Run.Frames.Last().GpuMs,
+					Cycle ? Cycle->GetTimeOfDay() : -1.f);
+			}
 			if (InStep >= MeasureSeconds)
 			{
 				const USkeletalMeshComponent* Body = Car->GetMesh();
@@ -222,8 +240,8 @@ namespace
 				TEXT("# bn.Benchmark %s\n\nGPU: %s - RHI: %s - Viewport: %dx%d - Measure: %.0fs per scenario after %.0fs warm-up\n\n"),
 				*FDateTime::Now().ToString(), *GRHIAdapterName, GDynamicRHI ? GDynamicRHI->GetName() : TEXT("?"),
 				Size.X, Size.Y, MeasureSeconds, WarmupSeconds)
-				+ TEXT("| Scenario | Frames | Avg FPS | Avg ms | p50 ms | p95 ms | p99 ms | >16.7 ms | Game ms | Render ms | GPU ms |\n")
-				+ TEXT("|---|---|---|---|---|---|---|---|---|---|---|\n");
+				+ TEXT("| Scenario | Frames | Avg FPS | Avg ms | p50 ms | p95 ms | p99 ms | >16.7 ms | Game ms | Render ms | GPU ms | Max ms |\n")
+				+ TEXT("|---|---|---|---|---|---|---|---|---|---|---|---|\n");
 			FFileHelper::SaveStringToFile(Header + Run.Report, *Path);
 			UE_LOG(LogTemp, Display, TEXT("bn.Benchmark: wrote %s\n%s"), *Path, *(Header + Run.Report));
 			FPlatformMisc::RequestExit(false);

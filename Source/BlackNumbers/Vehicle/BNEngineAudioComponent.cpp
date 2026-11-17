@@ -72,7 +72,7 @@ void UBNEngineAudioComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	}
 	UChaosWheeledVehicleMovementComponent* Move = Car->GetChaosMovement();
 	Targets = BNEngineSound::Evaluate(Move->GetEngineRotationSpeed(), Move->GetEngineMaxRotationSpeed(),
-		Move->GetThrottleInput(), Car->GetSlipAngleDegrees(), Car->GetSpeedKmh(), Move->IsMovingOnGround());
+		Move->GetThrottleInput(), Car->GetSlipAngleDegrees(), Car->GetSpeedKmh(), Car->IsOnGround());
 	TargetHz.store(Targets.FiringHz, std::memory_order_relaxed);
 	TargetEngineGain.store(Targets.EngineGain * MasterGain, std::memory_order_relaxed);
 	TargetSkidGain.store(Targets.SkidGain * MasterGain, std::memory_order_relaxed);

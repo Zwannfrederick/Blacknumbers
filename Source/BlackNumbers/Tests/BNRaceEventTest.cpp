@@ -200,7 +200,7 @@ bool FBNDriftRaceTest::RunTest(const FString& Parameters)
 	constexpr float EntryKmh = 70.f;
 	constexpr float KickSeconds = 0.7f;
 	constexpr float HoldSeconds = 3.f;
-	constexpr float CountersteerFullLockDegrees = 30.f;
+	constexpr float HoldLock = 0.7f;
 
 	TArray<FRaceStep> Steps;
 	Steps.Add([](FAutomationTestBase&, ABNVehiclePawn& Car, ABNRaceEvent& Race, float) { Race.StartRace(&Car); return true; });
@@ -223,7 +223,7 @@ bool FBNDriftRaceTest::RunTest(const FString& Parameters)
 		UChaosWheeledVehicleMovementComponent* Move = Car.GetChaosMovement();
 		Move->SetHandbrakeInput(false);
 		Move->SetThrottleInput(0.6f);
-		Move->SetSteeringInput(FMath::Clamp(Car.GetSlipAngleDegrees() / CountersteerFullLockDegrees, -1.f, 1.f));
+		Move->SetSteeringInput(HoldLock); // wheel held into the turn holds an arcade drift
 		return InStep >= HoldSeconds;
 	});
 	Steps.Add([](FAutomationTestBase& Test, ABNVehiclePawn&, ABNRaceEvent& Race, float)

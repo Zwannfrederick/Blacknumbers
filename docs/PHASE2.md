@@ -16,6 +16,17 @@
 | Üç yarış baştan sona **oynanır** | ⏳ proje sahibi | Elle test, aşağıda |
 | 1080p'de 60 FPS, rakiplerle birlikte | ✅ ölçüldü | 3 rakipli `circuit_race_dusk`: 195 FPS, p99 8,3 ms, 16,7 ms'yi aşan kare %0. Aşağıya bakın. |
 
+## Proje Sahibi Geri Bildirimi (2026-11-17) ve Yapılanlar
+
+| Geri bildirim | Kök neden | Yapılan |
+|---|---|---|
+| "Botlar hiç zorlamadı" | Rakipler lastiğin ~0,7 g sınırıyla, frende 0,6–0,9 g ile sürüyordu. Drift yapan oyuncu ise virajı 1 g'nin üstünde alıyor. | Rakiplere arcade tutuş yardımı verildi (araç burnunun gösterdiği yere gider). Viraj güveni 0,95–1,45 g, fren 0,9–1,2 g. Beceriler 0,7 / 0,85 / 1,0. En iyi tur 30,1 sn'den **23,4 sn**'ye indi, kaza yok. |
+| "Sabah/akşam geçişinde anlık lag" | Güneş ve Ay aynı önceliğe sahipti. Motor ana ışığı parlaklığa göre seçiyordu, gün batımında ana ışık bir karede el değiştiriyordu. Ayrıca lambalar ilk kez bir anda yanıyordu. | Güneş önceliği 1, Ay 0. Lambalar her biri 0–2,5 sn gecikmeyle başlayıp 4 sn'de ısınarak yanar. İlk gün batımında en kötü kare 21,2 → 10,9 ms. |
+| "Fazla ışık tek ışık olmaya çalışıyor uyarısı" | Aynı neden: "Multiple directional lights are competing…" | Aynı düzeltme, testli (`World.LightsFollowNight`) |
+| "Drift devam etmiyor, ya çok kayıyor ya çok az" + "NFS'deki gibi yap" | Drift lastik tutuşuyla yönetiliyordu. Ayrıca `IsMovingOnGround()` Chaos araçlarında hep `false` döndüğü için havadayken uygulanması gereken dönme sönümü yerde de sürekli açıktı, lastik sesi de hiç çalmıyordu. | NFS tarzı drift yardımı (aşağıda). Zemin teması tekerleklerden okunuyor (`IsOnGround`), sönüm ve lastik sesi düzeldi. |
+
+**NFS tarzı drift:** Hızlıyken direksiyon + Space ile başlar. Direksiyon virajın içine tutuldukça yardım sistemi kaymayı sürdürür: yarım kırınca ~23°, tam kırınca ~39°. Gaz, girişteki hızı korur. Direksiyon bırakılınca ya da kontra kırılınca drift ~0,35 sn'de çözülür, araç toparlanıp hızlanır. Ayarlar `FBNDriftTuning` içinde (`MinAngleDegrees`, `MaxAngleDegrees`, `AngleGain`, `LineTightness`, `Thrust`). Test: `Vehicle.Drift`. Drift sürenin %100'ünde 10–60° arasında kalıyor, spin yok, drift sonunda 53 km/s.
+
 ## Elle Test Talimatları
 
 1. Editörü yeniden aç (yeni kod ve harita yüklenir), Play.
@@ -45,7 +56,7 @@
 
 - **Direksiyon:** pure pursuit (0,6 sn ileriye nişan) + çizgiden sapmaya Stanley düzeltmesi. Hıza bağlı direksiyon eğrisi hesaba katılır.
 - **Hız:** önündeki 200 m boyunca her viraj için v = √(tutuş·g·R) ve fren mesafesi. Hepsini karşılayan en yüksek hız hedeflenir. Açık çizginin sonu "dur" sayılır.
-- **Beceri (0–1):** güvendiği yanal tutuş 0,50→0,68 g, fren 0,6→0,9 g, kalkış tepkisi 0,7→0,1 sn. Arabanın gerçek sınırı ~0,7 g, yani beceri 1 sınırda sürer.
+- **Beceri (0–1):** planladığı viraj ivmesi 0,95→1,45 g, fren 0,9→1,2 g, kalkış tepkisi 0,7→0,1 sn. Lastikler ~0,7 g taşır, gerisini arcade tutuş yardımı taşır (oyuncunun drift yardımının karşılığı).
 - **Şerit ve sollama:** her rakip çizginin ±4 m yanında bir şeritte sürer. Önündeki yavaşsa ve öbür şerit boşsa, yalnız düzlükte, yumuşakça (2,5 m/sn) şerit değiştirir.
 - **Kurtarma:** 4 sn takılı ya da ters kalırsa çizgiye geri konur. Testte bu hiç gerekmedi.
 - Rakipler aynı geçici spor arabayı kullanır. Motor sesleri artık 3B: uzaktaki rakip kısık duyulur.

@@ -43,9 +43,16 @@ namespace
 	constexpr float MinCrossTrackSpeed = 500.f;
 
 	// Skill 0 -> 1.
-	/** Lateral grip the driver trusts, in g. The placeholder car holds about 0.7 g on asphalt. */
-	const FVector2f GripRange(0.5f, 0.68f);
-	const FVector2f BrakeRange(0.6f, 0.9f);
+	/**
+	 * Cornering the driver plans for, in g. The tyres alone hold ~0.7 g; the arcade grip assist below carries
+	 * the rest, as the drift assist does for the player (a drifting player corners at well over 1 g).
+	 */
+	const FVector2f GripRange(0.95f, 1.45f);
+	/** The car brakes at ~1.35 g with ABS. */
+	const FVector2f BrakeRange(0.9f, 1.2f);
+	/** Arcade grip: travel direction swings toward the nose at up to this rate (deg/s), so rivals go where they point. */
+	constexpr float GripAssistDegreesPerSecond = 120.f;
+	constexpr float MinGripAssistSpeed = 500.f;
 	const FVector2f LaunchDelayRange(0.7f, 0.1f);
 
 	float WrapDistance(const USplineComponent& Line, float Distance)
@@ -168,6 +175,21 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 	Move->SetThrottleInput(FMath::Clamp(Error / FullThrottleError, 0.f, 1.f));
 	Move->SetBrakeInput(Speed > MinBrakingSpeed ? FMath::Clamp(-Error / FullBrakeError, 0.f, 1.f) : 0.f);
 	Move->SetHandbrakeInput(false);
+	ApplyGripAssist(Car, DeltaSeconds);
+}
+
+void ABNRivalController::ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds) const
+{
+	USkeletalMeshComponent* Body = Car.GetMesh();
+	const FVector Velocity = Body->GetPhysicsLinearVelocity();
+	if (!Car.IsOnGround() || Velocity.Size2D() < MinGripAssistSpeed)
+	{
+		return;
+	}
+	const float Slip = Car.GetSlipAngleDegrees(); // travel minus heading
+	const float Turn = -FMath::Clamp(Slip, -GripAssistDegreesPerSecond * DeltaSeconds, GripAssistDegreesPerSecond * DeltaSeconds);
+	const FVector Travel = FRotator(0.f, Turn, 0.f).RotateVector(FVector(Velocity.X, Velocity.Y, 0.f));
+	Body->SetPhysicsLinearVelocity(FVector(Travel.X, Travel.Y, Velocity.Z));
 }
 
 float ABNRivalController::LaneSpeed(const ABNVehiclePawn& Car, float LateralShift, float FromX) const

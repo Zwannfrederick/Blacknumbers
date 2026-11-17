@@ -60,6 +60,9 @@ void ABNDayNightCycle::ApplyLook()
 		{
 			Light->SetAtmosphereSunLight(true);
 			Light->SetAtmosphereSunLightIndex(0);
+			// Fixed priorities: otherwise the engine picks the brighter of sun and moon as the main light, and the
+			// switch at dusk changes translucency/fog lighting in one frame (and logs a warning).
+			Light->SetForwardShadingPriority(1);
 			Light->SetIntensity(Look.SunIntensity * BNTimeOfDay::HorizonFade(SunElevation));
 			Light->SetLightColor(Look.SunColor);
 		}
@@ -72,6 +75,7 @@ void ABNDayNightCycle::ApplyLook()
 		{
 			Light->SetAtmosphereSunLight(true);
 			Light->SetAtmosphereSunLightIndex(1);
+			Light->SetForwardShadingPriority(0);
 			Light->SetIntensity(Look.MoonIntensity * BNTimeOfDay::HorizonFade(-SunElevation));
 		}
 	}

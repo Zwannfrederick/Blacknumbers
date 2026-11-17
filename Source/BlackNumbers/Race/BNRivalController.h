@@ -37,6 +37,8 @@ public:
 
 private:
 	void Drive(ABNVehiclePawn& Car, const USplineComponent& Line, float DeltaSeconds);
+	/** Removes sideways slide (understeer) by turning the velocity toward where the car points. */
+	void ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds) const;
 	void Respawn(ABNVehiclePawn& Car, const USplineComponent& Line, float Distance);
 	/**
 	 * Slowest forward speed of cars in a box from FromX to the follow distance ahead, centred LateralShift
