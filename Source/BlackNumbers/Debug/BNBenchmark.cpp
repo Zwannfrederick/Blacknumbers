@@ -21,6 +21,8 @@
 #include "Misc/Paths.h"
 #include "RenderTimer.h"
 #include "RHIGlobals.h"
+#include "Race/BNRaceDefinition.h"
+#include "Race/BNRaceEvent.h"
 #include "Vehicle/BNVehiclePawn.h"
 #include "World/BNDayNightCycle.h"
 #if WITH_EDITOR
@@ -38,6 +40,8 @@ namespace
 		bool bDrive;
 		/** Car-local position of a fixed inspection camera looking at the car; zero = normal chase camera. */
 		FVector InspectFrom = FVector::ZeroVector;
+		/** Starts the circuit race (keep last: the race keeps running into later scenarios). */
+		bool bStartCircuitRace = false;
 	};
 
 	const FScenario Scenarios[] = {
@@ -49,6 +53,7 @@ namespace
 		{ TEXT("inspect_left_side"), FVector(-9000.f, -12500.f, 60.f), 0.f, 13.f, false, FVector(0.f, -650.f, 120.f) },
 		{ TEXT("inspect_right_side"), FVector(-9000.f, -12500.f, 60.f), 0.f, 13.f, false, FVector(0.f, 650.f, 120.f) },
 		{ TEXT("inspect_front_night"), FVector(-9000.f, -12500.f, 60.f), 0.f, 22.f, false, FVector(900.f, 150.f, 150.f) },
+		{ TEXT("circuit_race_dusk"), FVector(-9000.f, -12500.f, 60.f), 0.f, 18.5f, false, FVector::ZeroVector, true },
 	};
 
 	constexpr double WarmupSeconds = 3.0;
@@ -56,14 +61,14 @@ namespace
 	constexpr double ScreenshotDelaySeconds = 1.0;
 	constexpr double FrameBudgetMs = 1000.0 / 60.0;
 
-	struct FFrame { float FrameMs, GameMs, RenderMs, GpuMs; };
+	struct FFrameSample { float FrameMs, GameMs, RenderMs, GpuMs; };
 
 	struct FRun
 	{
 		enum class EStep { WaitShaders, Place, Warmup, Measure, Screenshot, Done } Step = EStep::WaitShaders;
 		int32 Index = 0;
 		double StepStart = 0.0;
-		TArray<FFrame> Frames;
+		TArray<FFrameSample> Frames;
 		FString Report;
 	};
 
@@ -77,12 +82,12 @@ namespace
 		return Values[FMath::Clamp(FMath::FloorToInt(P * (Values.Num() - 1)), 0, Values.Num() - 1)];
 	}
 
-	FString Summarise(const FScenario& Scenario, const TArray<FFrame>& Frames)
+	FString Summarise(const FScenario& Scenario, const TArray<FFrameSample>& Frames)
 	{
 		TArray<float> FrameMs;
 		double Game = 0.0, Render = 0.0, Gpu = 0.0;
 		int32 OverBudget = 0;
-		for (const FFrame& F : Frames)
+		for (const FFrameSample& F : Frames)
 		{
 			FrameMs.Add(F.FrameMs);
 			Game += F.GameMs;
@@ -131,6 +136,14 @@ namespace
 		{
 			It->bPaused = true;
 			It->SetTimeOfDay(Scenario.Hour);
+		}
+		for (TActorIterator<ABNRaceEvent> It(Car.GetWorld()); It && Scenario.bStartCircuitRace; ++It)
+		{
+			if (It->Definition && It->Definition->Discipline == EBNRaceDiscipline::Circuit)
+			{
+				It->StartRace(&Car);
+				break;
+			}
 		}
 	}
 

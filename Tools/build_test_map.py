@@ -11,6 +11,9 @@ Layout (cm, +X forward from the player start, +Y to the right):
   y = +11000    dirt strip           y = +17000  grass strip   (surface test starts at x = -24000)
   x = +25000    asphalt skidpad x 20500..29500, y -9000..9000  (drift test starts at y = -8000 heading +Y)
   y = -17000    street loop centre: straights x -9000..9000, hairpins of radius 4500
+
+Races (data assets in /Game/Races, beacons placed off the driving line so free roam does not trigger them):
+  Oval Circuit (2 laps of the street loop), Runway Sprint (start straight into the skidpad), Skidpad Drift (60 s).
 """
 import math
 import os
@@ -221,6 +224,63 @@ def prepare_car():
         unreal.log("BN: disabled Nanite on SKM_SportsCar")
 
 
+# ---------------------------------------------------------------- races
+RACE_DIR = "/Game/Races"
+
+
+def gate(x, y, yaw):
+    return unreal.Transform(location=unreal.Vector(x, y, 0.0), rotation=unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
+
+
+def race_asset(name, title, discipline, grid, checkpoints=(), laps=1, time_limit=60.0, gate_width=1600.0):
+    path = "%s/%s" % (RACE_DIR, name)
+    if unreal.EditorAssetLibrary.does_asset_exist(path):
+        race = unreal.load_asset(path)
+    else:
+        factory = unreal.DataAssetFactory()
+        factory.set_editor_property("data_asset_class", unreal.BNRaceDefinition)
+        race = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, RACE_DIR, unreal.BNRaceDefinition, factory)
+        if race is None:
+            raise RuntimeError("Could not create " + path)
+    race.set_editor_property("display_name", title)
+    race.set_editor_property("discipline", discipline)
+    race.set_editor_property("laps", laps)
+    race.set_editor_property("time_limit_seconds", time_limit)
+    race.set_editor_property("grid", grid)
+    race.set_editor_property("checkpoints", list(checkpoints))
+    race.set_editor_property("gate_width", gate_width)
+    if not unreal.EditorAssetLibrary.save_loaded_asset(race, only_if_is_dirty=False):
+        raise RuntimeError("Could not save " + path)
+    return race
+
+
+def race_event(label, race, location):
+    event = spawn(unreal.BNRaceEvent, label, location, folder="Races")
+    event.set_editor_property("definition", race)
+    event.set_editor_property("start_radius", 400.0)
+    event.get_editor_property("beacon").set_material(0, MI["MI_RaceBeacon"])
+    for post in event.get_editor_property("gate_posts"):
+        post.set_material(0, MI["MI_RaceGate"])
+
+
+def build_races():
+    north, south = LOOP_CY + LOOP_R, LOOP_CY - LOOP_R
+    apex = LOOP_HALF + LOOP_R
+    oval = race_asset("RACE_OvalCircuit", "Oval Circuit", unreal.BNRaceDiscipline.CIRCUIT,
+                      unreal.Transform(location=unreal.Vector(-1500, north, 60)),
+                      [gate(0, north, 0), gate(apex, LOOP_CY, -90), gate(0, south, 180), gate(-apex, LOOP_CY, 90)],
+                      laps=2, gate_width=ROAD_W + 400)
+    sprint = race_asset("RACE_RunwaySprint", "Runway Sprint", unreal.BNRaceDiscipline.SPRINT,
+                        unreal.Transform(location=unreal.Vector(-17000, 0, 60)),
+                        [gate(-5000, 0, 0), gate(8000, 0, 0), gate(19000, 0, 0)], gate_width=2000)
+    drift = race_asset("RACE_SkidpadDrift", "Skidpad Drift", unreal.BNRaceDiscipline.DRIFT,
+                       unreal.Transform(location=unreal.Vector(25000, -8000, 60), rotation=unreal.Rotator(0, 0, 90)),
+                       time_limit=60.0)
+    race_event("Race_OvalCircuit", oval, (-4000, north - ROAD_W / 2 - 800, 0))  # infield grass by the line
+    race_event("Race_RunwaySprint", sprint, (-17000, 3000, 0))
+    race_event("Race_SkidpadDrift", drift, (21500, -8500, 0))
+
+
 # ---------------------------------------------------------------- level
 def reset_level():
     # The map is the editor startup map, so it cannot be deleted while loaded: empty it instead.
@@ -274,6 +334,7 @@ reset_level()
 build_test_areas()
 build_street()
 build_lighting()
+build_races()
 spawn(unreal.PlayerStart, "PlayerStart", (-18000, 0, 100))  # the only start: drive tests use the runway
 
 for lamp in [a for a in actors.get_all_level_actors() if isinstance(a, unreal.BNStreetLamp)]:

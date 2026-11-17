@@ -34,12 +34,13 @@ namespace
 	const FRotator WheelBoneRest(0.f, -90.f, 90.f);
 	const TCHAR* const WheelBones[] = { TEXT("Phys_Wheel_FL"), TEXT("Phys_Wheel_FR"), TEXT("Phys_Wheel_BL"), TEXT("Phys_Wheel_BR") };
 
-	// Light placement from SM_SportsCar bounds: nose at x ~ +247 cm, tail at x ~ -223 cm.
+	// Light placement from SM_SportsCar bounds: nose at x ~ +247 cm, tail at x ~ -223 cm. Both sit just
+	// outside the body: a light inside or touching the shell floods the car itself and overexposes it.
 	constexpr float HeadlightCandelas = 8000.f;
 	constexpr float HeadlightRange = 5000.f;
 	const FLinearColor HeadlightColour(1.f, 0.95f, 0.85f);
-	constexpr float TaillightCandelas = 40.f;
-	constexpr float TaillightRange = 400.f;
+	constexpr float TaillightCandelas = 3.f;
+	constexpr float TaillightRange = 300.f;
 	const FLinearColor TaillightColour(1.f, 0.05f, 0.02f);
 
 	UStaticMeshComponent* MakeBodyPart(AActor& Owner, USceneComponent* Parent, const TCHAR* Name, UStaticMesh* Mesh, FName Bone = NAME_None)
@@ -155,7 +156,7 @@ ABNVehiclePawn::ABNVehiclePawn()
 	{
 		USpotLightComponent* Head = CreateDefaultSubobject<USpotLightComponent>(Side < 0.f ? TEXT("HeadlightL") : TEXT("HeadlightR"));
 		Head->SetupAttachment(Body);
-		Head->SetRelativeLocation(FVector(230.f, Side * 75.f, 70.f));
+		Head->SetRelativeLocation(FVector(265.f, Side * 75.f, 70.f));
 		Head->SetRelativeRotation(FRotator(-4.f, 0.f, 0.f));
 		Head->SetIntensityUnits(ELightUnits::Candelas);
 		Head->SetIntensity(HeadlightCandelas);
@@ -167,7 +168,7 @@ ABNVehiclePawn::ABNVehiclePawn()
 
 		UPointLightComponent* Tail = CreateDefaultSubobject<UPointLightComponent>(Side < 0.f ? TEXT("TaillightL") : TEXT("TaillightR"));
 		Tail->SetupAttachment(Body);
-		Tail->SetRelativeLocation(FVector(-230.f, Side * 80.f, 85.f));
+		Tail->SetRelativeLocation(FVector(-265.f, Side * 70.f, 60.f));
 		Tail->SetIntensityUnits(ELightUnits::Candelas);
 		Tail->SetIntensity(TaillightCandelas);
 		Tail->SetLightColor(TaillightColour);
@@ -235,6 +236,14 @@ void ABNVehiclePawn::Tick(float DeltaSeconds)
 	Camera->SetFieldOfView(FMath::GetMappedRangeValueClamped(
 		FVector2f(0.f, FovMaxSpeedKmh), FVector2f(BaseFov, MaxFov), FMath::Abs(GetSpeedKmh())));
 
+	if (bInputLocked)
+	{
+		// Anything that drives the car directly (gamepad axis still held, scripts) is held off too.
+		UChaosWheeledVehicleMovementComponent* Locked = GetChaosMovement();
+		Locked->SetThrottleInput(0.f);
+		Locked->SetBrakeInput(0.f);
+		Locked->SetHandbrakeInput(true);
+	}
 	UpdateDrift(DeltaSeconds);
 
 	// Ease the camera toward where the car is going while it slides, so drifts read calmly.
@@ -298,6 +307,16 @@ void ABNVehiclePawn::UpdateDrift(float DeltaSeconds)
 	}
 }
 
+void ABNVehiclePawn::SetInputLocked(bool bLocked)
+{
+	bInputLocked = bLocked;
+	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
+	Move->SetThrottleInput(0.f);
+	Move->SetBrakeInput(0.f);
+	Move->SetSteeringInput(0.f);
+	Move->SetHandbrakeInput(bLocked);
+}
+
 void ABNVehiclePawn::ResetVehicle()
 {
 	FRotator Heading = GetActorRotation();
@@ -311,22 +330,38 @@ void ABNVehiclePawn::ResetVehicle()
 
 void ABNVehiclePawn::OnSteering(const FInputActionValue& Value)
 {
+	if (bInputLocked)
+	{
+		return;
+	}
 	GetChaosMovement()->SetSteeringInput(Value.Get<float>());
 }
 
 void ABNVehiclePawn::OnThrottle(const FInputActionValue& Value)
 {
+	if (bInputLocked)
+	{
+		return;
+	}
 	GetChaosMovement()->SetThrottleInput(Value.Get<float>());
 }
 
 void ABNVehiclePawn::OnBrake(const FInputActionValue& Value)
 {
+	if (bInputLocked)
+	{
+		return;
+	}
 	// With auto-reverse, holding brake at a standstill reverses.
 	GetChaosMovement()->SetBrakeInput(Value.Get<float>());
 }
 
 void ABNVehiclePawn::OnHandbrake(const FInputActionValue& Value)
 {
+	if (bInputLocked)
+	{
+		return;
+	}
 	GetChaosMovement()->SetHandbrakeInput(Value.Get<bool>());
 }
 

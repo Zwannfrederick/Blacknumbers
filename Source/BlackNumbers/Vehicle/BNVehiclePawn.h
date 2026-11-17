@@ -119,6 +119,13 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Lights")
 	bool AreLightsOn() const;
 
+	/** Holds the car still (handbrake on, pedals ignored), e.g. on the grid during a race countdown. */
+	UFUNCTION(BlueprintCallable, Category = "Vehicle")
+	void SetInputLocked(bool bLocked);
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsInputLocked() const { return bInputLocked; }
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Lights")
 	TArray<TObjectPtr<ULocalLightComponent>> CarLights;
 
@@ -141,6 +148,7 @@ private:
 	void UpdateDrift(float DeltaSeconds);
 
 	bool bDrifting = false;
+	bool bInputLocked = false;
 	/** 0 = drift grip, 1 = full rear grip; last value sent to the physics wheels. */
 	float RearGripBlend = 1.f;
 	bool bRearAbsBypassed = false;

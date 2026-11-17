@@ -5,11 +5,18 @@ Hikâye: [docs/BLACK_NUMBERS_STORY.md](docs/BLACK_NUMBERS_STORY.md) · Yol harit
 
 ## Durum
 
-Faz 0 tamam. Faz 1 (ilk sokak) uygulandı; açık kalan kabul kriterleri [docs/PHASE1.md](docs/PHASE1.md) içinde.
+Faz 0 ve Faz 1 tamam ([docs/PHASE1.md](docs/PHASE1.md)). Faz 2 sürüyor: yarışlar oynanabilir, rakip yapay zekâ sırada.
 
 - **Araç:** Chaos Vehicles (`ABNVehiclePawn`), 0-100 km/s ~5,5 sn, ABS, patinaj önleyici, el freniyle drift, geri vites sınırı 35 km/s
 - **Dünya:** gece-gündüz döngüsü, gece yanan sodyum lambalar, asfalt/beton/toprak/çim yüzeyleri (tutuşu gerçekten değiştirir)
 - **Arayüz ve ses:** hız/vites/devir göstergesi, devre ve gaza bağlı özgün motor sesi, lastik sürtünme sesi
+- **Yarışlar:** mavi ışık sütununa sür → geri sayım → yarış. Sıradaki kapı turuncu iki dikmeyle gösterilir.
+
+| Yarış | Tür | Başlangıç ışığı |
+|---|---|---|
+| Oval Circuit | Pist, 2 tur | Oval caddenin iç çiminde, başlangıç çizgisinin yanında |
+| Runway Sprint | Sprint | Başlangıç düzlüğünün sağında |
+| Skidpad Drift | 60 sn drift puanı | Kayma pistinin köşesinde |
 
 Fizik 30 FPS'in altında ağır çekime düşer (Unreal fizik adımını 1/30 sn ile sınırlar). İlk açılışta shader derlemesi bitmeden (sağ alttaki sayaç) sürme; araç hem gri görünür hem süzülür.
 

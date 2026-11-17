@@ -4,6 +4,7 @@
 #include "GameFramework/HUD.h"
 #include "BNHUD.generated.h"
 
+class ABNRaceEvent;
 class ABNVehiclePawn;
 
 /** What the dashboard shows, read straight from the car's physics state. */
@@ -26,4 +27,10 @@ public:
 
 	static FBNDashReadout MakeReadout(const ABNVehiclePawn& Car);
 	static FString GearLabel(int32 Gear);
+	/** m:ss.cc */
+	static FString FormatRaceTime(float Seconds);
+
+private:
+	void DrawRace(const ABNRaceEvent& Race);
+	void DrawCentred(const FString& Text, float Y, float Scale, const FLinearColor& Colour);
 };

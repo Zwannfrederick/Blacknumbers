@@ -4,6 +4,9 @@
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
+#include "EngineUtils.h"
+#include "Race/BNRaceDefinition.h"
+#include "Race/BNRaceEvent.h"
 #include "Vehicle/BNVehiclePawn.h"
 
 namespace
@@ -18,6 +21,72 @@ namespace
 	const FLinearColor DashColour(1.f, 0.82f, 0.45f);
 	const FLinearColor RedlineColour(1.f, 0.2f, 0.1f);
 	const FLinearColor BarBackground(0.f, 0.f, 0.f, 0.5f);
+	const FLinearColor RaceColour(1.f, 1.f, 1.f);
+	const FLinearColor DriftColour(0.45f, 0.85f, 1.f);
+	constexpr float RaceTop = 40.f;
+	constexpr float RaceLine = 42.f;
+	constexpr float CountdownScale = 5.f;
+	constexpr float RaceScale = 1.6f;
+}
+
+FString ABNHUD::FormatRaceTime(float Seconds)
+{
+	const float Clamped = FMath::Max(Seconds, 0.f);
+	const int32 Minutes = FMath::FloorToInt(Clamped / 60.f);
+	const float Rest = Clamped - Minutes * 60.f;
+	return FString::Printf(TEXT("%d:%05.2f"), Minutes, Rest);
+}
+
+void ABNHUD::DrawCentred(const FString& Text, float Y, float Scale, const FLinearColor& Colour)
+{
+	float W = 0.f, H = 0.f;
+	GetTextSize(Text, W, H, GEngine->GetLargeFont(), Scale);
+	DrawText(Text, Colour, (Canvas->ClipX - W) * 0.5f, Y, GEngine->GetLargeFont(), Scale);
+}
+
+void ABNHUD::DrawRace(const ABNRaceEvent& Race)
+{
+	const UBNRaceDefinition* Def = Race.Definition;
+	if (!Def)
+	{
+		return;
+	}
+	const FBNRaceProgress& Progress = Race.GetProgress();
+	const FBNDriftScorer& Drift = Race.GetDriftScore();
+	const bool bDrift = Def->Discipline == EBNRaceDiscipline::Drift;
+	float Y = RaceTop;
+	DrawCentred(Def->DisplayName.ToString().ToUpper(), Y, RaceScale, RaceColour);
+	Y += RaceLine;
+
+	switch (Race.GetState())
+	{
+	case EBNRaceState::Countdown:
+		DrawCentred(FString::FromInt(FMath::CeilToInt(Race.GetRaceTime())), Y + RaceLine, CountdownScale, DashColour);
+		break;
+	case EBNRaceState::Racing:
+		if (bDrift)
+		{
+			DrawCentred(FString::Printf(TEXT("%d  pts    %s left"), Drift.Total(), *FormatRaceTime(Race.GetTimeLeft())), Y, RaceScale, RaceColour);
+			if (Drift.IsDrifting())
+			{
+				DrawCentred(FString::Printf(TEXT("+%d  x%d"), FMath::RoundToInt(Drift.Current()), Drift.Multiplier()), Y + RaceLine, RaceScale * 1.4f, DriftColour);
+			}
+		}
+		else
+		{
+			const FString Laps = Def->Discipline == EBNRaceDiscipline::Circuit
+				? FString::Printf(TEXT("LAP %d/%d    "), Progress.CurrentLap(), Progress.TotalLaps()) : FString();
+			DrawCentred(FString::Printf(TEXT("%s%s"), *Laps, *FormatRaceTime(Race.GetRaceTime())), Y, RaceScale, RaceColour);
+		}
+		break;
+	case EBNRaceState::Finished:
+		DrawCentred(bDrift ? FString::Printf(TEXT("SCORE  %d"), Drift.Total())
+			: Progress.IsFinished() ? FString::Printf(TEXT("FINISHED  %s"), *FormatRaceTime(Progress.FinishTime()))
+			: FString(TEXT("RACE ABANDONED")), Y, RaceScale * 1.4f, DashColour);
+		break;
+	default:
+		break;
+	}
 }
 
 FString ABNHUD::GearLabel(int32 Gear)
@@ -45,6 +114,14 @@ void ABNHUD::DrawHUD()
 	if (!Car || !Canvas)
 	{
 		return;
+	}
+	for (TActorIterator<ABNRaceEvent> It(GetWorld()); It; ++It)
+	{
+		if (It->GetState() != EBNRaceState::Idle)
+		{
+			DrawRace(**It);
+			break;
+		}
 	}
 	const FBNDashReadout Dash = MakeReadout(*Car);
 	UFont* Font = GEngine->GetLargeFont();

@@ -54,11 +54,11 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 
 **Amaç:** Üç disiplinin de tek bir yarış altyapısıyla oynanması.
 
-- [ ] Yarış altyapısı: kontrol noktaları, başlangıç geri sayımı, bitiş, sonuç ekranı
-- [ ] **Sprint** (A'dan B'ye) ve **Pist** (tur sayımı)
-- [ ] **Drift** puanlama: kayma açısı × hız × süre, kombo ve duvar cezası
+- [x] Yarış altyapısı: başlangıç ışığı, kontrol kapıları, geri sayım (kontroller kilitli), bitiş, sonuç ekranı *(testli)*
+- [x] **Sprint** (A'dan B'ye) ve **Pist** (tur sayımı) *(testli)*
+- [x] **Drift** puanlama: kayma açısı × hız × süre, kombo, duvar ve spin cezası *(testli)*
 - [ ] Rakip yapay zekâ: yarış çizgisini (spline) takip eden sürücüler, beceri ayarı
-- [ ] Yarışlar veri olarak tanımlanır (rota, disiplin, rakipler, ödül)
+- [x] Yarışlar veri olarak tanımlanır (`UBNRaceDefinition`: rota, disiplin, tur, süre) — *rakipler ve ödül alanları rakip YZ ve Faz 5 ile eklenecek*
 
 **Bitti sayılır:** Aynı bölgede bir Sprint, bir Pist ve bir Drift yarışı baştan sona oynanır.
 
@@ -170,6 +170,7 @@ Bu sorular cevaplanmadan ilgili faz tamamlanamaz. Cevaplar hikâye dokümanını
 | Tarih | Değişiklik |
 |---|---|
 | 2026-11-17 | İlk sürüm. Faz 0 tamam, Faz 1 başladı (sokak lambası sınıfı). |
+| 2026-11-17 | Faz 2 ilk parça: yarış altyapısı, Sprint/Pist/Drift, test pistinde 3 yarış. Rakip YZ sırada. |
 | 2026-11-17 | Faz 1 tamamlandı: otomatik testler + proje sahibinin sürüş testi. |
 | 2026-11-17 | Faz 1 uygulandı; 3 kabul kriteri elle test bekliyor (bkz. PHASE1.md). |
 | 2026-11-17 | Faz 1 kapsamı genişletildi (fiziksel malzemeler, drift, ses, HUD, performans ölçümü). Faz 7, 7A/7B/7C olarak bölündü. Şehir ve trafik önerileri eklendi. |
