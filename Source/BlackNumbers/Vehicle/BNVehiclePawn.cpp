@@ -7,7 +7,9 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
+#include "Components/StaticMeshComponent.h"
 #include "Engine/SkeletalMesh.h"
+#include "Engine/StaticMesh.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "InputMappingContext.h"
@@ -22,6 +24,16 @@ namespace
 	constexpr float AirborneAngularDamping = 3.f;
 	constexpr float MinSpeedForSlipKmh = 5.f;
 	constexpr int32 FirstRearWheel = 2; // wheel setups: FL, FR, BL, BR
+	const TCHAR* const WheelBones[] = { TEXT("Phys_Wheel_FL"), TEXT("Phys_Wheel_FR"), TEXT("Phys_Wheel_BL"), TEXT("Phys_Wheel_BR") };
+
+	UStaticMeshComponent* MakeBodyPart(AActor& Owner, USceneComponent* Parent, const TCHAR* Name, UStaticMesh* Mesh, FName Bone = NAME_None)
+	{
+		UStaticMeshComponent* Part = Owner.CreateDefaultSubobject<UStaticMeshComponent>(Name);
+		Part->SetupAttachment(Parent, Bone);
+		Part->SetStaticMesh(Mesh);
+		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision); // the physics asset is the collision
+		return Part;
+	}
 
 	void SetupSportsCarMovement(UChaosWheeledVehicleMovementComponent& Move)
 	{
@@ -29,17 +41,11 @@ namespace
 		Move.DragCoefficient = 0.31f;
 		Move.bLegacyWheelFrictionPosition = true;
 
-		const TPair<FName, TSubclassOf<UChaosVehicleWheel>> Wheels[] = {
-			{ TEXT("Phys_Wheel_FL"), UBNWheelFront::StaticClass() },
-			{ TEXT("Phys_Wheel_FR"), UBNWheelFront::StaticClass() },
-			{ TEXT("Phys_Wheel_BL"), UBNWheelRear::StaticClass() },
-			{ TEXT("Phys_Wheel_BR"), UBNWheelRear::StaticClass() },
-		};
-		Move.WheelSetups.SetNum(UE_ARRAY_COUNT(Wheels));
-		for (int32 i = 0; i < UE_ARRAY_COUNT(Wheels); ++i)
+		Move.WheelSetups.SetNum(UE_ARRAY_COUNT(WheelBones));
+		for (int32 i = 0; i < UE_ARRAY_COUNT(WheelBones); ++i)
 		{
-			Move.WheelSetups[i].BoneName = Wheels[i].Key;
-			Move.WheelSetups[i].WheelClass = Wheels[i].Value;
+			Move.WheelSetups[i].BoneName = WheelBones[i];
+			Move.WheelSetups[i].WheelClass = i < FirstRearWheel ? UBNWheelFront::StaticClass() : UBNWheelRear::StaticClass();
 		}
 
 		// Chaos disables the whole engine simulation when this curve is empty.
@@ -85,6 +91,9 @@ ABNVehiclePawn::ABNVehiclePawn()
 	// ponytail: hard-coded placeholder car from the engine's vehicle template; move to a data asset per car when real cars exist.
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> CarMesh(TEXT("/Game/Vehicles/SportsCar/SKM_SportsCar.SKM_SportsCar"));
 	static ConstructorHelpers::FClassFinder<UAnimInstance> CarAnim(TEXT("/Game/Vehicles/SportsCar/ABP_SportsCar"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> BodyMesh(TEXT("/Game/Vehicles/SportsCar/SM_SportsCar.SM_SportsCar"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> GlassMesh(TEXT("/Game/Vehicles/SportsCar/SM_SportsCar_Glass.SM_SportsCar_Glass"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> WheelMesh(TEXT("/Game/Vehicles/SportsCar/SM_SportsCar_Wheel.SM_SportsCar_Wheel"));
 
 	USkeletalMeshComponent* Body = GetMesh();
 	Body->SetSkeletalMesh(CarMesh.Object);
@@ -93,6 +102,18 @@ ABNVehiclePawn::ABNVehiclePawn()
 	Body->SetCollisionProfileName(TEXT("Vehicle"));
 
 	SetupSportsCarMovement(*GetChaosMovement());
+
+	Chassis = MakeBodyPart(*this, Body, TEXT("Chassis"), BodyMesh.Object);
+	ChassisGlass = MakeBodyPart(*this, Body, TEXT("ChassisGlass"), GlassMesh.Object);
+	for (int32 i = 0; i < UE_ARRAY_COUNT(WheelBones); ++i)
+	{
+		UStaticMeshComponent* Wheel = MakeBodyPart(*this, Body, *FString::Printf(TEXT("Wheel_%s"), WheelBones[i] + 11), WheelMesh.Object, WheelBones[i]);
+		if (i % 2 == 1)
+		{
+			Wheel->SetRelativeRotation(FRotator(0.f, 180.f, 0.f)); // right-hand wheels: rim faces outward
+		}
+		WheelMeshes.Add(Wheel);
+	}
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(Body);

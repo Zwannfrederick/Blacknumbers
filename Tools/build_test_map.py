@@ -207,6 +207,20 @@ def build_buildings():
               folder="Street/Buildings")
 
 
+# ---------------------------------------------------------------- assets
+def prepare_car():
+    """The template car ships with Nanite on. Vulkan SM5 and low-end GPUs cannot draw Nanite skeletal
+    meshes (no fallback), so the car rendered invisible: build it as a classic skeletal mesh instead."""
+    car = unreal.load_asset("/Game/Vehicles/SportsCar/SKM_SportsCar")
+    settings = car.get_editor_property("nanite_settings")
+    if settings.get_editor_property("enabled"):
+        settings.set_editor_property("enabled", False)
+        car.set_editor_property("nanite_settings", settings)
+        if not unreal.EditorAssetLibrary.save_loaded_asset(car, only_if_is_dirty=False):
+            raise RuntimeError("Could not save SKM_SportsCar")
+        unreal.log("BN: disabled Nanite on SKM_SportsCar")
+
+
 # ---------------------------------------------------------------- level
 def reset_level():
     # The map is the editor startup map, so it cannot be deleted while loaded: empty it instead.
@@ -255,6 +269,7 @@ def build_lighting():
         cycle.set_editor_property(prop, actor)
 
 
+prepare_car()
 reset_level()
 build_test_areas()
 build_street()

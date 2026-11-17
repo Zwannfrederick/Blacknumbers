@@ -61,6 +61,12 @@ namespace BNTimeOfDay
 	/** 0 below the horizon, 1 once the body is a few degrees up; avoids lighting from under the ground. */
 	float HorizonFade(float ElevationDegrees);
 
+	/**
+	 * Auto-exposure floor (EV100): DayFloor while the sun is up, rising to NightFloor through twilight,
+	 * so eye adaptation cannot brighten a night street to daylight.
+	 */
+	float ExposureFloorEV100(float SunElevationDegrees, float DayFloor, float NightFloor);
+
 	/** Keys must be sorted by Hour. Empty input returns a default key. */
 	FBNTimeOfDayKey Evaluate(TConstArrayView<FBNTimeOfDayKey> SortedKeys, float Hour);
 

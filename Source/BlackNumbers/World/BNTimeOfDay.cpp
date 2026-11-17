@@ -5,6 +5,9 @@ namespace
 	constexpr float CivilTwilightDegrees = -6.f;
 	constexpr float HorizonFadeStartDegrees = -2.f;
 	constexpr float HorizonFadeRangeDegrees = 6.f;
+	/** Exposure floor blends from day to night between these sun elevations (end of nautical twilight). */
+	constexpr float ExposureDayElevation = 0.f;
+	constexpr float ExposureNightElevation = -12.f;
 }
 
 FBNTimeOfDayKey FBNTimeOfDayKey::Lerp(const FBNTimeOfDayKey& A, const FBNTimeOfDayKey& B, float Alpha)
@@ -49,6 +52,13 @@ namespace BNTimeOfDay
 	float HorizonFade(float ElevationDegrees)
 	{
 		return FMath::Clamp((ElevationDegrees - HorizonFadeStartDegrees) / HorizonFadeRangeDegrees, 0.f, 1.f);
+	}
+
+	float ExposureFloorEV100(float SunElevationDegrees, float DayFloor, float NightFloor)
+	{
+		const float NightAmount = FMath::GetMappedRangeValueClamped(
+			FVector2f(ExposureDayElevation, ExposureNightElevation), FVector2f(0.f, 1.f), SunElevationDegrees);
+		return FMath::Lerp(DayFloor, NightFloor, NightAmount);
 	}
 
 	FBNTimeOfDayKey Evaluate(TConstArrayView<FBNTimeOfDayKey> SortedKeys, float Hour)

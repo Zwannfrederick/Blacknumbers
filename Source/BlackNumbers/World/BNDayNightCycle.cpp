@@ -105,6 +105,11 @@ void ABNDayNightCycle::ApplyLook()
 		Settings.ColorSaturation = FVector4(Look.Saturation, Look.Saturation, Look.Saturation, 1.f);
 		Settings.bOverride_AutoExposureBias = true;
 		Settings.AutoExposureBias = Look.ExposureBias;
+		// EV100 values: the project enables r.DefaultFeature.AutoExposure.ExtendDefaultLuminanceRange.
+		Settings.bOverride_AutoExposureMinBrightness = true;
+		Settings.AutoExposureMinBrightness = BNTimeOfDay::ExposureFloorEV100(SunElevation, DayMinExposureEV100, NightMinExposureEV100);
+		Settings.bOverride_AutoExposureMaxBrightness = true;
+		Settings.AutoExposureMaxBrightness = MaxExposureEV100;
 	}
 }
 

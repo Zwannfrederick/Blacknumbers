@@ -20,6 +20,10 @@ bool FBNTimeOfDayTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("sunrise is twilight, not night"), BNTimeOfDay::IsNight(6.f));
 	TestTrue(TEXT("5am is night"), BNTimeOfDay::IsNight(5.f));
 
+	TestEqual(TEXT("exposure free while the sun is up"), BNTimeOfDay::ExposureFloorEV100(30.f, -10.f, 3.f), -10.f);
+	TestEqual(TEXT("exposure floored at night"), BNTimeOfDay::ExposureFloorEV100(-40.f, -10.f, 3.f), 3.f);
+	TestEqual(TEXT("exposure floor halfway through twilight"), BNTimeOfDay::ExposureFloorEV100(-6.f, -10.f, 3.f), -3.5f);
+
 	TestEqual(TEXT("fade below horizon"), BNTimeOfDay::HorizonFade(-10.f), 0.f);
 	TestEqual(TEXT("fade well above horizon"), BNTimeOfDay::HorizonFade(10.f), 1.f);
 

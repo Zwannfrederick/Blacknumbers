@@ -9,6 +9,7 @@ class UCameraComponent;
 class UChaosWheeledVehicleMovementComponent;
 class UInputMappingContext;
 class USpringArmComponent;
+class UStaticMeshComponent;
 struct FInputActionValue;
 
 /** Arcade drift assist on top of Chaos tyre physics: the slide itself stays physical. */
@@ -71,6 +72,20 @@ public:
 	/** Auto-reverse would otherwise run the reverse gear to ~90 km/h. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Handling", meta = (ClampMin = "5"))
 	float MaxReverseSpeedKmh = 35.f;
+
+	/**
+	 * Visible body. The skeletal mesh is only an invisible wheel rig for Chaos and the wheel animation;
+	 * body, glass and wheels are static meshes riding on it, as in the engine's vehicle template.
+	 */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Body")
+	TObjectPtr<UStaticMeshComponent> Chassis;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Body")
+	TObjectPtr<UStaticMeshComponent> ChassisGlass;
+
+	/** FL, FR, BL, BR, each attached to its Phys_Wheel_* bone so it follows suspension and spin. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Body")
+	TArray<TObjectPtr<UStaticMeshComponent>> WheelMeshes;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;

@@ -13,7 +13,7 @@ namespace
 	constexpr float ArmReach = 160.f;
 	/** Warm low-pressure-sodium orange; leaves the cool night grade room to contrast. */
 	const FLinearColor SodiumColor(1.f, 0.55f, 0.2f);
-	constexpr float LampCandelas = 1200.f;
+	constexpr float LampCandelas = 3000.f;
 	constexpr float LampRadius = 2500.f;
 
 	UStaticMeshComponent* MakePart(AActor& Owner, USceneComponent* Parent, const TCHAR* Name, UStaticMesh* Mesh,
