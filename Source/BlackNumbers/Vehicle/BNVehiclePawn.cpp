@@ -13,6 +13,7 @@
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Vehicle/BNEngineAudioComponent.h"
 #include "Vehicle/BNVehicleWheels.h"
 
 namespace
@@ -95,7 +96,7 @@ ABNVehiclePawn::ABNVehiclePawn()
 
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(Body);
-	CameraBoom->TargetArmLength = 650.f;
+	CameraBoom->TargetArmLength = ChaseDistances[0];
 	CameraBoom->SocketOffset.Z = 150.f;
 	CameraBoom->bDoCollisionTest = false;
 	CameraBoom->bInheritPitch = false;
@@ -107,6 +108,18 @@ ABNVehiclePawn::ABNVehiclePawn()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(CameraBoom);
 	Camera->SetFieldOfView(BaseFov);
+
+	EngineAudio = CreateDefaultSubobject<UBNEngineAudioComponent>(TEXT("EngineAudio"));
+	EngineAudio->SetupAttachment(Body);
+}
+
+void ABNVehiclePawn::CycleChaseDistance()
+{
+	if (ChaseDistances.Num() > 0)
+	{
+		ChaseDistanceIndex = (ChaseDistanceIndex + 1) % ChaseDistances.Num();
+		CameraBoom->TargetArmLength = ChaseDistances[ChaseDistanceIndex];
+	}
 }
 
 UChaosWheeledVehicleMovementComponent* ABNVehiclePawn::GetChaosMovement() const
@@ -130,6 +143,11 @@ void ABNVehiclePawn::Tick(float DeltaSeconds)
 		FVector2f(0.f, FovMaxSpeedKmh), FVector2f(BaseFov, MaxFov), FMath::Abs(GetSpeedKmh())));
 
 	UpdateDrift();
+
+	// Ease the camera toward where the car is going while it slides, so drifts read calmly.
+	const float CameraYaw = FMath::FInterpTo(CameraBoom->GetRelativeRotation().Yaw,
+		bDrifting ? GetSlipAngleDegrees() * DriftCameraBlend : 0.f, DeltaSeconds, DriftCameraInterpSpeed);
+	CameraBoom->SetRelativeRotation(FRotator(0.f, CameraYaw, 0.f));
 
 	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
 	if (Move->GetCurrentGear() < 0 && GetSpeedKmh() < -MaxReverseSpeedKmh)
@@ -254,6 +272,7 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	UInputAction* Brake = MakeAction(EInputActionValueType::Axis1D);
 	UInputAction* Handbrake = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* Reset = MakeAction(EInputActionValueType::Boolean);
+	UInputAction* CameraDistance = MakeAction(EInputActionValueType::Boolean);
 
 	InputContext->MapKey(Steering, EKeys::D);
 	InputContext->MapKey(Steering, EKeys::Right);
@@ -275,6 +294,9 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	InputContext->MapKey(Reset, EKeys::R);
 	InputContext->MapKey(Reset, EKeys::Gamepad_FaceButton_Top);
 
+	InputContext->MapKey(CameraDistance, EKeys::C);
+	InputContext->MapKey(CameraDistance, EKeys::Gamepad_RightThumbstick);
+
 	Subsystem->AddMappingContext(InputContext, 0);
 
 	// Completed fires with a zero value on release, which centres the wheel and lifts the pedals.
@@ -286,4 +308,5 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		Input->BindAction(Handbrake, Event, this, &ABNVehiclePawn::OnHandbrake);
 	}
 	Input->BindAction(Reset, ETriggerEvent::Started, this, &ABNVehiclePawn::ResetVehicle);
+	Input->BindAction(CameraDistance, ETriggerEvent::Started, this, &ABNVehiclePawn::CycleChaseDistance);
 }

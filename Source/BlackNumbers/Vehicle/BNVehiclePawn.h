@@ -4,6 +4,7 @@
 #include "WheeledVehiclePawn.h"
 #include "BNVehiclePawn.generated.h"
 
+class UBNEngineAudioComponent;
 class UCameraComponent;
 class UChaosWheeledVehicleMovementComponent;
 class UInputMappingContext;
@@ -77,6 +78,23 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<UCameraComponent> Camera;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Audio")
+	TObjectPtr<UBNEngineAudioComponent> EngineAudio;
+
+	/** Chase distances the camera key (C / gamepad right stick click) cycles between. */
+	UPROPERTY(EditAnywhere, Category = "Camera", meta = (ClampMin = "200"))
+	TArray<float> ChaseDistances = { 650.f, 900.f };
+
+	/** While drifting the camera turns this fraction of the slip angle toward the travel direction. */
+	UPROPERTY(EditAnywhere, Category = "Camera", meta = (ClampMin = "0", ClampMax = "1"))
+	float DriftCameraBlend = 0.5f;
+
+	UPROPERTY(EditAnywhere, Category = "Camera", meta = (ClampMin = "0.1"))
+	float DriftCameraInterpSpeed = 3.f;
+
+	UFUNCTION(BlueprintCallable, Category = "Camera")
+	void CycleChaseDistance();
+
 	/** Field of view widens from BaseFov to MaxFov as speed approaches FovMaxSpeedKmh. */
 	UPROPERTY(EditAnywhere, Category = "Camera")
 	float BaseFov = 90.f;
@@ -98,6 +116,7 @@ private:
 
 	bool bDrifting = false;
 	bool bRearAbsBypassed = false;
+	int32 ChaseDistanceIndex = 0;
 
 	/** Owns the runtime-created input actions through its key mappings. */
 	UPROPERTY(Transient)
