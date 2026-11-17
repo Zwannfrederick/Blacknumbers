@@ -14,15 +14,19 @@ namespace
 		const TCHAR* Name;
 		FVector Start; // see the layout in Tools/build_test_map.py
 		const TCHAR* ExpectedPhysMaterial;
-		float BrakeDistanceM = -1.f;
+		float DecelerationG = -1.f;
 	};
 
 	constexpr float SettleSeconds = 1.f;
 	constexpr float DriveSeconds = 3.f;
 	constexpr float StoppedKmh = 2.f;
 	constexpr float BrakeTimeoutSeconds = 15.f;
-	/** Braking is grip-limited, so each looser surface must need at least this much more distance. */
-	constexpr float MinExtraDistanceRatio = 0.1f;
+	/** Braking is grip-limited, so each looser surface must decelerate at least this much less. */
+	constexpr float MinDecelerationLossRatio = 0.1f;
+	/** Plausible braking on asphalt with ABS: road car ~0.8 g up to a sports car on performance tyres ~1.3 g. */
+	constexpr float MinAsphaltG = 0.8f;
+	constexpr float MaxAsphaltG = 1.4f;
+	constexpr float Gravity = 9.81f;
 
 	struct FSurfaceTestState
 	{
@@ -35,20 +39,13 @@ namespace
 		enum class EPhase { Place, Settle, Drive, Brake } Phase = EPhase::Place;
 		double PhaseStart = 0.0;
 		FVector BrakeStart = FVector::ZeroVector;
+		float BrakeStartSpeed = 0.f; // m/s
 	};
 
 	FString WheelPhysMaterial(const ABNVehiclePawn& Car)
 	{
 		const UPhysicalMaterial* Material = Car.GetChaosMovement()->GetWheelState(0).PhysMaterial.Get();
 		return Material ? Material->GetName() : TEXT("none");
-	}
-
-	void PlaceStopped(ABNVehiclePawn& Car, const FVector& Location)
-	{
-		Car.SetActorLocationAndRotation(Location, FRotator::ZeroRotator, false, nullptr, ETeleportType::TeleportPhysics);
-		Car.GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
-		Car.GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-		Car.GetChaosMovement()->SetThrottleInput(0.f);
 	}
 }
 
@@ -86,8 +83,6 @@ bool FBNVehicleSurfaceTest::RunTest(const FString& Parameters)
 			{
 				return false;
 			}
-			TestEqual(FString::Printf(TEXT("wheels report the %s physical material"), Run.Name),
-				WheelPhysMaterial(*Car), FString(Run.ExpectedPhysMaterial));
 			Move->SetThrottleInput(1.f);
 			State->Phase = FSurfaceTestState::EPhase::Drive;
 			State->PhaseStart = Now;
@@ -97,9 +92,13 @@ bool FBNVehicleSurfaceTest::RunTest(const FString& Parameters)
 			{
 				return false;
 			}
+			// Checked while rolling: a parked Chaos vehicle sleeps and stops refreshing wheel contacts.
+			TestEqual(FString::Printf(TEXT("wheels report the %s physical material"), Run.Name),
+				WheelPhysMaterial(*Car), FString(Run.ExpectedPhysMaterial));
 			Move->SetThrottleInput(0.f);
 			Move->SetBrakeInput(1.f);
 			State->BrakeStart = Car->GetActorLocation();
+			State->BrakeStartSpeed = Car->GetSpeedKmh() / 3.6f;
 			State->Phase = FSurfaceTestState::EPhase::Brake;
 			State->PhaseStart = Now;
 			UE_LOG(LogTemp, Display, TEXT("BN surface test: %s braking from %.1f km/h"), Run.Name, Car->GetSpeedKmh());
@@ -113,8 +112,10 @@ bool FBNVehicleSurfaceTest::RunTest(const FString& Parameters)
 			break;
 		}
 
-		Run.BrakeDistanceM = FVector::Dist2D(State->BrakeStart, Car->GetActorLocation()) / 100.f;
-		UE_LOG(LogTemp, Display, TEXT("BN surface test: %s stopped in %.1f m"), Run.Name, Run.BrakeDistanceM);
+		// Runs start braking from different speeds (loose surfaces accelerate slower), so compare v^2 / 2d.
+		const float DistanceM = FVector::Dist2D(State->BrakeStart, Car->GetActorLocation()) / 100.f;
+		Run.DecelerationG = FMath::Square(State->BrakeStartSpeed) / (2.f * FMath::Max(DistanceM, 0.01f)) / Gravity;
+		UE_LOG(LogTemp, Display, TEXT("BN surface test: %s stopped in %.1f m, average %.2f g"), Run.Name, DistanceM, Run.DecelerationG);
 		State->Phase = FSurfaceTestState::EPhase::Place;
 		if (++State->Index < State->Runs.Num())
 		{
@@ -122,10 +123,11 @@ bool FBNVehicleSurfaceTest::RunTest(const FString& Parameters)
 		}
 
 		const TArray<FSurfaceRun>& Runs = State->Runs;
+		TestTrue(TEXT("asphalt braking is road-car like"), Runs[0].DecelerationG >= MinAsphaltG && Runs[0].DecelerationG <= MaxAsphaltG);
 		for (int32 i = 1; i < Runs.Num(); ++i)
 		{
-			TestTrue(FString::Printf(TEXT("%s needs more braking distance than %s"), Runs[i].Name, Runs[i - 1].Name),
-				Runs[i].BrakeDistanceM > Runs[i - 1].BrakeDistanceM * (1.f + MinExtraDistanceRatio));
+			TestTrue(FString::Printf(TEXT("%s brakes weaker than %s"), Runs[i].Name, Runs[i - 1].Name),
+				Runs[i].DecelerationG < Runs[i - 1].DecelerationG * (1.f - MinDecelerationLossRatio));
 		}
 		return true;
 	}));

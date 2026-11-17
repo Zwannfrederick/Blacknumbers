@@ -10,6 +10,28 @@ class UInputMappingContext;
 class USpringArmComponent;
 struct FInputActionValue;
 
+/** Arcade drift assist on top of Chaos tyre physics: the slide itself stays physical. */
+USTRUCT(BlueprintType)
+struct FBNDriftTuning
+{
+	GENERATED_BODY()
+
+	/** Slip angle at which the rear switches to drift grip. Pulling the handbrake at speed also does. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "1", Units = "Degrees"))
+	float EnterSlipDegrees = 20.f;
+
+	/** Below this slip angle the rear gets its full grip and traction control back. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0", Units = "Degrees"))
+	float ExitSlipDegrees = 6.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0"))
+	float MinSpeedKmh = 30.f;
+
+	/** Rear tyre grip while drifting, relative to normal. Lower = longer, easier slides. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.1", ClampMax = "1"))
+	float RearGripScale = 0.45f;
+};
+
 /**
  * Player car: Chaos wheeled vehicle with a chase camera.
  * Keyboard and gamepad bindings are built in code, so there are no input assets to keep in sync.
@@ -35,6 +57,20 @@ public:
 
 	UChaosWheeledVehicleMovementComponent* GetChaosMovement() const;
 
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsDrifting() const { return bDrifting; }
+
+	/** Signed angle between heading and travel, positive when sliding to the right. 0 when nearly stopped. */
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetSlipAngleDegrees() const;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Handling")
+	FBNDriftTuning Drift;
+
+	/** Auto-reverse would otherwise run the reverse gear to ~90 km/h. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Handling", meta = (ClampMin = "5"))
+	float MaxReverseSpeedKmh = 35.f;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
 
@@ -56,6 +92,12 @@ private:
 	void OnThrottle(const FInputActionValue& Value);
 	void OnBrake(const FInputActionValue& Value);
 	void OnHandbrake(const FInputActionValue& Value);
+
+	void UpdateDrift();
+	void SetRearDriftGrip(bool bDrift);
+
+	bool bDrifting = false;
+	bool bRearAbsBypassed = false;
 
 	/** Owns the runtime-created input actions through its key mappings. */
 	UPROPERTY(Transient)

@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
+#include "ChaosWheeledVehicleMovementComponent.h"
 #include "Editor.h"
 #include "GameFramework/PlayerController.h"
 #include "Misc/AutomationTest.h"
@@ -66,6 +67,19 @@ namespace BNPlayTest
 		const FVector Velocity = Car.GetVelocity().GetSafeNormal2D();
 		const FVector Forward = Car.GetActorForwardVector().GetSafeNormal2D();
 		return FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(Velocity, Forward), -1.f, 1.f)));
+	}
+
+	/** Puts the car at rest at Location facing Yaw, with all inputs released. */
+	inline void PlaceStopped(ABNVehiclePawn& Car, const FVector& Location, float Yaw = 0.f)
+	{
+		Car.SetActorLocationAndRotation(Location, FRotator(0.f, Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+		Car.GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+		Car.GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+		UChaosWheeledVehicleMovementComponent* Move = Car.GetChaosMovement();
+		Move->SetThrottleInput(0.f);
+		Move->SetBrakeInput(0.f);
+		Move->SetSteeringInput(0.f);
+		Move->SetHandbrakeInput(false);
 	}
 }
 

@@ -19,6 +19,8 @@ namespace
 {
 	constexpr float CmPerSecToKmh = 0.036f;
 	constexpr float AirborneAngularDamping = 3.f;
+	constexpr float MinSpeedForSlipKmh = 5.f;
+	constexpr int32 FirstRearWheel = 2; // wheel setups: FL, FR, BL, BR
 
 	void SetupSportsCarMovement(UChaosWheeledVehicleMovementComponent& Move)
 	{
@@ -67,6 +69,13 @@ namespace
 
 		Move.SteeringSetup.SteeringType = ESteeringType::Ackermann;
 		Move.SteeringSetup.AngleRatio = 0.7f;
+		// Steering lock vs speed (MPH): calm at speed, but enough left for countersteering a drift.
+		FRichCurve* Steering = Move.SteeringSetup.SteeringCurve.GetRichCurve();
+		Steering->Reset();
+		Steering->AddKey(0.f, 1.f);
+		Steering->AddKey(25.f, 0.85f);
+		Steering->AddKey(60.f, 0.6f);
+		Steering->AddKey(100.f, 0.45f);
 	}
 }
 
@@ -119,6 +128,63 @@ void ABNVehiclePawn::Tick(float DeltaSeconds)
 
 	Camera->SetFieldOfView(FMath::GetMappedRangeValueClamped(
 		FVector2f(0.f, FovMaxSpeedKmh), FVector2f(BaseFov, MaxFov), FMath::Abs(GetSpeedKmh())));
+
+	UpdateDrift();
+
+	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
+	if (Move->GetCurrentGear() < 0 && GetSpeedKmh() < -MaxReverseSpeedKmh)
+	{
+		Move->SetBrakeInput(0.f); // in reverse the brake pedal is the throttle
+	}
+}
+
+float ABNVehiclePawn::GetSlipAngleDegrees() const
+{
+	const FVector Velocity = GetVelocity().GetSafeNormal2D();
+	if (FMath::Abs(GetSpeedKmh()) < MinSpeedForSlipKmh || Velocity.IsNearlyZero())
+	{
+		return 0.f;
+	}
+	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
+	return FMath::RadiansToDegrees(FMath::Atan2(FVector::CrossProduct(Forward, Velocity).Z, FVector::DotProduct(Forward, Velocity)));
+}
+
+void ABNVehiclePawn::UpdateDrift()
+{
+	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
+	const bool bHandbrake = Move->GetHandbrakeInput();
+	if (bHandbrake != bRearAbsBypassed)
+	{
+		// Like a real handbrake, it bypasses ABS so it can lock the rear and start a slide.
+		bRearAbsBypassed = bHandbrake;
+		for (int32 i = FirstRearWheel; i < Move->Wheels.Num(); ++i)
+		{
+			Move->SetABSEnabled(i, !bHandbrake && Move->Wheels[i]->bABSEnabled);
+		}
+	}
+
+	const float Slip = FMath::Abs(GetSlipAngleDegrees());
+	const bool bFastEnough = FMath::Abs(GetSpeedKmh()) >= Drift.MinSpeedKmh;
+	const bool bShouldDrift = bDrifting
+		? (bHandbrake || Slip > Drift.ExitSlipDegrees)
+		: (bFastEnough && (bHandbrake || Slip > Drift.EnterSlipDegrees));
+	if (bShouldDrift != bDrifting)
+	{
+		bDrifting = bShouldDrift;
+		SetRearDriftGrip(bDrifting);
+	}
+}
+
+void ABNVehiclePawn::SetRearDriftGrip(bool bDrift)
+{
+	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
+	for (int32 i = FirstRearWheel; i < Move->Wheels.Num(); ++i)
+	{
+		const UChaosVehicleWheel* Wheel = Move->Wheels[i];
+		Move->SetWheelFrictionMultiplier(i, Wheel->FrictionForceMultiplier * (bDrift ? Drift.RearGripScale : 1.f));
+		// Traction control would cut the wheelspin that keeps a power drift going.
+		Move->SetTractionControlEnabled(i, bDrift ? false : Wheel->bTractionControlEnabled);
+	}
 }
 
 void ABNVehiclePawn::ResetVehicle()

@@ -9,6 +9,7 @@ Layout (cm, +X forward from the player start, +Y to the right):
   y = 0         asphalt start straight, x -19000..19000 (drive test runway, keep empty)
   y = +6000     ramp lane            y = -6000   slalom lane
   y = +11000    dirt strip           y = +17000  grass strip   (surface test starts at x = -24000)
+  x = +25000    asphalt skidpad x 20500..29500, y -9000..9000  (drift test starts at y = -8000 heading +Y)
   y = -17000    street loop centre: straights x -9000..9000, hairpins of radius 4500
 """
 import math
@@ -225,6 +226,7 @@ def build_test_areas():
     slab("Runway", -19500, 19500, -700, 700, ROAD_TOP, "MI_Asphalt", "PM_Asphalt", areas)
     slab("DirtStrip", -25000, 25000, 9000, 13000, 1, "MI_Dirt", "PM_Dirt", areas)
     slab("GrassStrip", -25000, 25000, 15000, 19000, 1, "MI_Grass", "PM_Grass", areas)
+    slab("Skidpad", 20500, 29500, -9000, 9000, ROAD_TOP, "MI_Asphalt", "PM_Asphalt", areas)
     block("Ramp_Small", (-6000, 6000, 0), (12, 8, 1), "MI_Concrete", "PM_Concrete", pitch=10.0, folder=areas)
     block("Ramp_Big", (4000, 6000, 50), (16, 10, 1), "MI_Concrete", "PM_Concrete", pitch=16.0, folder=areas)
     for i in range(8):
