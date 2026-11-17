@@ -18,6 +18,7 @@
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Race/BNRaceEvent.h"
 #include "Vehicle/BNEngineAudioComponent.h"
 #include "Vehicle/BNVehicleWheels.h"
 #include "World/BNDayNightCycle.h"
@@ -401,6 +402,7 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	UInputAction* Handbrake = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* Reset = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* CameraDistance = MakeAction(EInputActionValueType::Boolean);
+	UInputAction* AbandonRace = MakeAction(EInputActionValueType::Boolean);
 
 	InputContext->MapKey(Steering, EKeys::D);
 	InputContext->MapKey(Steering, EKeys::Right);
@@ -425,6 +427,9 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	InputContext->MapKey(CameraDistance, EKeys::C);
 	InputContext->MapKey(CameraDistance, EKeys::Gamepad_RightThumbstick);
 
+	InputContext->MapKey(AbandonRace, EKeys::BackSpace);
+	InputContext->MapKey(AbandonRace, EKeys::Gamepad_Special_Left);
+
 	Subsystem->AddMappingContext(InputContext, 0);
 
 	// Completed fires with a zero value on release, which centres the wheel and lifts the pedals.
@@ -437,4 +442,16 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	}
 	Input->BindAction(Reset, ETriggerEvent::Started, this, &ABNVehiclePawn::ResetVehicle);
 	Input->BindAction(CameraDistance, ETriggerEvent::Started, this, &ABNVehiclePawn::CycleChaseDistance);
+	Input->BindAction(AbandonRace, ETriggerEvent::Started, this, &ABNVehiclePawn::AbandonRace);
+}
+
+void ABNVehiclePawn::AbandonRace()
+{
+	for (TActorIterator<ABNRaceEvent> It(GetWorld()); It; ++It)
+	{
+		if (It->IsRunningFor(this))
+		{
+			It->EndRace();
+		}
+	}
 }

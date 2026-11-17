@@ -6,6 +6,7 @@
 #include "EngineUtils.h"
 #include "Race/BNRaceDefinition.h"
 #include "Race/BNRaceEvent.h"
+#include "Race/BNRivalController.h"
 #include "Tests/BNPlayTestUtils.h"
 
 using namespace BNPlayTest;
@@ -27,14 +28,13 @@ namespace
 		return nullptr;
 	}
 
-	void RunRaceScript(FAutomationTestBase& Test, EBNRaceDiscipline Discipline, TArray<FRaceStep> Steps)
+	void RunRaceScript(FAutomationTestBase& Test, EBNRaceDiscipline Discipline, TArray<FRaceStep> Steps, float StepTimeoutSeconds = 20.f)
 	{
-		constexpr float StepTimeoutSeconds = 20.f;
 		StartTestTrack(Test);
 		struct FScript { TArray<FRaceStep> Steps; int32 Index = 0; double StepStart = -1.0; };
 		const TSharedRef<FScript> Script = MakeShared<FScript>();
 		Script->Steps = MoveTemp(Steps);
-		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([&Test, Discipline, Script]()
+		ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([&Test, Discipline, Script, StepTimeoutSeconds]()
 		{
 			ABNVehiclePawn* Car = FindPlayerCar();
 			ABNRaceEvent* Race = FindRace(Discipline);
@@ -107,6 +107,7 @@ bool FBNCircuitRaceTest::RunTest(const FString& Parameters)
 		Race.StartRace(&Car);
 		Car.GetChaosMovement()->SetThrottleInput(1.f); // the lock must override this
 		Test.TestEqual(TEXT("race starts with a countdown"), Race.GetState(), EBNRaceState::Countdown);
+		Test.TestEqual(TEXT("one car per rival skill on the grid"), Race.GetNumRivals(), Race.Definition->RivalSkills.Num());
 		return true;
 	});
 	Steps.Add([](FAutomationTestBase& Test, ABNVehiclePawn& Car, ABNRaceEvent& Race, float)
@@ -182,6 +183,8 @@ bool FBNSprintRaceTest::RunTest(const FString& Parameters)
 	{
 		Test.TestEqual(TEXT("sprint finished at the last gate"), Race.GetState(), EBNRaceState::Finished);
 		Test.TestTrue(TEXT("sprint time recorded"), Race.GetProgress().IsFinished() && Race.GetProgress().FinishTime() > 0.0);
+		Test.TestTrue(TEXT("the sprint has rivals"), Race.GetNumRivals() > 0);
+		Test.TestEqual(TEXT("first to the line is placed 1st"), Race.GetPlayerPosition(), 1);
 		return true;
 	});
 	RunRaceScript(*this, EBNRaceDiscipline::Sprint, MoveTemp(Steps));
@@ -232,6 +235,86 @@ bool FBNDriftRaceTest::RunTest(const FString& Parameters)
 		return true;
 	});
 	RunRaceScript(*this, EBNRaceDiscipline::Drift, MoveTemp(Steps));
+	return true;
+}
+
+// Backspace / View gives up the race: results show it abandoned, the rivals go when the results close.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNAbandonRaceTest, "BlackNumbers.Race.AbandonEndsRace",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNAbandonRaceTest::RunTest(const FString& Parameters)
+{
+	TArray<FRaceStep> Steps;
+	Steps.Add([](FAutomationTestBase&, ABNVehiclePawn& Car, ABNRaceEvent& Race, float) { Race.StartRace(&Car); return true; });
+	Steps.Add(WaitForState(EBNRaceState::Racing));
+	Steps.Add([](FAutomationTestBase& Test, ABNVehiclePawn& Car, ABNRaceEvent& Race, float)
+	{
+		Car.AbandonRace();
+		Test.TestEqual(TEXT("abandoning ends the race"), Race.GetState(), EBNRaceState::Finished);
+		Test.TestFalse(TEXT("an abandoned race is not a finish"), Race.GetProgress().IsFinished());
+		Test.TestFalse(TEXT("controls are free again"), Car.IsInputLocked());
+		return true;
+	});
+	Steps.Add(WaitForState(EBNRaceState::Idle));
+	Steps.Add([](FAutomationTestBase& Test, ABNVehiclePawn&, ABNRaceEvent& Race, float)
+	{
+		Test.TestEqual(TEXT("rivals removed after the results"), Race.GetNumRivals(), 0);
+		return true;
+	});
+	RunRaceScript(*this, EBNRaceDiscipline::Sprint, MoveTemp(Steps));
+	return true;
+}
+
+// Rivals alone: after GO the player parks off the track and every rival drives both laps of the oval,
+// corners included, without crashing out (no respawns) and in a sane time.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNRivalsCircuitTest, "BlackNumbers.Race.RivalsFinishCircuit",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNRivalsCircuitTest::RunTest(const FString& Parameters)
+{
+	constexpr float RaceTimeoutSeconds = 150.f;
+	constexpr double MaxLapSeconds = 60.0;
+	const FVector ParkedOffTrack(-18000.f, 0.f, 60.f);
+
+	TArray<FRaceStep> Steps;
+	Steps.Add([](FAutomationTestBase&, ABNVehiclePawn& Car, ABNRaceEvent& Race, float) { Race.StartRace(&Car); return true; });
+	Steps.Add(WaitForState(EBNRaceState::Racing));
+	Steps.Add([ParkedOffTrack](FAutomationTestBase&, ABNVehiclePawn& Car, ABNRaceEvent&, float) { Teleport(Car, ParkedOffTrack, 0.f); return true; });
+	Steps.Add([](FAutomationTestBase&, ABNVehiclePawn&, ABNRaceEvent& Race, float)
+	{
+		for (int32 i = 0; i < Race.GetNumRivals(); ++i)
+		{
+			if (!Race.GetRival(i).Progress.IsFinished())
+			{
+				return false;
+			}
+		}
+		return true;
+	});
+	Steps.Add([MaxLapSeconds](FAutomationTestBase& Test, ABNVehiclePawn&, ABNRaceEvent& Race, float)
+	{
+		Test.TestTrue(TEXT("the oval has rivals"), Race.GetNumRivals() > 0);
+		for (int32 i = 0; i < Race.GetNumRivals(); ++i)
+		{
+			const FBNRacer& Rival = Race.GetRival(i);
+			const ABNVehiclePawn* Car = Rival.Car.Get();
+			const ABNRivalController* Driver = Car ? Cast<ABNRivalController>(Car->GetController()) : nullptr;
+			const TArray<double>& Laps = Rival.Progress.LapTimes();
+			UE_LOG(LogTemp, Display, TEXT("BN rival %d (skill %.2f): %.2fs, laps %s, respawns %d"), i, Race.Definition->RivalSkills[i],
+				Rival.Progress.FinishTime(), *FString::JoinBy(Laps, TEXT(" / "), [](double T) { return FString::Printf(TEXT("%.2f"), T); }),
+				Driver ? Driver->GetRespawnCount() : -1);
+			Test.TestNotNull(TEXT("rival still has its driver"), Driver);
+			Test.TestEqual(TEXT("rival drove both laps"), Laps.Num(), 2);
+			Test.TestEqual(TEXT("rival never crashed out"), Driver ? Driver->GetRespawnCount() : -1, 0);
+			for (const double Lap : Laps)
+			{
+				Test.TestTrue(TEXT("rival lap in a sane time"), Lap > 10.0 && Lap < MaxLapSeconds);
+			}
+		}
+		Test.TestEqual(TEXT("parked player is last"), Race.GetPlayerPosition(), Race.GetNumRivals() + 1);
+		return true;
+	});
+	RunRaceScript(*this, EBNRaceDiscipline::Circuit, MoveTemp(Steps), RaceTimeoutSeconds);
 	return true;
 }
 

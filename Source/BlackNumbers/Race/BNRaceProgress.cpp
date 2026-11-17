@@ -7,6 +7,7 @@ void FBNRaceProgress::Reset(int32 InNumCheckpoints, int32 InLaps, bool bInLoop)
 	bLoop = bInLoop;
 	Next = (bLoop && Checkpoints > 1) ? 1 : 0;
 	Lap = 1;
+	PassedCount = 0;
 	bFinished = false;
 	LapStart = 0.0;
 	FinishAt = 0.0;
@@ -22,6 +23,7 @@ EBNRaceStep FBNRaceProgress::Pass(int32 Index, double Time)
 
 	const bool bLineCrossed = bLoop ? Index == 0 : Index == Checkpoints - 1;
 	Next = (Next + 1) % Checkpoints;
+	++PassedCount;
 	if (!bLineCrossed)
 	{
 		return EBNRaceStep::Checkpoint;

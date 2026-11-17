@@ -26,6 +26,8 @@ struct BLACKNUMBERS_API FBNRaceProgress
 	int32 CurrentLap() const { return FMath::Min(Lap, Laps); }
 	int32 TotalLaps() const { return Laps; }
 	int32 NumCheckpoints() const { return Checkpoints; }
+	/** Checkpoints passed so far over all laps (the circuit start line included); ranks racers. */
+	int32 Passed() const { return PassedCount; }
 	bool IsFinished() const { return bFinished; }
 	double FinishTime() const { return FinishAt; }
 	const TArray<double>& LapTimes() const { return LapTimesSeconds; }
@@ -36,6 +38,7 @@ private:
 	bool bLoop = false;
 	int32 Next = 0;
 	int32 Lap = 1;
+	int32 PassedCount = 0;
 	bool bFinished = false;
 	double LapStart = 0.0;
 	double FinishAt = 0.0;

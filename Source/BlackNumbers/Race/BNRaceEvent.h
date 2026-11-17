@@ -9,6 +9,7 @@
 class ABNVehiclePawn;
 class UBNRaceDefinition;
 class UPrimitiveComponent;
+class USplineComponent;
 class UStaticMeshComponent;
 struct FHitResult;
 
@@ -21,9 +22,18 @@ enum class EBNRaceState : uint8
 	Finished,  // results on screen
 };
 
+/** One car in a race and its checkpoint progress. */
+struct FBNRacer
+{
+	TWeakObjectPtr<ABNVehiclePawn> Car;
+	FBNRaceProgress Progress;
+	FVector LastLocation = FVector::ZeroVector;
+};
+
 /**
  * A race start in the world: a light beacon the player drives into. Runs one race from a UBNRaceDefinition:
- * grid + countdown with inputs locked, gate crossings or drift scoring, results. Only the next gate is shown.
+ * grid + countdown with inputs locked, rivals, gate crossings or drift scoring, results. Only the next gate
+ * is shown. Rivals are spawned for the race and removed when its results close.
  */
 UCLASS()
 class BLACKNUMBERS_API ABNRaceEvent : public AActor
@@ -34,6 +44,7 @@ public:
 	ABNRaceEvent();
 
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/** Puts Car on the grid and starts the countdown. */
 	UFUNCTION(BlueprintCallable, Category = "Race")
@@ -53,12 +64,26 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Race")
 	TObjectPtr<UStaticMeshComponent> Beacon;
 
+	/** The line rivals drive, rebuilt from the definition at each start. */
+	UPROPERTY(VisibleAnywhere, Category = "Race")
+	TObjectPtr<USplineComponent> RacingLine;
+
 	/** Left and right posts of the next gate. */
 	UPROPERTY(VisibleAnywhere, Category = "Race")
 	TArray<TObjectPtr<UStaticMeshComponent>> GatePosts;
 
 	EBNRaceState GetState() const { return State; }
-	const FBNRaceProgress& GetProgress() const { return Progress; }
+	const FBNRaceProgress& GetProgress() const { return Player.Progress; }
+	const USplineComponent* GetRacingLine() const { return RacingLine; }
+	/** True while Car is this race's player on the grid or racing. */
+	bool IsRunningFor(const ABNVehiclePawn* Car) const
+	{
+		return Car && Player.Car.Get() == Car && (State == EBNRaceState::Countdown || State == EBNRaceState::Racing);
+	}
+	int32 GetNumRivals() const { return Rivals.Num(); }
+	const FBNRacer& GetRival(int32 Index) const { return Rivals[Index]; }
+	/** Player's place: 1 = leading. Finished racers rank by finish time, the rest by checkpoints passed. */
+	int32 GetPlayerPosition() const;
 	const FBNDriftScorer& GetDriftScore() const { return DriftScore; }
 	/** Seconds into the race (counts down from 3 during the countdown). */
 	float GetRaceTime() const;
@@ -69,16 +94,21 @@ private:
 	void TickRacing(ABNVehiclePawn& Car, float DeltaSeconds);
 	void ShowGate(int32 Index);
 	void Finish();
+	void BuildRacingLine();
+	void SpawnRivals();
+	void ClearRivals();
+	/** Counts a gate crossing since the last frame. */
+	EBNRaceStep AdvanceRacer(FBNRacer& Racer);
+	bool IsAhead(const FBNRacer& A, const FBNRacer& B) const;
 
 	UFUNCTION()
 	void OnCarHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 
 	EBNRaceState State = EBNRaceState::Idle;
-	TWeakObjectPtr<ABNVehiclePawn> Racer;
-	FBNRaceProgress Progress;
+	FBNRacer Player;
+	TArray<FBNRacer> Rivals;
 	FBNDriftScorer DriftScore;
 	double StateStart = 0.0;
-	FVector LastCarLocation = FVector::ZeroVector;
 	/** The beacon only triggers after the car has been outside it, so spawning or finishing on it does not restart. */
 	bool bArmed = false;
 };

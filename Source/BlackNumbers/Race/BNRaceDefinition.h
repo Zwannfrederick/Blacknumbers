@@ -42,4 +42,15 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Route", meta = (ClampMin = "200", Units = "Centimeters"))
 	float GateWidth = 1600.f;
+
+	/**
+	 * World points the rivals drive through, in driving order (a loop for circuits). Empty: grid, then
+	 * straight through the gates. A sprint line should run on past the finish so rivals cross it at speed.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rivals")
+	TArray<FVector> RacingLine;
+
+	/** One entry per rival: 0 = cautious (early braking, slow launch), 1 = on the grip limit. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Rivals", meta = (ClampMin = "0", ClampMax = "1"))
+	TArray<float> RivalSkills;
 };

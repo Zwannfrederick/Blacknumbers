@@ -40,12 +40,25 @@ namespace BNEngineSound
 	}
 }
 
+namespace
+{
+	constexpr float FullVolumeRadius = 1500.f;
+	constexpr float FalloffDistance = 8000.f;
+}
+
 UBNEngineAudioComponent::UBNEngineAudioComponent(const FObjectInitializer& ObjectInitializer)
 	: Super(ObjectInitializer)
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	NumChannels = 1;
 	bAutoActivate = true;
+	// Positional, so rival cars are heard where they are; the own car (camera within the inner radius) stays at full volume.
+	bAllowSpatialization = true;
+	bOverrideAttenuation = true;
+	AttenuationOverrides.bAttenuate = true;
+	AttenuationOverrides.bSpatialize = true;
+	AttenuationOverrides.AttenuationShapeExtents = FVector(FullVolumeRadius, 0.f, 0.f);
+	AttenuationOverrides.FalloffDistance = FalloffDistance;
 }
 
 void UBNEngineAudioComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)

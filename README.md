@@ -1,16 +1,16 @@
 # BLACK NUMBERS
 
 Tek oyunculu, açık dünya, hikâye odaklı sokak yarışı oyunu. Unreal Engine 5 ve C++ ile geliştiriliyor.
-Hikâye: [docs/BLACK_NUMBERS_STORY.md](docs/BLACK_NUMBERS_STORY.md) · Yol haritası: [docs/ROADMAP.md](docs/ROADMAP.md) · Faz 1 durumu ve test kaydı: [docs/PHASE1.md](docs/PHASE1.md) · Öneriler: [docs/PROPOSALS.md](docs/PROPOSALS.md)
+Hikâye: [docs/BLACK_NUMBERS_STORY.md](docs/BLACK_NUMBERS_STORY.md) · Yol haritası: [docs/ROADMAP.md](docs/ROADMAP.md) · Faz 1: [docs/PHASE1.md](docs/PHASE1.md) · Faz 2: [docs/PHASE2.md](docs/PHASE2.md) · Öneriler: [docs/PROPOSALS.md](docs/PROPOSALS.md)
 
 ## Durum
 
-Faz 0 ve Faz 1 tamam ([docs/PHASE1.md](docs/PHASE1.md)). Faz 2 sürüyor: yarışlar oynanabilir, rakip yapay zekâ sırada.
+Faz 0 ve Faz 1 tamam. Faz 2 uygulandı, otomatik testleri geçiyor ve proje sahibinin oyun testini bekliyor ([docs/PHASE2.md](docs/PHASE2.md)).
 
 - **Araç:** Chaos Vehicles (`ABNVehiclePawn`), 0-100 km/s ~5,5 sn, ABS, patinaj önleyici, el freniyle drift, geri vites sınırı 35 km/s
 - **Dünya:** gece-gündüz döngüsü, gece yanan sodyum lambalar, asfalt/beton/toprak/çim yüzeyleri (tutuşu gerçekten değiştirir)
 - **Arayüz ve ses:** hız/vites/devir göstergesi, devre ve gaza bağlı özgün motor sesi, lastik sürtünme sesi
-- **Yarışlar:** mavi ışık sütununa sür → geri sayım → yarış. Sıradaki kapı turuncu iki dikmeyle gösterilir.
+- **Yarışlar:** mavi ışık sütununa sür → geri sayım → yarış. Sıradaki kapı turuncu iki dikmeyle gösterilir. Sprint ve pistte 3 rakip var, ekranda sıran (POS 2/4) görünür.
 
 | Yarış | Tür | Başlangıç ışığı |
 |---|---|---|
@@ -32,6 +32,7 @@ Araba gövdesi şimdilik motorun araç şablonundaki spor araba (`Content/Vehicl
 | El freni (hızlıyken çek: drift başlar) | Boşluk | A (alt tuş) |
 | Kamera mesafesi (yakın/uzak) | C | Sağ çubuğa bas |
 | Arabayı düzelt | R | Y (üst tuş) |
+| Yarıştan çık | Backspace | View (sol menü tuşu) |
 
 **Drift:** 30 km/s üstünde direksiyonu kır, Space'e bas, bırak. Kayma yönüne kontra kırdıkça drift sürer. Direksiyonu düzeltip gaza basınca araç toparlanır ve hızlanır.
 

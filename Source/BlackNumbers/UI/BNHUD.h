@@ -27,6 +27,8 @@ public:
 
 	static FBNDashReadout MakeReadout(const ABNVehiclePawn& Car);
 	static FString GearLabel(int32 Gear);
+	/** 1ST, 2ND, 3RD, 4TH, 11TH... */
+	static FString Ordinal(int32 Place);
 	/** m:ss.cc */
 	static FString FormatRaceTime(float Seconds);
 

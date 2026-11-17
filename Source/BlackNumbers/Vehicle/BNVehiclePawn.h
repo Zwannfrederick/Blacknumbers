@@ -112,6 +112,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Camera")
 	void CycleChaseDistance();
 
+	/** Gives up the race this car is in (Backspace / gamepad View). */
+	UFUNCTION(BlueprintCallable, Category = "Race")
+	void AbandonRace();
+
 	/** Head and tail lights; switched by the level's ABNDayNightCycle (on at night). */
 	UFUNCTION(BlueprintCallable, Category = "Lights")
 	void SetLightsOn(bool bOn);

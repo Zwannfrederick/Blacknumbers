@@ -29,6 +29,14 @@ namespace
 	constexpr float RaceScale = 1.6f;
 }
 
+FString ABNHUD::Ordinal(int32 Place)
+{
+	const int32 Teen = Place % 100;
+	const int32 Last = Place % 10;
+	const TCHAR* Suffix = (Teen >= 11 && Teen <= 13) ? TEXT("TH") : Last == 1 ? TEXT("ST") : Last == 2 ? TEXT("ND") : Last == 3 ? TEXT("RD") : TEXT("TH");
+	return FString::Printf(TEXT("%d%s"), Place, Suffix);
+}
+
 FString ABNHUD::FormatRaceTime(float Seconds)
 {
 	const float Clamped = FMath::Max(Seconds, 0.f);
@@ -54,6 +62,7 @@ void ABNHUD::DrawRace(const ABNRaceEvent& Race)
 	const FBNRaceProgress& Progress = Race.GetProgress();
 	const FBNDriftScorer& Drift = Race.GetDriftScore();
 	const bool bDrift = Def->Discipline == EBNRaceDiscipline::Drift;
+	const bool bRivals = Race.GetNumRivals() > 0;
 	float Y = RaceTop;
 	DrawCentred(Def->DisplayName.ToString().ToUpper(), Y, RaceScale, RaceColour);
 	Y += RaceLine;
@@ -74,14 +83,17 @@ void ABNHUD::DrawRace(const ABNRaceEvent& Race)
 		}
 		else
 		{
+			const FString Position = bRivals
+				? FString::Printf(TEXT("POS %d/%d    "), Race.GetPlayerPosition(), Race.GetNumRivals() + 1) : FString();
 			const FString Laps = Def->Discipline == EBNRaceDiscipline::Circuit
 				? FString::Printf(TEXT("LAP %d/%d    "), Progress.CurrentLap(), Progress.TotalLaps()) : FString();
-			DrawCentred(FString::Printf(TEXT("%s%s"), *Laps, *FormatRaceTime(Race.GetRaceTime())), Y, RaceScale, RaceColour);
+			DrawCentred(FString::Printf(TEXT("%s%s%s"), *Position, *Laps, *FormatRaceTime(Race.GetRaceTime())), Y, RaceScale, RaceColour);
 		}
 		break;
 	case EBNRaceState::Finished:
 		DrawCentred(bDrift ? FString::Printf(TEXT("SCORE  %d"), Drift.Total())
-			: Progress.IsFinished() ? FString::Printf(TEXT("FINISHED  %s"), *FormatRaceTime(Progress.FinishTime()))
+			: Progress.IsFinished() ? FString::Printf(TEXT("%s  %s"),
+				bRivals ? *Ordinal(Race.GetPlayerPosition()) : TEXT("FINISHED"), *FormatRaceTime(Progress.FinishTime()))
 			: FString(TEXT("RACE ABANDONED")), Y, RaceScale * 1.4f, DashColour);
 		break;
 	default:

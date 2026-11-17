@@ -57,10 +57,11 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 - [x] Yarış altyapısı: başlangıç ışığı, kontrol kapıları, geri sayım (kontroller kilitli), bitiş, sonuç ekranı *(testli)*
 - [x] **Sprint** (A'dan B'ye) ve **Pist** (tur sayımı) *(testli)*
 - [x] **Drift** puanlama: kayma açısı × hız × süre, kombo, duvar ve spin cezası *(testli)*
-- [ ] Rakip yapay zekâ: yarış çizgisini (spline) takip eden sürücüler, beceri ayarı
-- [x] Yarışlar veri olarak tanımlanır (`UBNRaceDefinition`: rota, disiplin, tur, süre) — *rakipler ve ödül alanları rakip YZ ve Faz 5 ile eklenecek*
+- [x] Rakip yapay zekâ: yarış çizgisini (spline) takip eden sürücüler, beceri ayarı, sollama, sıralama *(testli)*
+- [x] Yarışlar veri olarak tanımlanır (`UBNRaceDefinition`: rota, disiplin, tur, süre, yarış çizgisi, rakip becerileri) — *ödül alanları Faz 5 ile eklenecek*
 
 **Bitti sayılır:** Aynı bölgede bir Sprint, bir Pist ve bir Drift yarışı baştan sona oynanır.
+*Durum: otomatik testler geçiyor (rakipler oval pisti 2 tur kendi başına bitiriyor). Proje sahibinin üç yarışı oynaması bekleniyor. Ayrıntı: [PHASE2.md](PHASE2.md).*
 
 ## Faz 3 — Şehir Dikey Dilimi
 
@@ -170,6 +171,7 @@ Bu sorular cevaplanmadan ilgili faz tamamlanamaz. Cevaplar hikâye dokümanını
 | Tarih | Değişiklik |
 |---|---|
 | 2026-11-17 | İlk sürüm. Faz 0 tamam, Faz 1 başladı (sokak lambası sınıfı). |
+| 2026-11-17 | Faz 2 ikinci parça: rakip YZ (3 rakip, beceri, sollama), sıralama, yarıştan çıkma tuşu. Sahibin oyun testi bekleniyor. |
 | 2026-11-17 | Faz 2 ilk parça: yarış altyapısı, Sprint/Pist/Drift, test pistinde 3 yarış. Rakip YZ sırada. |
 | 2026-11-17 | Faz 1 tamamlandı: otomatik testler + proje sahibinin sürüş testi. |
 | 2026-11-17 | Faz 1 uygulandı; 3 kabul kriteri elle test bekliyor (bkz. PHASE1.md). |

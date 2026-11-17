@@ -232,7 +232,8 @@ def gate(x, y, yaw):
     return unreal.Transform(location=unreal.Vector(x, y, 0.0), rotation=unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
 
 
-def race_asset(name, title, discipline, grid, checkpoints=(), laps=1, time_limit=60.0, gate_width=1600.0):
+def race_asset(name, title, discipline, grid, checkpoints=(), laps=1, time_limit=60.0, gate_width=1600.0,
+               racing_line=(), rivals=()):
     path = "%s/%s" % (RACE_DIR, name)
     if unreal.EditorAssetLibrary.does_asset_exist(path):
         race = unreal.load_asset(path)
@@ -249,6 +250,8 @@ def race_asset(name, title, discipline, grid, checkpoints=(), laps=1, time_limit
     race.set_editor_property("grid", grid)
     race.set_editor_property("checkpoints", list(checkpoints))
     race.set_editor_property("gate_width", gate_width)
+    race.set_editor_property("racing_line", [unreal.Vector(x, y, 0.0) for x, y in racing_line])
+    race.set_editor_property("rival_skills", list(rivals))
     if not unreal.EditorAssetLibrary.save_loaded_asset(race, only_if_is_dirty=False):
         raise RuntimeError("Could not save " + path)
     return race
@@ -269,10 +272,12 @@ def build_races():
     oval = race_asset("RACE_OvalCircuit", "Oval Circuit", unreal.BNRaceDiscipline.CIRCUIT,
                       unreal.Transform(location=unreal.Vector(-1500, north, 60)),
                       [gate(0, north, 0), gate(apex, LOOP_CY, -90), gate(0, south, 180), gate(-apex, LOOP_CY, 90)],
-                      laps=2, gate_width=ROAD_W + 400)
+                      laps=2, gate_width=ROAD_W + 400,
+                      racing_line=[(x, y) for x, y, _, _, _ in loop_samples(1000.0)], rivals=(0.55, 0.8, 1.0))
     sprint = race_asset("RACE_RunwaySprint", "Runway Sprint", unreal.BNRaceDiscipline.SPRINT,
                         unreal.Transform(location=unreal.Vector(-17000, 0, 60)),
-                        [gate(-5000, 0, 0), gate(8000, 0, 0), gate(19000, 0, 0)], gate_width=2000)
+                        [gate(-5000, 0, 0), gate(8000, 0, 0), gate(19000, 0, 0)], gate_width=2000,
+                        racing_line=[(-17000, 0), (27000, 0)], rivals=(0.5, 0.75, 1.0))  # runs on onto the skidpad to stop
     drift = race_asset("RACE_SkidpadDrift", "Skidpad Drift", unreal.BNRaceDiscipline.DRIFT,
                        unreal.Transform(location=unreal.Vector(25000, -8000, 60), rotation=unreal.Rotator(0, 0, 90)),
                        time_limit=60.0)

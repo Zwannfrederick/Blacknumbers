@@ -1,10 +1,12 @@
 #include "Race/BNRaceEvent.h"
 
 #include "ChaosWheeledVehicleMovementComponent.h"
+#include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "GameFramework/PlayerController.h"
 #include "Race/BNRaceDefinition.h"
+#include "Race/BNRivalController.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Vehicle/BNVehiclePawn.h"
 
@@ -19,6 +21,9 @@ namespace
 	/** Drift scoring: only firm hits on walls/objects (not landings) cost the running drift. */
 	constexpr float MinImpactImpulse = 100000.f;
 	constexpr float WallNormalMaxZ = 0.6f;
+	/** Rival grid: rows behind the player, alternating right and left of the player's line. */
+	constexpr float GridRowSpacing = 900.f;
+	constexpr float GridLaneOffset = 400.f;
 
 	ABNVehiclePawn* PlayerCar(const UWorld* World)
 	{
@@ -44,6 +49,8 @@ ABNRaceEvent::ABNRaceEvent()
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
+	RacingLine = CreateDefaultSubobject<USplineComponent>(TEXT("RacingLine"));
+	RacingLine->SetupAttachment(RootComponent);
 	Beacon = MakePillar(*this, TEXT("Beacon"), Cylinder.Object, 150.f, BeaconHeight);
 	Beacon->SetRelativeLocation(FVector(0.f, 0.f, BeaconHeight * 0.5f));
 	for (const TCHAR* Name : { TEXT("GatePostL"), TEXT("GatePostR") })
@@ -59,7 +66,20 @@ void ABNRaceEvent::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	ABNVehiclePawn* Car = State == EBNRaceState::Idle ? PlayerCar(GetWorld()) : Racer.Get();
+	const double Elapsed = GetWorld()->GetTimeSeconds() - StateStart;
+	if (State == EBNRaceState::Finished)
+	{
+		// Results run on a timer and do not need the player's car.
+		if (Elapsed >= ResultsSeconds)
+		{
+			State = EBNRaceState::Idle;
+			Beacon->SetVisibility(true);
+			ClearRivals();
+		}
+		return;
+	}
+
+	ABNVehiclePawn* Car = State == EBNRaceState::Idle ? PlayerCar(GetWorld()) : Player.Car.Get();
 	if (!Car)
 	{
 		if (State != EBNRaceState::Idle)
@@ -69,7 +89,6 @@ void ABNRaceEvent::Tick(float DeltaSeconds)
 		return;
 	}
 
-	const double Elapsed = GetWorld()->GetTimeSeconds() - StateStart;
 	switch (State)
 	{
 	case EBNRaceState::Idle:
@@ -80,19 +99,22 @@ void ABNRaceEvent::Tick(float DeltaSeconds)
 		{
 			State = EBNRaceState::Racing;
 			StateStart = GetWorld()->GetTimeSeconds();
-			LastCarLocation = Car->GetActorLocation();
+			Player.LastLocation = Car->GetActorLocation();
 			Car->SetInputLocked(false);
+			for (FBNRacer& Rival : Rivals)
+			{
+				if (ABNVehiclePawn* RivalCar = Rival.Car.Get())
+				{
+					Rival.LastLocation = RivalCar->GetActorLocation();
+					RivalCar->SetInputLocked(false);
+				}
+			}
 		}
 		break;
 	case EBNRaceState::Racing:
 		TickRacing(*Car, DeltaSeconds);
 		break;
-	case EBNRaceState::Finished:
-		if (Elapsed >= ResultsSeconds)
-		{
-			State = EBNRaceState::Idle;
-			Beacon->SetVisibility(true);
-		}
+	default:
 		break;
 	}
 }
@@ -116,8 +138,9 @@ void ABNRaceEvent::StartRace(ABNVehiclePawn* Car)
 	{
 		return;
 	}
-	Racer = Car;
+	Player.Car = Car;
 	bArmed = false;
+	ClearRivals();
 
 	Car->SetActorTransform(Definition->Grid, false, nullptr, ETeleportType::TeleportPhysics);
 	Car->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
@@ -125,11 +148,16 @@ void ABNRaceEvent::StartRace(ABNVehiclePawn* Car)
 	Car->SetInputLocked(true);
 	Car->GetMesh()->OnComponentHit.AddUniqueDynamic(this, &ABNRaceEvent::OnCarHit);
 
-	const bool bCircuit = Definition->Discipline == EBNRaceDiscipline::Circuit;
-	Progress.Reset(Definition->Checkpoints.Num(), Definition->Laps, bCircuit);
+	Player.Progress.Reset(Definition->Checkpoints.Num(), Definition->Laps, Definition->Discipline == EBNRaceDiscipline::Circuit);
 	DriftScore.Reset();
 	Beacon->SetVisibility(false);
-	ShowGate(Definition->Discipline == EBNRaceDiscipline::Drift ? INDEX_NONE : Progress.NextCheckpoint());
+	const bool bDrift = Definition->Discipline == EBNRaceDiscipline::Drift;
+	ShowGate(bDrift ? INDEX_NONE : Player.Progress.NextCheckpoint());
+	if (!bDrift)
+	{
+		BuildRacingLine();
+		SpawnRivals();
+	}
 
 	State = EBNRaceState::Countdown;
 	StateStart = GetWorld()->GetTimeSeconds();
@@ -137,7 +165,6 @@ void ABNRaceEvent::StartRace(ABNVehiclePawn* Car)
 
 void ABNRaceEvent::TickRacing(ABNVehiclePawn& Car, float DeltaSeconds)
 {
-	const FVector Location = Car.GetActorLocation();
 	if (Definition->Discipline == EBNRaceDiscipline::Drift)
 	{
 		DriftScore.Update(DeltaSeconds, Car.GetSlipAngleDegrees(), Car.GetSpeedKmh());
@@ -145,27 +172,155 @@ void ABNRaceEvent::TickRacing(ABNVehiclePawn& Car, float DeltaSeconds)
 		{
 			Finish();
 		}
+		return;
 	}
-	else if (Definition->Checkpoints.IsValidIndex(Progress.NextCheckpoint()))
+
+	for (FBNRacer& Rival : Rivals)
+	{
+		AdvanceRacer(Rival);
+	}
+	const EBNRaceStep Step = AdvanceRacer(Player);
+	if (Step == EBNRaceStep::Finished)
+	{
+		Finish();
+	}
+	else if (Step != EBNRaceStep::None)
+	{
+		ShowGate(Player.Progress.NextCheckpoint());
+	}
+}
+
+EBNRaceStep ABNRaceEvent::AdvanceRacer(FBNRacer& Racer)
+{
+	const ABNVehiclePawn* Car = Racer.Car.Get();
+	if (!Car)
+	{
+		return EBNRaceStep::None;
+	}
+	const FVector Location = Car->GetActorLocation();
+	EBNRaceStep Step = EBNRaceStep::None;
+	const int32 Next = Racer.Progress.NextCheckpoint();
+	if (!Racer.Progress.IsFinished() && Definition->Checkpoints.IsValidIndex(Next))
 	{
 		// Crossing = the car went from behind the gate plane to in front of it, between the posts.
-		const FTransform& Gate = Definition->Checkpoints[Progress.NextCheckpoint()];
-		const FVector Before = Gate.InverseTransformPosition(LastCarLocation);
+		const FTransform& Gate = Definition->Checkpoints[Next];
+		const FVector Before = Gate.InverseTransformPosition(Racer.LastLocation);
 		const FVector After = Gate.InverseTransformPosition(Location);
 		if (Before.X < 0.f && After.X >= 0.f && FMath::Abs(After.Y) <= Definition->GateWidth * 0.5f)
 		{
-			const EBNRaceStep Step = Progress.Pass(Progress.NextCheckpoint(), GetRaceTime());
-			if (Step == EBNRaceStep::Finished)
-			{
-				Finish();
-			}
-			else
-			{
-				ShowGate(Progress.NextCheckpoint());
-			}
+			Step = Racer.Progress.Pass(Next, GetRaceTime());
 		}
 	}
-	LastCarLocation = Location;
+	Racer.LastLocation = Location;
+	return Step;
+}
+
+bool ABNRaceEvent::IsAhead(const FBNRacer& A, const FBNRacer& B) const
+{
+	const FBNRaceProgress& PA = A.Progress;
+	const FBNRaceProgress& PB = B.Progress;
+	if (PA.IsFinished() || PB.IsFinished())
+	{
+		return PA.IsFinished() && (!PB.IsFinished() || PA.FinishTime() < PB.FinishTime());
+	}
+	if (PA.Passed() != PB.Passed())
+	{
+		return PA.Passed() > PB.Passed();
+	}
+	// Same stretch of road: whoever is closer to the next gate leads.
+	const ABNVehiclePawn* CarA = A.Car.Get();
+	const ABNVehiclePawn* CarB = B.Car.Get();
+	if (!CarA || !CarB || !Definition->Checkpoints.IsValidIndex(PA.NextCheckpoint()))
+	{
+		return false;
+	}
+	const FVector Gate = Definition->Checkpoints[PA.NextCheckpoint()].GetLocation();
+	return FVector::DistSquared2D(CarA->GetActorLocation(), Gate) < FVector::DistSquared2D(CarB->GetActorLocation(), Gate);
+}
+
+int32 ABNRaceEvent::GetPlayerPosition() const
+{
+	int32 Position = 1;
+	for (const FBNRacer& Rival : Rivals)
+	{
+		Position += IsAhead(Rival, Player) ? 1 : 0;
+	}
+	return Position;
+}
+
+void ABNRaceEvent::BuildRacingLine()
+{
+	const bool bCircuit = Definition->Discipline == EBNRaceDiscipline::Circuit;
+	TArray<FVector> Points = Definition->RacingLine;
+	if (Points.Num() < 2)
+	{
+		Points.Reset();
+		if (!bCircuit)
+		{
+			Points.Add(Definition->Grid.GetLocation());
+		}
+		for (const FTransform& Gate : Definition->Checkpoints)
+		{
+			Points.Add(Gate.GetLocation());
+		}
+	}
+	RacingLine->SetSplinePoints(Points, ESplineCoordinateSpace::World);
+	RacingLine->SetClosedLoop(bCircuit);
+}
+
+void ABNRaceEvent::SpawnRivals()
+{
+	const bool bCircuit = Definition->Discipline == EBNRaceDiscipline::Circuit;
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	for (int32 i = 0; i < Definition->RivalSkills.Num(); ++i)
+	{
+		const float Lane = (i % 2 == 0 ? 1.f : -1.f) * GridLaneOffset;
+		const FVector Slot = Definition->Grid.TransformPosition(FVector(-GridRowSpacing * ((i + 1) / 2), Lane, 0.f));
+		ABNVehiclePawn* Car = GetWorld()->SpawnActor<ABNVehiclePawn>(ABNVehiclePawn::StaticClass(),
+			FTransform(Definition->Grid.GetRotation(), Slot), Params);
+		if (!Car)
+		{
+			UE_LOG(LogTemp, Error, TEXT("%s: could not spawn rival %d"), *GetName(), i);
+			continue;
+		}
+		Car->AIControllerClass = ABNRivalController::StaticClass();
+		Car->SpawnDefaultController();
+		ABNRivalController* Driver = Cast<ABNRivalController>(Car->GetController());
+		if (!Driver)
+		{
+			UE_LOG(LogTemp, Error, TEXT("%s: rival %d has no driver"), *GetName(), i);
+			Car->Destroy();
+			continue;
+		}
+		Driver->Setup(this, Definition->RivalSkills[i], Lane);
+		Car->SetInputLocked(true);
+		FBNRacer& Rival = Rivals.AddDefaulted_GetRef();
+		Rival.Car = Car;
+		Rival.Progress.Reset(Definition->Checkpoints.Num(), Definition->Laps, bCircuit);
+	}
+}
+
+void ABNRaceEvent::ClearRivals()
+{
+	for (const FBNRacer& Rival : Rivals)
+	{
+		if (ABNVehiclePawn* Car = Rival.Car.Get())
+		{
+			if (AController* Driver = Car->GetController())
+			{
+				Driver->Destroy();
+			}
+			Car->Destroy();
+		}
+	}
+	Rivals.Reset();
+}
+
+void ABNRaceEvent::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	ClearRivals();
+	Super::EndPlay(EndPlayReason);
 }
 
 void ABNRaceEvent::ShowGate(int32 Index)
@@ -194,7 +349,7 @@ void ABNRaceEvent::Finish()
 {
 	const float RaceTime = State == EBNRaceState::Racing ? GetRaceTime() : 0.f;
 	DriftScore.Finish();
-	if (ABNVehiclePawn* Car = Racer.Get())
+	if (ABNVehiclePawn* Car = Player.Car.Get())
 	{
 		Car->SetInputLocked(false);
 		Car->GetMesh()->OnComponentHit.RemoveDynamic(this, &ABNRaceEvent::OnCarHit);
@@ -202,8 +357,9 @@ void ABNRaceEvent::Finish()
 	ShowGate(INDEX_NONE);
 	State = EBNRaceState::Finished;
 	StateStart = GetWorld()->GetTimeSeconds();
-	UE_LOG(LogTemp, Display, TEXT("BN race '%s' over: finished=%d time=%.2fs laps=%d drift=%d"),
-		Definition ? *Definition->DisplayName.ToString() : TEXT("?"), Progress.IsFinished(),
+	const FBNRaceProgress& Progress = Player.Progress;
+	UE_LOG(LogTemp, Display, TEXT("BN race '%s' over: finished=%d place=%d/%d time=%.2fs laps=%d drift=%d"),
+		Definition ? *Definition->DisplayName.ToString() : TEXT("?"), Progress.IsFinished(), GetPlayerPosition(), Rivals.Num() + 1,
 		Progress.IsFinished() ? Progress.FinishTime() : RaceTime, Progress.LapTimes().Num(), DriftScore.Total());
 }
 
@@ -217,7 +373,7 @@ float ABNRaceEvent::GetRaceTime() const
 	case EBNRaceState::Racing:
 		return Elapsed;
 	case EBNRaceState::Finished:
-		return static_cast<float>(Progress.FinishTime());
+		return static_cast<float>(Player.Progress.FinishTime());
 	default:
 		return 0.f;
 	}
