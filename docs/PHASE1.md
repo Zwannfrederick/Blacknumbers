@@ -1,7 +1,7 @@
 # Faz 1 — İlk Sokak: Durum, Ölçümler ve Test Kaydı
 
 > **Son güncelleme:** 2026-11-17 · Motor: UE 5.8.4 (Linux, Vulkan SM5) · Donanım: i5-11300H, RTX 3050 Ti Laptop 4 GB, 32 GB RAM
-> **Durum:** Uygulandı. Otomatik doğrulanabilen kriterlerin hepsi geçiyor. **3 kriter elle sürüş testini bekliyor** (aşağıda). Bu yüzden Faz 1 henüz "tamam" sayılmıyor.
+> **Durum:** ✅ **Tamamlandı** (2026-11-17). Otomatik kriterler testlerle, drift/kamera/ses kriterleri proje sahibinin sürüş testiyle doğrulandı.
 
 ## Kabul Kriterleri
 
@@ -13,9 +13,9 @@
 | 4 | Yol ve yüzey malzemeleri doğru | ✅ | Görüntüler + `Vehicle.SurfaceGrip` (tekerlek doğru fiziksel malzemeyi bildiriyor) |
 | 5 | Lambalar gece-gündüze uyuyor | ✅ | `World.StreetLampsFollowNight` (gece başlangıcında ilk kare dahil) |
 | 6 | Hızlanma, fren, direksiyon, geri vites | ✅ | `DrivesForward`, `SurfaceGrip`, `Reverse` |
-| 7 | Drift çalışıyor ve **kontrol edilebilir** | ⚠️ kısmen | Betikli test geçiyor (başlatma, sürdürme, spin yok, tutuşa dönüş). İnsan eliyle kontrol hissi **elle test bekliyor** |
-| 8 | Kamera normal sürüşte ve drift'te doğru | ⏳ elle test | Otomatik testi yok |
-| 9 | Motor sesi araca tepki veriyor | ⚠️ kısmen | Ses parametreleri testli (`EngineSoundMapping`, `DashAndAudioFollowCar`). Sesin **kulakla** dinlenmesi bekliyor (testler sessiz modda çalışıyor) |
+| 7 | Drift çalışıyor ve **kontrol edilebilir** | ✅ | `Drift`, `DriftExitAccelerates`, `HandbrakeNoSpin` + proje sahibinin sürüş testi |
+| 8 | Kamera normal sürüşte ve drift'te doğru | ✅ | Proje sahibinin sürüş testi |
+| 9 | Motor sesi araca tepki veriyor | ✅ | `EngineSoundMapping`, `DashAndAudioFollowCar` + proje sahibinin sürüş testi (hışırtı düzeltildi) |
 | 10 | Hız göstergesi doğru | ✅ | `DashAndAudioFollowCar`: gösterge hızı/vitesi/devri fizik durumuyla aynı; HUD görüntülerde çiziliyor |
 | 11 | Faz 0 bozulmadı | ✅ | `World.TimeOfDay`, `DrivesForward` |
 | 12 | Otomatik testler geçiyor | ✅ | 9/9 (aşağıda) |

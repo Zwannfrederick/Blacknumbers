@@ -34,16 +34,17 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 | Sürüş ayarı: 0-100 ~5,5 sn, ABS, patinaj önleyici | ✅ Test ölçüyor |
 | Betikle üretilen test pisti | ✅ |
 
-## Faz 1 — İlk Sokak ve Sürüş Hissi
+## Faz 1 — İlk Sokak ve Sürüş Hissi ✅
 
 **Amaç:** Arabayı bitmiş bir sokakta, gece ve gündüz sürmenin iyi hissettirmesi. Ayrıntılı durum ve test kaydı: [PHASE1.md](PHASE1.md).
 
 - [x] Asfalt, beton, toprak, çim malzemeleri ve **fiziksel malzemeleri** (tutuşu gerçekten değiştirir)
 - [x] Yol çizgileri, kaldırımlar, drift'e uygun virajlı bir tur, gri kutu binalar, basit dekor
 - [x] Gece kendiliğinden yanan sodyum sokak lambaları, ilk karede doğru durum
-- [~] Sürüş: el freniyle drift başlatma, sürdürme, kontra, tutuşa dönüş; geri vites; hıza duyarlı direksiyon *(testler geçiyor, elle his testi bekliyor)*
-- [~] Kamera: ayarlanabilir mesafe, hıza bağlı FOV, drift'te sakin takip *(uygulandı, elle test bekliyor)*
-- [~] Motor sesi (devir, gaz, yük, vites) ve lastik sürtünme sesi, özgün sentez *(parametreler testli, kulakla dinlenmedi)*
+- [x] Sürüş: el freniyle drift başlatma, sürdürme, kontra, tutuşa dönüş; geri vites; hıza duyarlı direksiyon
+- [x] Kamera: ayarlanabilir mesafe, hıza bağlı FOV, drift'te sakin takip
+- [x] Motor sesi (devir, gaz, yük, vites) ve lastik sürtünme sesi, özgün sentez
+- [x] Gece kendiliğinden yanan farlar ve stop lambaları
 - [x] HUD: hız, vites, devir (araç durumundan okunur)
 - [x] Bağımsız oyunda (editör dışı) performans ölçümü ve kaydı *(1080p ~210 FPS, GPU ~4,3 ms)*
 
@@ -169,5 +170,6 @@ Bu sorular cevaplanmadan ilgili faz tamamlanamaz. Cevaplar hikâye dokümanını
 | Tarih | Değişiklik |
 |---|---|
 | 2026-11-17 | İlk sürüm. Faz 0 tamam, Faz 1 başladı (sokak lambası sınıfı). |
+| 2026-11-17 | Faz 1 tamamlandı: otomatik testler + proje sahibinin sürüş testi. |
 | 2026-11-17 | Faz 1 uygulandı; 3 kabul kriteri elle test bekliyor (bkz. PHASE1.md). |
 | 2026-11-17 | Faz 1 kapsamı genişletildi (fiziksel malzemeler, drift, ses, HUD, performans ölçümü). Faz 7, 7A/7B/7C olarak bölündü. Şehir ve trafik önerileri eklendi. |
