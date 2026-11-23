@@ -1,16 +1,16 @@
 # BLACK NUMBERS
 
-Tek oyunculu, açık dünya, hikâye odaklı sokak yarışı oyunu. Unreal Engine 5 ve C++ ile geliştiriliyor.
-Hikâye: [docs/BLACK_NUMBERS_STORY.md](docs/BLACK_NUMBERS_STORY.md) · Yol haritası: [docs/ROADMAP.md](docs/ROADMAP.md) · Faz 1: [docs/PHASE1.md](docs/PHASE1.md) · Faz 2: [docs/PHASE2.md](docs/PHASE2.md) · Öneriler: [docs/PROPOSALS.md](docs/PROPOSALS.md)
+Tek oyunculu, açık dünya, hikâye odaklı sokak yarışı oyunu (**Karamara**). Unreal Engine 5 ve C++ ile geliştiriliyor.
+Hikâye: [docs/BLACK_NUMBERS_STORY.md](docs/BLACK_NUMBERS_STORY.md) · Sanat yönü: [docs/ART_DIRECTION.md](docs/ART_DIRECTION.md) · Yol haritası: [docs/ROADMAP.md](docs/ROADMAP.md) · Faz 1: [docs/PHASE1.md](docs/PHASE1.md) · Faz 2: [docs/PHASE2.md](docs/PHASE2.md) · Öneriler: [docs/PROPOSALS.md](docs/PROPOSALS.md)
 
 ## Durum
 
-Faz 0 ve Faz 1 tamam. Faz 2 uygulandı, otomatik testleri geçiyor ve proje sahibinin oyun testini bekliyor ([docs/PHASE2.md](docs/PHASE2.md)).
+Faz 0, Faz 1, Faz 2, **Faz 2.5 (Most Wanted Nostalji Katmanı)**, **Faz 3 (Karamara Şehir Dikey Dilimi)**, **Faz 4 (Polis Kovalamacası)**, **Faz 5 (Garaj, Ekonomi & Tier 1–6)**, **Faz 6 (16 Üyeli BLACK NUMBERS Listesi & Kanıt Defteri)** ve **Faz 7A/7B/7C (Kimlik İfşası, Tarık Barışması & Tier 6, Final & Özel Kademe Kaçış)** uygulandı. Varsayılan başlangıç haritası `/Game/Maps/KaramaraSlice`'tır.
 
-- **Araç:** Chaos Vehicles (`ABNVehiclePawn`), 0-100 km/s ~5,5 sn, ABS, patinaj önleyici, el freniyle drift, geri vites sınırı 35 km/s
-- **Dünya:** gece-gündüz döngüsü, gece yanan sodyum lambalar, asfalt/beton/toprak/çim yüzeyleri (tutuşu gerçekten değiştirir)
-- **Arayüz ve ses:** hız/vites/devir göstergesi, devre ve gaza bağlı özgün motor sesi, lastik sürtünme sesi
-- **Yarışlar:** mavi ışık sütununa sür → geri sayım → yarış. Sıradaki kapı turuncu iki dikmeyle gösterilir. Sprint ve pistte 3 rakip var, ekranda sıran (POS 2/4) görünür.
+- **Araç & MW Mekanikleri:** Chaos Vehicles (`ABNVehiclePawn`), hıza duyarlı yumuşatılmış direksiyon ve yol tutuş desteği, 0-100 km/s ~5,5 sn, ABS, kontrollü el freni drift, **NOS / Nitro**, **Speedbreaker**, **Perfect Launch** ve düşük-geçişli prosedürel motor + filtreli lastik sürtünme sesi
+- **Slate Yarış & Hikâye Menüleri (`ESC` / `G` / `B`):** Doğrudan **Yarışlar**, **Selin'in Garajı (Tier 1–6 & 3 özgün araç)**, **16'lık BLACK NUMBERS Listesi & R1–R8 Kanıtlar** ve **Kontroller** sekmeleri fareyle kullanılabilir; oyun içi dönen mini harita radarı ve 3B kapı/kaçış işaretçileri eşlik eder.
+- **Karamara Şehir Dikey Dilimi & Polis Kovalamacası:** `KaramaraSlice` şehir ızgarası, kuzey viyadüğü, kırılabilir dekorlar (`Şehir Faturası`), Heat 1–5 (`K. Vance`), R4 sonrası Heat 6–10 (`Başkomiser Demir`) ve Perde 5 **Özel Kademe** (2 çıkış rotalı final kaçışı + Epilog kartları).
+- **Konsept sanatlar ([docs/ART_DIRECTION.md](docs/ART_DIRECTION.md)):** [Kurogane M-Spec](docs/images/concept/hero_car_kurogane.png) · [Nocturne BN-01](docs/images/concept/boss01_nocturne.png) · [Karamara Kovalamacası](docs/images/concept/karamara_pursuit.png) · [Tarık'ın Tier 6 Atölyesi](docs/images/concept/tarik_garage_tier6.png)
 
 | Yarış | Tür | Başlangıç ışığı |
 |---|---|---|
@@ -26,10 +26,16 @@ Araba gövdesi şimdilik motorun araç şablonundaki spor araba (`Content/Vehicl
 
 | Eylem | Klavye | Gamepad |
 |---|---|---|
-| Gaz | W / Yukarı | Sağ tetik |
+| Gaz / Geri sayım Launch devri | W / Yukarı | Sağ tetik |
 | Fren / geri vites (dururken basılı tut) | S / Aşağı | Sol tetik |
 | Direksiyon | A, D / Sol, Sağ | Sol çubuk |
 | El freni (hızlıyken çek: drift başlar) | Boşluk | A (alt tuş) |
+| NOS / Nitro | Sol/Sağ Shift | B (sağ tuş) |
+| Speedbreaker (zaman yavaşlatma) | X / Sol Ctrl | RB (sağ omuz) |
+| Polis kovalamacası başlat / Heat artır | P | D-Pad Yukarı |
+| Garajı aç / kapat | G | D-Pad Aşağı |
+| BLACK NUMBERS 16'lık Liste & Kanıtlar | B | D-Pad Sol |
+| Ana Menü / Hikâye Kartı Geç | ESC | Start |
 | Kamera mesafesi (yakın/uzak) | C | Sağ çubuğa bas |
 | Arabayı düzelt | R | Y (üst tuş) |
 | Yarıştan çık | Backspace | View (sol menü tuşu) |
@@ -64,7 +70,7 @@ Araba gövdesi şimdilik motorun araç şablonundaki spor araba (`Content/Vehicl
 
 Uygulama yolunu her zaman tam ver (`$PWD/...`): Unreal göreli yolu motor klasörüne göre çözer.
 
-Oyun içi konsol: `bn.SetTime 21.5` saati değiştirir, `bn.Benchmark` performans ölçümünü başlatır.
+Oyun içi konsol: `bn.Map Karamara` / `bn.Map TestTrack` harita değiştirir, `bn.SetTime 21.5` saati değiştirir, `bn.Pursuit 3` polis kovalamacası başlatır (`bn.PursuitStop` durdurur), `bn.StorySkipTo 8` hikâyeyi seçili boss rütbesine sarar, `bn.StoryStartFinalChase` Perde 5 Özel Kademe son kovalamacayı başlatır (`bn.StoryReset` sıfırlar), `bn.AddCash 20000` nakit ekler, `bn.UnlockTier6 1` Tier 6 kilidini açar, `bn.Benchmark` performans ölçümünü başlatır.
 
 ## Gece-Gündüz Döngüsü Kurulumu (yeni bir haritada)
 

@@ -3,23 +3,26 @@
 #include "Animation/AnimInstance.h"
 #include "Camera/CameraComponent.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
-#include "Components/SkeletalMeshComponent.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
-#include "Engine/LocalPlayer.h"
 #include "Components/PointLightComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "EngineUtils.h"
+#include "Engine/HitResult.h"
 #include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
-#include "InputMappingContext.h"
-#include "InputModifiers.h"
+#include "GameFramework/WorldSettings.h"
+#include "Garage/BNGarageSubsystem.h"
+#include "Garage/BNGarageTypes.h"
+#include "Kismet/GameplayStatics.h"
+#include "Story/BNStorySubsystem.h"
+#include "UI/BNHUD.h"
 #include "UObject/ConstructorHelpers.h"
-#include "Race/BNRaceEvent.h"
 #include "Vehicle/BNEngineAudioComponent.h"
+#include "Vehicle/BNVehicleEffects.h"
+#include "Vehicle/BNVehicleVisuals.h"
 #include "Vehicle/BNVehicleWheels.h"
 #include "World/BNDayNightCycle.h"
 
@@ -33,8 +36,10 @@ namespace
 	constexpr float DriftStartMinSteer = 0.3f;
 	constexpr float DriftHoldMinSteer = 0.1f;
 	constexpr float DriftEndSpeedFraction = 0.66f;
-	/** Fastest the car is turned by the assist (deg/s), so a big correction never snaps. */
-	constexpr float MaxAssistYawRate = 180.f;
+	/** Fastest the car is turned by the assist (deg/s), so drifts steer smoothly without snapping. */
+	constexpr float MaxAssistYawRate = 125.f;
+	constexpr float PlayerGripAssistDegPerSec = 55.f;
+	constexpr float MinNormalAssistSpeedKmh = 25.f;
 	/** Rest rotation of every Phys_Wheel_* bone in component space (measured; see Vehicle.WheelsAligned). */
 	const FRotator WheelBoneRest(0.f, -90.f, 90.f);
 	const TCHAR* const WheelBones[] = { TEXT("Phys_Wheel_FL"), TEXT("Phys_Wheel_FR"), TEXT("Phys_Wheel_BL"), TEXT("Phys_Wheel_BR") };
@@ -47,6 +52,25 @@ namespace
 	constexpr float TaillightCandelas = 3.f;
 	constexpr float TaillightRange = 300.f;
 	const FLinearColor TaillightColour(1.f, 0.05f, 0.02f);
+
+	constexpr float ExhaustFlameRange = 180.f;
+	constexpr float NosFlameCandelas = 120.f;
+	const FLinearColor NosFlameColour(0.2f, 0.75f, 1.f);
+
+	constexpr float BaseSocketZ = 150.f;
+	const FVector HoodCameraOffset(65.f, 0.f, 118.f);
+	constexpr float HoodCameraPitchDeg = -2.f;
+	constexpr float SpeedShakeMinKmh = 180.f;
+	constexpr float SpeedShakeFullKmh = 260.f;
+	constexpr float MaxSpeedShakeAmplitude = 0.8f;
+	constexpr float NearMissDistanceCm = 480.f;
+	constexpr float NearMissMinSpeedKmh = 80.f;
+	constexpr double NearMissCooldownSeconds = 2.5;
+	constexpr double CrashNearMissSuppressSeconds = 1.5;
+	constexpr float CollisionSparkMinImpulse = 80000.f;
+	constexpr float UpshiftBackfireMinRpm = 4000.f;
+	constexpr float BackfireDurationSeconds = 0.15f;
+	constexpr float LaunchBackfireDurationSeconds = 0.22f;
 
 	UStaticMeshComponent* MakeBodyPart(AActor& Owner, USceneComponent* Parent, const TCHAR* Name, UStaticMesh* Mesh, FName Bone = NAME_None)
 	{
@@ -61,6 +85,7 @@ namespace
 	{
 		Move.ChassisHeight = 144.f;
 		Move.DragCoefficient = 0.31f;
+		Move.DownforceCoefficient = 0.25f;
 		Move.bLegacyWheelFrictionPosition = true;
 
 		Move.WheelSetups.SetNum(UE_ARRAY_COUNT(WheelBones));
@@ -98,19 +123,18 @@ namespace
 
 		Move.SteeringSetup.SteeringType = ESteeringType::Ackermann;
 		Move.SteeringSetup.AngleRatio = 0.7f;
-		// Steering lock vs speed (MPH): calm at speed, but enough left for countersteering a drift.
 		FRichCurve* Steering = Move.SteeringSetup.SteeringCurve.GetRichCurve();
 		Steering->Reset();
 		Steering->AddKey(0.f, 1.f);
-		Steering->AddKey(25.f, 0.85f);
-		Steering->AddKey(60.f, 0.6f);
-		Steering->AddKey(100.f, 0.45f);
+		Steering->AddKey(25.f, 0.82f);
+		Steering->AddKey(60.f, 0.50f);
+		Steering->AddKey(100.f, 0.35f);
+		Steering->AddKey(135.f, 0.26f);
 	}
 }
 
 ABNVehiclePawn::ABNVehiclePawn()
 {
-	// ponytail: hard-coded placeholder car from the engine's vehicle template; move to a data asset per car when real cars exist.
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> CarMesh(TEXT("/Game/Vehicles/SportsCar/SKM_SportsCar.SKM_SportsCar"));
 	static ConstructorHelpers::FClassFinder<UAnimInstance> CarAnim(TEXT("/Game/Vehicles/SportsCar/ABP_SportsCar"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> BodyMesh(TEXT("/Game/Vehicles/SportsCar/SM_SportsCar.SM_SportsCar"));
@@ -130,32 +154,42 @@ ABNVehiclePawn::ABNVehiclePawn()
 	for (int32 i = 0; i < UE_ARRAY_COUNT(WheelBones); ++i)
 	{
 		UStaticMeshComponent* Wheel = MakeBodyPart(*this, Body, *FString::Printf(TEXT("Wheel_%s"), WheelBones[i] + 11), WheelMesh.Object, WheelBones[i]);
-		// The Phys_Wheel_* bones rest at (P 0, Y -90, R 90) in component space, so undo that to line the
-		// mesh axle (its local Y) up with the car's lateral axis; the bone's spin then turns the wheel about it.
-		// SM_SportsCar_Wheel is a right-hand wheel (rim toward +Y, asset bounds origin y = +9.6 cm), so the
-		// left wheels (FL, BL) also turn 180 degrees to face their rims outward. Guarded by Vehicle.WheelsAligned.
+		// Undo Phys_Wheel_* rest rotation so axle (+Y) aligns laterally and left rims face outward (guarded by Vehicle.WheelsAligned).
 		const FQuat Outward = (i % 2 == 0) ? FRotator(0.f, 180.f, 0.f).Quaternion() : FQuat::Identity;
 		Wheel->SetRelativeRotation(WheelBoneRest.Quaternion().Inverse() * Outward);
 		WheelMeshes.Add(Wheel);
 	}
 
+	Visuals = CreateDefaultSubobject<UBNVehicleVisualsComponent>(TEXT("Visuals"));
+	Visuals->SetupAttachment(Body);
+
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(Body);
 	CameraBoom->TargetArmLength = ChaseDistances[0];
-	CameraBoom->SocketOffset.Z = 150.f;
+	CameraBoom->SocketOffset.Z = BaseSocketZ;
 	CameraBoom->bDoCollisionTest = false;
 	CameraBoom->bInheritPitch = false;
 	CameraBoom->bInheritRoll = false;
 	CameraBoom->bEnableCameraRotationLag = true;
-	CameraBoom->CameraRotationLagSpeed = 4.f;
+	CameraBoom->CameraRotationLagSpeed = 9.f;
 	CameraBoom->CameraLagMaxDistance = 50.f;
 
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(CameraBoom);
 	Camera->SetFieldOfView(BaseFov);
+	Camera->PostProcessBlendWeight = 0.f;
+	Camera->PostProcessSettings.bOverride_ColorSaturation = true;
+	Camera->PostProcessSettings.ColorSaturation = FVector4(0.45f, 0.45f, 0.45f, 1.f);
+	Camera->PostProcessSettings.bOverride_ColorGain = true;
+	Camera->PostProcessSettings.ColorGain = FVector4(1.12f, 1.0f, 0.82f, 1.f);
+	Camera->PostProcessSettings.bOverride_VignetteIntensity = true;
+	Camera->PostProcessSettings.VignetteIntensity = 0.65f;
 
 	EngineAudio = CreateDefaultSubobject<UBNEngineAudioComponent>(TEXT("EngineAudio"));
 	EngineAudio->SetupAttachment(Body);
+
+	Effects = CreateDefaultSubobject<UBNVehicleEffectsComponent>(TEXT("Effects"));
+	Effects->SetupAttachment(Body);
 
 	for (const float Side : { -1.f, 1.f })
 	{
@@ -179,10 +213,21 @@ ABNVehiclePawn::ABNVehiclePawn()
 		Tail->SetLightColor(TaillightColour);
 		Tail->SetAttenuationRadius(TaillightRange);
 		CarLights.Add(Tail);
+
+		UPointLightComponent* Exhaust = CreateDefaultSubobject<UPointLightComponent>(Side < 0.f ? TEXT("ExhaustL") : TEXT("ExhaustR"));
+		Exhaust->SetupAttachment(Body);
+		Exhaust->SetRelativeLocation(FVector(-255.f, Side * 42.f, 45.f));
+		Exhaust->SetIntensityUnits(ELightUnits::Candelas);
+		Exhaust->SetIntensity(NosFlameCandelas);
+		Exhaust->SetLightColor(NosFlameColour);
+		Exhaust->SetAttenuationRadius(ExhaustFlameRange);
+		Exhaust->SetCastShadows(false);
+		Exhaust->SetVisibility(false);
+		ExhaustLights.Add(Exhaust);
 	}
 	for (ULocalLightComponent* Light : CarLights)
 	{
-		Light->SetCastShadows(false); // ponytail: shadowless car lights; a shadowed headlight is a High/Ultra option
+		Light->SetCastShadows(false);
 		Light->SetVisibility(false);
 	}
 }
@@ -196,6 +241,50 @@ void ABNVehiclePawn::BeginPlay()
 	{
 		Cycle->OnNightChanged.AddDynamic(this, &ABNVehiclePawn::SetLightsOn);
 		SetLightsOn(Cycle->IsNight());
+	}
+	if (USkeletalMeshComponent* Body = GetMesh())
+	{
+		Body->OnComponentHit.AddUniqueDynamic(this, &ABNVehiclePawn::OnVehicleHit);
+	}
+	LastGear = GetChaosMovement()->GetCurrentGear();
+
+	if (IsPlayerControlled())
+	{
+		if (const UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+		{
+			Prog->ApplyProfileToCar(*this);
+		}
+		if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
+		{
+			Story->EnsureIntroShown(this);
+		}
+	}
+}
+
+void ABNVehiclePawn::EndPlay(const EEndPlayReason::Type EndPlayReason)
+{
+	ResetTimeDilation();
+	Super::EndPlay(EndPlayReason);
+}
+
+void ABNVehiclePawn::UnPossessed()
+{
+	ResetTimeDilation();
+	Super::UnPossessed();
+}
+
+void ABNVehiclePawn::ResetTimeDilation()
+{
+	bSpeedbreakerWanted = false;
+	BoostState.bSpeedbreakerActive = false;
+	BoostState.SpeedbreakerBlend = 0.f;
+	if (bOwnsTimeDilation)
+	{
+		if (UWorld* World = GetWorld())
+		{
+			UGameplayStatics::SetGlobalTimeDilation(World, 1.f);
+		}
+		bOwnsTimeDilation = false;
 	}
 }
 
@@ -214,11 +303,17 @@ bool ABNVehiclePawn::AreLightsOn() const
 
 void ABNVehiclePawn::CycleChaseDistance()
 {
-	if (ChaseDistances.Num() > 0)
+	const int32 TotalModes = ChaseDistances.Num() + 1;
+	ChaseDistanceIndex = (ChaseDistanceIndex + 1) % TotalModes;
+}
+
+FString ABNVehiclePawn::GetCameraModeLabel() const
+{
+	if (IsHoodCamera())
 	{
-		ChaseDistanceIndex = (ChaseDistanceIndex + 1) % ChaseDistances.Num();
-		CameraBoom->TargetArmLength = ChaseDistances[ChaseDistanceIndex];
+		return TEXT("KAPUT KAMERA");
 	}
+	return ChaseDistanceIndex == 0 ? TEXT("YAKIN TAKİP") : TEXT("UZAK TAKİP");
 }
 
 UChaosWheeledVehicleMovementComponent* ABNVehiclePawn::GetChaosMovement() const
@@ -235,31 +330,239 @@ void ABNVehiclePawn::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
+	const float WorldDilation = GetWorld() && GetWorld()->GetWorldSettings()
+		? GetWorld()->GetWorldSettings()->GetEffectiveTimeDilation() : 1.f;
+	const float RealDt = DeltaSeconds / FMath::Max(WorldDilation, 0.05f);
+
 	// Damp spin in the air so jumps land on the wheels.
 	GetMesh()->SetAngularDamping(IsOnGround() ? 0.f : AirborneAngularDamping);
 
-	Camera->SetFieldOfView(FMath::GetMappedRangeValueClamped(
-		FVector2f(0.f, FovMaxSpeedKmh), FVector2f(BaseFov, MaxFov), FMath::Abs(GetSpeedKmh())));
-
 	if (bInputLocked)
 	{
-		// Anything that drives the car directly (gamepad axis still held, scripts) is held off too.
+		PlayerSteeringTarget = 0.f;
+		PlayerSteeringSmoothed = 0.f;
 		UChaosWheeledVehicleMovementComponent* Locked = GetChaosMovement();
 		Locked->SetThrottleInput(0.f);
 		Locked->SetBrakeInput(0.f);
 		Locked->SetHandbrakeInput(true);
 	}
-	UpdateDrift(DeltaSeconds);
+	else if (bHasPlayerSteeringInput)
+	{
+		const float AbsSpeed = FMath::Abs(GetSpeedKmh());
+		const bool bReturning = FMath::Abs(PlayerSteeringTarget) < 0.05f;
+		const bool bReversing = PlayerSteeringTarget * PlayerSteeringSmoothed < -0.02f;
+		const float RiseRate = FMath::GetMappedRangeValueClamped(FVector2f(40.f, 180.f), FVector2f(5.0f, 2.4f), AbsSpeed);
+		const float Rate = bReversing ? 10.5f : bReturning ? 8.5f : RiseRate;
+		PlayerSteeringSmoothed = FMath::FInterpConstantTo(PlayerSteeringSmoothed, PlayerSteeringTarget, DeltaSeconds, Rate);
+		GetChaosMovement()->SetSteeringInput(PlayerSteeringSmoothed);
+	}
 
-	// Ease the camera toward where the car is going while it slides, so drifts read calmly.
-	const float CameraYaw = FMath::FInterpTo(CameraBoom->GetRelativeRotation().Yaw,
-		bDrifting ? GetSlipAngleDegrees() * DriftCameraBlend : 0.f, DeltaSeconds, DriftCameraInterpSpeed);
-	CameraBoom->SetRelativeRotation(FRotator(0.f, CameraYaw, 0.f));
+	UpdateDrift(DeltaSeconds);
+	UpdateNormalGripAssist(DeltaSeconds);
+	UpdateBoostAndEffects(DeltaSeconds, RealDt);
 
 	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
 	if (Move->GetCurrentGear() < 0 && GetSpeedKmh() < -MaxReverseSpeedKmh)
 	{
 		Move->SetBrakeInput(0.f); // in reverse the brake pedal is the throttle
+	}
+}
+
+void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
+{
+	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
+	const int32 Gear = Move->GetCurrentGear();
+	if (Gear > LastGear && Gear > 1 && Move->GetEngineRotationSpeed() > UpshiftBackfireMinRpm)
+	{
+		BoostState.TriggerBackfire(BackfireDurationSeconds);
+		GearShiftKick = 1.f;
+	}
+	LastGear = Gear;
+	GearShiftKick = FMath::FInterpTo(GearShiftKick, 0.f, RealDt, 7.f);
+
+	const float SpeedKmh = GetSpeedKmh();
+	const bool bOnGround = IsOnGround();
+	const UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr;
+	const UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr;
+	const APlayerController* PC = GetController<APlayerController>();
+	const ABNHUD* HUD = PC ? PC->GetHUD<ABNHUD>() : nullptr;
+	const bool bInMenu = (Prog && Prog->IsGarageOpen())
+		|| (Story && Story->IsBlockingGameplayInput())
+		|| (HUD && HUD->IsMenuOpen());
+
+	if (bInputLocked && !bInMenu)
+	{
+		BoostState.UpdateCountdownLaunch(RealDt, PlayerThrottleInput, Boost);
+	}
+	else if (bInMenu)
+	{
+		BoostState.LaunchRevFraction = 0.f;
+	}
+	BoostState.UpdateNos(RealDt, bNosWanted, bInputLocked, bOnGround, SpeedKmh, bDrifting, Boost);
+
+	if (IsPlayerControlled())
+	{
+		BoostState.UpdateSpeedbreaker(RealDt, bSpeedbreakerWanted, bInputLocked, SpeedKmh, Boost);
+	}
+	else
+	{
+		BoostState.bSpeedbreakerActive = false;
+	}
+	BoostState.TickTimers(RealDt);
+
+	if (IsPlayerControlled())
+	{
+		if (BoostState.bSpeedbreakerActive || BoostState.SpeedbreakerBlend > 0.01f)
+		{
+			UGameplayStatics::SetGlobalTimeDilation(GetWorld(), FMath::Lerp(1.f, Boost.SpeedbreakerTimeDilation, BoostState.SpeedbreakerBlend));
+			bOwnsTimeDilation = true;
+		}
+		else if (bOwnsTimeDilation)
+		{
+			BoostState.SpeedbreakerBlend = 0.f;
+			UGameplayStatics::SetGlobalTimeDilation(GetWorld(), 1.f);
+			bOwnsTimeDilation = false;
+		}
+	}
+
+	if (!bInputLocked && bOnGround)
+	{
+		const float SurgeAccel = (BoostState.bNosActive ? Boost.NosAccelCmPerSec2 : 0.f)
+			+ (BoostState.LaunchBoostRemaining > 0.f ? Boost.LaunchBoostAccelCmPerSec2 : 0.f);
+		if (SurgeAccel > 0.f)
+		{
+			USkeletalMeshComponent* Body = GetMesh();
+			const FVector Velocity = Body->GetPhysicsLinearVelocity();
+			const float OldSpeed2D = Velocity.Size2D();
+			const float Cap2D = Boost.NosMaxSpeedKmh / CmPerSecToKmh;
+			const FVector Forward2D = GetActorForwardVector().GetSafeNormal2D();
+			FVector NewVel2D = FVector(Velocity.X, Velocity.Y, 0.f) + Forward2D * (SurgeAccel * DeltaSeconds);
+			const float TargetCap = FMath::Max(OldSpeed2D, Cap2D);
+			if (NewVel2D.Size() > TargetCap)
+			{
+				NewVel2D = NewVel2D.GetSafeNormal() * TargetCap;
+			}
+			Body->SetPhysicsLinearVelocity(FVector(NewVel2D.X, NewVel2D.Y, Velocity.Z));
+		}
+
+		// Speedbreaker sharpens steering authority by swinging travel velocity smoothly toward the nose.
+		if (BoostState.bSpeedbreakerActive && !bDrifting)
+		{
+			USkeletalMeshComponent* Body = GetMesh();
+			const FVector Velocity = Body->GetPhysicsLinearVelocity();
+			if (Velocity.Size2D() > 600.f)
+			{
+				const float Slip = GetSlipAngleDegrees();
+				const float MaxTurn = Boost.SpeedbreakerGripAssistDegPerSec * DeltaSeconds;
+				const float Turn = -FMath::Clamp(Slip, -MaxTurn, MaxTurn);
+				const FVector Travel = FRotator(0.f, Turn, 0.f).RotateVector(FVector(Velocity.X, Velocity.Y, 0.f));
+				Body->SetPhysicsLinearVelocity(FVector(Travel.X, Travel.Y, Velocity.Z));
+			}
+		}
+
+		if (IsPlayerControlled())
+		{
+			UpdateNearMiss(SpeedKmh);
+		}
+	}
+
+	const float RealTimeSeconds = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.f;
+	UBNVehicleVisualsComponent::UpdateExhaustLights(ExhaustLights, BoostState.bNosActive, IsBackfireActive(), RealTimeSeconds);
+	if (Effects)
+	{
+		Effects->UpdateEffects(DeltaSeconds, SpeedKmh, GetSlipAngleDegrees(), bDrifting, bOnGround,
+			BoostState.bNosActive, IsBackfireActive());
+	}
+	UpdateCamera(DeltaSeconds, RealDt, SpeedKmh, RealTimeSeconds);
+}
+
+void ABNVehiclePawn::UpdateCamera(float DeltaSeconds, float RealDt, float SpeedKmh, float RealTimeSeconds)
+{
+	if (bShowcaseMode)
+	{
+		UpdateShowcaseCamera(RealDt);
+		return;
+	}
+	const bool bHood = IsHoodCamera();
+	CameraBoom->bEnableCameraRotationLag = !bHood;
+	CameraBoom->bInheritPitch = bHood;
+
+	const FVector TargetBoomLoc = bHood ? HoodCameraOffset : FVector::ZeroVector;
+	CameraBoom->SetRelativeLocation(FMath::VInterpTo(CameraBoom->GetRelativeLocation(), TargetBoomLoc, RealDt, 16.f));
+
+	const FRotator CurRot = CameraBoom->GetRelativeRotation();
+	if (bHood)
+	{
+		CameraBoom->SetRelativeRotation(FMath::RInterpTo(CurRot, FRotator(HoodCameraPitchDeg, 0.f, 0.f), RealDt, 16.f));
+	}
+	else
+	{
+		const float TargetYaw = bDrifting ? GetSlipAngleDegrees() * DriftCameraBlend : 0.f;
+		const float CameraYaw = FMath::FInterpTo(CurRot.Yaw, TargetYaw, DeltaSeconds, DriftCameraInterpSpeed);
+		const float CameraPitch = FMath::FInterpTo(CurRot.Pitch, 0.f, RealDt, 12.f);
+		CameraBoom->SetRelativeRotation(FRotator(CameraPitch, CameraYaw, 0.f));
+	}
+
+	const float SpeedFov = FMath::GetMappedRangeValueClamped(
+		FVector2f(0.f, FovMaxSpeedKmh), FVector2f(BaseFov, MaxFov), FMath::Abs(SpeedKmh));
+	const float NosFovScale = bHood ? 0.55f : 1.f;
+	Camera->SetFieldOfView(SpeedFov + BoostState.NosBlend * Boost.NosFovBonus * NosFovScale - BoostState.SpeedbreakerBlend * 6.f);
+	Camera->PostProcessBlendWeight = BoostState.SpeedbreakerBlend;
+
+	const float BaseDistance = ChaseDistances.IsValidIndex(ChaseDistanceIndex) ? ChaseDistances[ChaseDistanceIndex] : 650.f;
+	const float TargetArm = bHood ? 0.f : (BaseDistance + BoostState.NosBlend * Boost.NosArmPullback + GearShiftKick * 28.f);
+	const float NewArm = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArm, RealDt, bHood ? 16.f : 12.f);
+	CameraBoom->TargetArmLength = (bHood && NewArm < 2.f) ? 0.f : NewArm;
+
+	const float ShakeScale = (BoostState.bSpeedbreakerActive ? 0.f : (bHood ? 0.35f : 1.f))
+		* FMath::GetMappedRangeValueClamped(FVector2f(SpeedShakeMinKmh, SpeedShakeFullKmh), FVector2f(0.f, MaxSpeedShakeAmplitude), FMath::Abs(SpeedKmh));
+	const float ShakeY = ShakeScale * FMath::Sin(RealTimeSeconds * 37.f);
+	const float ShakeZ = ShakeScale * 0.7f * FMath::Sin(RealTimeSeconds * 53.f + 1.1f);
+	CurrentSocketBaseZ = FMath::FInterpTo(CurrentSocketBaseZ, bHood ? 0.f : BaseSocketZ, RealDt, 16.f);
+	CameraBoom->SocketOffset = FVector(0.f, ShakeY, CurrentSocketBaseZ + ShakeZ);
+}
+
+void ABNVehiclePawn::UpdateNearMiss(float SpeedKmh)
+{
+	if (FMath::Abs(SpeedKmh) < NearMissMinSpeedKmh || !GetWorld())
+	{
+		return;
+	}
+	const double Now = GetWorld()->GetRealTimeSeconds();
+	const FVector MyLocation = GetActorLocation();
+	for (TActorIterator<ABNVehiclePawn> It(GetWorld()); It; ++It)
+	{
+		ABNVehiclePawn* Other = *It;
+		if (!Other || Other == this || FVector::Dist2D(MyLocation, Other->GetActorLocation()) > NearMissDistanceCm)
+		{
+			continue;
+		}
+		if (const double* CooldownUntil = NearMissCooldowns.Find(Other); CooldownUntil && Now < *CooldownUntil)
+		{
+			continue;
+		}
+		NearMissCooldowns.Add(Other, Now + NearMissCooldownSeconds);
+		BoostState.AddNearMissBonus(Boost);
+	}
+}
+
+void ABNVehiclePawn::OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	FVector NormalImpulse, const FHitResult& Hit)
+{
+	if (ABNVehiclePawn* OtherCar = Cast<ABNVehiclePawn>(OtherActor))
+	{
+		if (GetWorld())
+		{
+			NearMissCooldowns.Add(OtherCar, GetWorld()->GetRealTimeSeconds() + CrashNearMissSuppressSeconds);
+		}
+	}
+	const float ImpulseMag = NormalImpulse.Size();
+	if (Effects && ImpulseMag > CollisionSparkMinImpulse)
+	{
+		const float Intensity = FMath::Clamp((ImpulseMag - CollisionSparkMinImpulse) / 320000.f, 0.25f, 1.f);
+		const FVector SparkLoc = Hit.ImpactPoint.IsNearlyZero() ? GetActorLocation() : FVector(Hit.ImpactPoint);
+		const FVector SparkNormal = Hit.ImpactNormal.IsNearlyZero() ? FVector::UpVector : FVector(Hit.ImpactNormal);
+		Effects->TriggerCollisionSparks(SparkLoc, SparkNormal, Intensity);
 	}
 }
 
@@ -293,7 +596,6 @@ void ABNVehiclePawn::UpdateDrift(float DeltaSeconds)
 	const bool bHandbrake = Move->GetHandbrakeInput();
 	if (bHandbrake != bRearAbsBypassed)
 	{
-		// Like a real handbrake, it bypasses ABS so it can lock the rear and start a slide.
 		bRearAbsBypassed = bHandbrake;
 		for (int32 i = FirstRearWheel; i < Move->Wheels.Num(); ++i)
 		{
@@ -307,71 +609,181 @@ void ABNVehiclePawn::UpdateDrift(float DeltaSeconds)
 	if (!bDrifting && bHandbrake && Speed >= Drift.MinSpeedKmh && FMath::Abs(Steer) >= DriftStartMinSteer)
 	{
 		bDrifting = true;
-		DriftDirection = Steer > 0.f ? -1.f : 1.f; // steering right turns right: the car slides out to the left
+		DriftDirection = Steer > 0.f ? -1.f : 1.f;
 		DriftEntrySpeed = GetMesh()->GetPhysicsLinearVelocity().Size2D();
+		CurrentDriftTargetSlip = GetSlipAngleDegrees();
 	}
 
 	if (bDrifting)
 	{
-		// Wheel into the turn holds the drift, more lock = more angle; centred or countersteered unwinds it.
 		const float Into = -Steer * DriftDirection;
 		const float TargetAngle = Into > DriftHoldMinSteer
 			? FMath::GetMappedRangeValueClamped(FVector2f(DriftHoldMinSteer, 1.f), FVector2f(Drift.MinAngleDegrees, Drift.MaxAngleDegrees), Into)
 			: 0.f;
+		const float RawTarget = TargetAngle * DriftDirection;
+		const float InterpRate = (TargetAngle == 0.f || RawTarget * CurrentDriftTargetSlip < 0.f) ? 8.5f : 6.5f;
+		CurrentDriftTargetSlip = FMath::FInterpTo(CurrentDriftTargetSlip, RawTarget, DeltaSeconds, InterpRate);
+
 		const bool bUnwound = TargetAngle == 0.f && FMath::Abs(GetSlipAngleDegrees()) < Drift.ExitAngleDegrees;
 		if (bUnwound || Speed < Drift.MinSpeedKmh * DriftEndSpeedFraction)
 		{
 			bDrifting = false;
+			CurrentDriftTargetSlip = 0.f;
 		}
 		else if (IsOnGround())
 		{
-			ApplyDriftAssist(DeltaSeconds, TargetAngle * DriftDirection, Throttle);
+			ApplyDriftAssist(DeltaSeconds, CurrentDriftTargetSlip, Throttle);
 		}
 	}
 	SetRearGrip(bDrifting ? 0.f : FMath::Min(1.f, RearGripBlend + DeltaSeconds / Drift.GripRecoverSeconds));
+}
+
+void ABNVehiclePawn::UpdateNormalGripAssist(float DeltaSeconds)
+{
+	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
+	const float SpeedKmh = FMath::Abs(GetSpeedKmh());
+	if (bDrifting || bInputLocked || !IsPlayerControlled() || !IsOnGround()
+		|| Move->GetHandbrakeInput() || SpeedKmh < MinNormalAssistSpeedKmh)
+	{
+		return;
+	}
+	USkeletalMeshComponent* Body = GetMesh();
+	const FVector Velocity = Body->GetPhysicsLinearVelocity();
+	if (Velocity.Size2D() < 600.f)
+	{
+		return;
+	}
+	const float Slip = GetSlipAngleDegrees();
+	const float AbsSlip = FMath::Abs(Slip);
+	if (AbsSlip > 0.5f && AbsSlip < 35.f)
+	{
+		const float MaxTurn = PlayerGripAssistDegPerSec * DeltaSeconds;
+		const float Turn = -FMath::Clamp(Slip, -MaxTurn, MaxTurn);
+		const FVector Travel = FRotator(0.f, Turn, 0.f).RotateVector(FVector(Velocity.X, Velocity.Y, 0.f));
+		Body->SetPhysicsLinearVelocity(FVector(Travel.X, Travel.Y, Velocity.Z));
+	}
+	if (FMath::Abs(Move->GetSteeringInput()) < 0.08f)
+	{
+		const FVector Spin = Body->GetPhysicsAngularVelocityInDegrees();
+		Body->SetPhysicsAngularVelocityInDegrees(FVector(Spin.X, Spin.Y, FMath::FInterpTo(Spin.Z, 0.f, DeltaSeconds, 5.f)));
+	}
 }
 
 void ABNVehiclePawn::ApplyDriftAssist(float DeltaSeconds, float TargetSlip, float Throttle)
 {
 	USkeletalMeshComponent* Body = GetMesh();
 	const FVector Velocity = Body->GetPhysicsLinearVelocity();
-	const float Slip = GetSlipAngleDegrees(); // travel direction minus heading, degrees
-	// Travel swings toward the nose (the drift line curves), the nose is turned to keep the target angle.
-	const float TravelYawRate = -Drift.LineTightness * Slip;
-	const float HeadingYawRate = FMath::Clamp(TravelYawRate - Drift.AngleGain * (TargetSlip - Slip), -MaxAssistYawRate, MaxAssistYawRate);
+	const float Slip = GetSlipAngleDegrees();
 
-	// Throttle holds the speed the drift started with (momentum), it does not add to it.
+	if (Throttle < 0.15f || GetChaosMovement()->GetBrakeInput() > 0.1f)
+	{
+		DriftEntrySpeed = FMath::Max(0.f, DriftEntrySpeed - 650.f * DeltaSeconds);
+	}
+
+	const float SpeedScale = FMath::GetMappedRangeValueClamped(FVector2f(80.f, 200.f), FVector2f(1.0f, 0.55f), FMath::Abs(GetSpeedKmh()));
+	const float TravelYawRate = -Drift.LineTightness * SpeedScale * Slip;
+	const float DesiredYawRate = FMath::Clamp(TravelYawRate - Drift.AngleGain * (TargetSlip - Slip), -MaxAssistYawRate, MaxAssistYawRate);
+
 	const float Push = FMath::Max(Throttle, 0.f) * Drift.Thrust * DeltaSeconds;
 	const float Speed2D = FMath::Max(Velocity.Size2D(), FMath::Min(Velocity.Size2D() + Push, DriftEntrySpeed));
 	const float TravelYaw = FMath::RadiansToDegrees(FMath::Atan2(Velocity.Y, Velocity.X)) + TravelYawRate * DeltaSeconds;
 	const FVector Travel = FRotator(0.f, TravelYaw, 0.f).Vector() * Speed2D;
 	Body->SetPhysicsLinearVelocity(FVector(Travel.X, Travel.Y, Velocity.Z));
 	const FVector Spin = Body->GetPhysicsAngularVelocityInDegrees();
-	Body->SetPhysicsAngularVelocityInDegrees(FVector(Spin.X, Spin.Y, HeadingYawRate)); // +Z spin = yaw to the right
+	Body->SetPhysicsAngularVelocityInDegrees(FVector(Spin.X, Spin.Y, FMath::FInterpTo(Spin.Z, DesiredYawRate, DeltaSeconds, 14.f)));
 }
 
 void ABNVehiclePawn::SetRearGrip(float Blend)
 {
 	const bool bTractionControl = !bDrifting;
-	if (Blend == RearGripBlend && bTractionControl == bRearTractionControl)
+	if (Blend == RearGripBlend && bTractionControl == bRearTractionControl && LastAppliedTireGripScale == ActiveTireGripScale)
 	{
-		return; // no physics-thread commands while nothing changes
+		return;
 	}
 	RearGripBlend = Blend;
 	bRearTractionControl = bTractionControl;
+	LastAppliedTireGripScale = ActiveTireGripScale;
 	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
 	for (int32 i = FirstRearWheel; i < Move->Wheels.Num(); ++i)
 	{
 		const UChaosVehicleWheel* Wheel = Move->Wheels[i];
-		Move->SetWheelFrictionMultiplier(i, Wheel->FrictionForceMultiplier * FMath::Lerp(Drift.RearGripScale, 1.f, Blend));
-		// Traction control would cut the wheelspin in a drift; back on once it is over.
+		Move->SetWheelFrictionMultiplier(i, Wheel->FrictionForceMultiplier * ActiveTireGripScale * FMath::Lerp(Drift.RearGripScale, 1.f, Blend));
 		Move->SetTractionControlEnabled(i, bTractionControl && Wheel->bTractionControlEnabled);
+	}
+}
+
+void ABNVehiclePawn::ApplyPhysicsStats(const FBNComputedVehicleStats& Stats)
+{
+	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
+	ActiveTireGripScale = Stats.TireGripScale;
+
+	Move->EngineSetup.MaxTorque = Stats.MaxTorqueNm;
+	Move->EngineSetup.MaxRPM = Stats.MaxRpm;
+	Move->SetMaxEngineTorque(Stats.MaxTorqueNm);
+	Move->SetDragCoefficient(Stats.DragCoefficient);
+	Move->SetDownforceCoefficient(Stats.DownforceCoefficient);
+	Move->TransmissionSetup.GearChangeTime = Stats.GearChangeTime;
+	Move->TransmissionSetup.TransmissionEfficiency = Stats.TransmissionEfficiency;
+	Move->SteeringSetup.AngleRatio = Stats.SteeringAngleRatio;
+
+	for (int32 i = 0; i < Move->Wheels.Num(); ++i)
+	{
+		if (const UChaosVehicleWheel* Wheel = Move->Wheels[i])
+		{
+			Move->SetWheelMaxBrakeTorque(i, Wheel->MaxBrakeTorque * Stats.BrakeScale);
+			if (i < FirstRearWheel)
+			{
+				Move->SetWheelFrictionMultiplier(i, Wheel->FrictionForceMultiplier * ActiveTireGripScale);
+			}
+		}
+	}
+	LastAppliedTireGripScale = -1.f;
+	SetRearGrip(RearGripBlend);
+
+	Drift.Thrust = Stats.DriftThrust;
+	Boost.NosAccelCmPerSec2 = Stats.NosAccelCmPerSec2;
+	Boost.NosMaxSeconds = Stats.NosMaxSeconds;
+	Boost.NosMaxSpeedKmh = Stats.NosMaxSpeedKmh;
+}
+
+void ABNVehiclePawn::ApplyVehicleSpec(EBNCarId CarId, const FBNComputedVehicleStats& Stats)
+{
+	ActiveCarId = CarId;
+	ApplyPhysicsStats(Stats);
+	if (Visuals)
+	{
+		Visuals->ApplyCarVisuals(FBNVehicleSpec::ForCar(CarId), Chassis, ChassisGlass, WheelMeshes);
+	}
+}
+
+void ABNVehiclePawn::ApplyVehicleBuild(const FBNComputedVehicleStats& Stats, const FLinearColor& PaintTint)
+{
+	ApplyPhysicsStats(Stats);
+	ApplyPaintTint(PaintTint);
+}
+
+void ABNVehiclePawn::ApplyPaintTint(const FLinearColor& PaintTint)
+{
+	if (Visuals)
+	{
+		Visuals->ApplyPaintTint(PaintTint, Chassis);
 	}
 }
 
 void ABNVehiclePawn::SetInputLocked(bool bLocked)
 {
+	const bool bWasLocked = bInputLocked;
 	bInputLocked = bLocked;
+	if (bLocked)
+	{
+		bNosWanted = false;
+		BoostState.bNosActive = false;
+		ResetTimeDilation();
+	}
+	else if (bWasLocked && BoostState.TriggerLaunchRelease(Boost))
+	{
+		BoostState.TriggerBackfire(LaunchBackfireDurationSeconds);
+	}
 	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
 	Move->SetThrottleInput(0.f);
 	Move->SetBrakeInput(0.f);
@@ -388,131 +800,4 @@ void ABNVehiclePawn::ResetVehicle()
 		false, nullptr, ETeleportType::TeleportPhysics);
 	GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
 	GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-}
-
-void ABNVehiclePawn::OnSteering(const FInputActionValue& Value)
-{
-	if (bInputLocked)
-	{
-		return;
-	}
-	GetChaosMovement()->SetSteeringInput(Value.Get<float>());
-}
-
-void ABNVehiclePawn::OnThrottle(const FInputActionValue& Value)
-{
-	if (bInputLocked)
-	{
-		return;
-	}
-	GetChaosMovement()->SetThrottleInput(Value.Get<float>());
-}
-
-void ABNVehiclePawn::OnBrake(const FInputActionValue& Value)
-{
-	if (bInputLocked)
-	{
-		return;
-	}
-	// With auto-reverse, holding brake at a standstill reverses.
-	GetChaosMovement()->SetBrakeInput(Value.Get<float>());
-}
-
-void ABNVehiclePawn::OnHandbrake(const FInputActionValue& Value)
-{
-	if (bInputLocked)
-	{
-		return;
-	}
-	GetChaosMovement()->SetHandbrakeInput(Value.Get<bool>());
-}
-
-void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-	UEnhancedInputComponent* Input = Cast<UEnhancedInputComponent>(PlayerInputComponent);
-	const APlayerController* PC = GetController<APlayerController>();
-	UEnhancedInputLocalPlayerSubsystem* Subsystem = PC ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PC->GetLocalPlayer()) : nullptr;
-	if (!Input || !Subsystem)
-	{
-		UE_LOG(LogTemp, Error, TEXT("%s: Enhanced Input is not available, the car cannot be driven."), *GetName());
-		return;
-	}
-
-	// Runs again on every possess/restart; drop the previous context instead of stacking duplicates.
-	if (InputContext)
-	{
-		Subsystem->RemoveMappingContext(InputContext);
-	}
-	InputContext = NewObject<UInputMappingContext>(this);
-	auto MakeAction = [this](EInputActionValueType Type)
-	{
-		UInputAction* Action = NewObject<UInputAction>(this);
-		Action->ValueType = Type;
-		return Action;
-	};
-	auto MapNegated = [this](const UInputAction* Action, const FKey& Key)
-	{
-		InputContext->MapKey(Action, Key).Modifiers.Add(NewObject<UInputModifierNegate>(InputContext));
-	};
-
-	UInputAction* Steering = MakeAction(EInputActionValueType::Axis1D);
-	UInputAction* Throttle = MakeAction(EInputActionValueType::Axis1D);
-	UInputAction* Brake = MakeAction(EInputActionValueType::Axis1D);
-	UInputAction* Handbrake = MakeAction(EInputActionValueType::Boolean);
-	UInputAction* Reset = MakeAction(EInputActionValueType::Boolean);
-	UInputAction* CameraDistance = MakeAction(EInputActionValueType::Boolean);
-	UInputAction* AbandonRace = MakeAction(EInputActionValueType::Boolean);
-
-	InputContext->MapKey(Steering, EKeys::D);
-	InputContext->MapKey(Steering, EKeys::Right);
-	MapNegated(Steering, EKeys::A);
-	MapNegated(Steering, EKeys::Left);
-	InputContext->MapKey(Steering, EKeys::Gamepad_LeftX);
-
-	InputContext->MapKey(Throttle, EKeys::W);
-	InputContext->MapKey(Throttle, EKeys::Up);
-	InputContext->MapKey(Throttle, EKeys::Gamepad_RightTriggerAxis);
-
-	InputContext->MapKey(Brake, EKeys::S);
-	InputContext->MapKey(Brake, EKeys::Down);
-	InputContext->MapKey(Brake, EKeys::Gamepad_LeftTriggerAxis);
-
-	InputContext->MapKey(Handbrake, EKeys::SpaceBar);
-	InputContext->MapKey(Handbrake, EKeys::Gamepad_FaceButton_Bottom);
-
-	InputContext->MapKey(Reset, EKeys::R);
-	InputContext->MapKey(Reset, EKeys::Gamepad_FaceButton_Top);
-
-	InputContext->MapKey(CameraDistance, EKeys::C);
-	InputContext->MapKey(CameraDistance, EKeys::Gamepad_RightThumbstick);
-
-	InputContext->MapKey(AbandonRace, EKeys::BackSpace);
-	InputContext->MapKey(AbandonRace, EKeys::Gamepad_Special_Left);
-
-	Subsystem->AddMappingContext(InputContext, 0);
-
-	// Completed fires with a zero value on release, which centres the wheel and lifts the pedals.
-	for (const ETriggerEvent Event : { ETriggerEvent::Triggered, ETriggerEvent::Completed })
-	{
-		Input->BindAction(Steering, Event, this, &ABNVehiclePawn::OnSteering);
-		Input->BindAction(Throttle, Event, this, &ABNVehiclePawn::OnThrottle);
-		Input->BindAction(Brake, Event, this, &ABNVehiclePawn::OnBrake);
-		Input->BindAction(Handbrake, Event, this, &ABNVehiclePawn::OnHandbrake);
-	}
-	Input->BindAction(Reset, ETriggerEvent::Started, this, &ABNVehiclePawn::ResetVehicle);
-	Input->BindAction(CameraDistance, ETriggerEvent::Started, this, &ABNVehiclePawn::CycleChaseDistance);
-	Input->BindAction(AbandonRace, ETriggerEvent::Started, this, &ABNVehiclePawn::AbandonRace);
-}
-
-void ABNVehiclePawn::AbandonRace()
-{
-	for (TActorIterator<ABNRaceEvent> It(GetWorld()); It; ++It)
-	{
-		if (It->IsRunningFor(this))
-		{
-			It->EndRace();
-		}
-	}
 }

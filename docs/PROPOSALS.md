@@ -1,23 +1,26 @@
 # BLACK NUMBERS — Tasarım Önerileri
 
-> **Durum:** Öneri. **Kanon değildir.** Proje sahibi onaylayana kadar uygulanmaz.
-> Şehrin adı ve kimliği hikâyede açıktır (Q-02). Bu doküman isim vermez, sadece oynanışa hizmet eden bölge tiplerini önerir.
+> **Durum:** Karamara 6-Bölge haritalaması ve Pursuit Breakers ↔ Şehir Faturası tasarımı 2026-11-20 tarihinde kanonla hizalanmıştır ([BLACK_NUMBERS_STORY.md](BLACK_NUMBERS_STORY.md)). Sivil trafik yoğunluk bütçesi Faz 3 performans ölçümüyle kesinleşecektir.
 
-## Şehir Bölgeleri
+## Karamara Şehir Bölgeleri
 
-Hikâye üç yarış disiplini (Sprint, Pist, Drift), Heat 1–10 kovalamacaları ve rota seçimiyle kazanılan bir final kaçışı ister. Bölgeler bu ihtiyaçlara göre seçilir. Her bölgenin hem bir yarış görevi hem bir kaçış karakteri vardır.
+Hikâye üç yarış disiplini (Sprint, Pist, Drift), Heat 1–10 kovalamacaları, Pursuit Breakers ↔ Şehir Faturası takibi ve iki çıkış rotalı Özel Kademe final kaçışı ister. Karamara'nın 6 kanon bölgesi bu ihtiyaçlara göre kurgulanır:
 
-| Bölge | Yarış için | Kovalamaca için | Çevresel anlatı |
+| Kanon Bölge | Yarış için | Kovalamaca için | Çevresel anlatı |
 |---|---|---|---|
-| **Şehir merkezi** | Kısa, keskin dönüşlü Pist turları. Gece ışıklarıyla en "vitrin" bölge | Dar sokaklar, ara geçitler, çok sayıda kavşak; polis barikatı kurmak kolay, kaçmak zor | BLACK NUMBERS'ın vitrin yüzü: bahis salonları, gece kulüpleri, örgütün parası |
-| **Sanayi bölgesi** | Geniş yollar, uzun Sprint düzlükleri, depo içi Drift alanları | Konteyner ve depo arası kısa yollar; Heat 1–3 için ideal ilk kaçış dersi | Mekanikçinin geçmişi, parça kaçakçılığı, araç hazırlık atölyeleri |
-| **Liman** | Rıhtım boyunca hızlı Sprint, vinç altı dönüşler | Açık alanlar helikopter (yüksek Heat) için tehlikeli; tek giriş-çıkışlı rıhtımlar tuzak | Lojistik işlevli BN üyesi, kaçak araç ve parça trafiği |
-| **Otoyollar** | Yüksek hız Sprint'leri, bölgeleri bağlayan omurga | Yüksek Heat'te barikat ve dikenli şerit; çıkış rampaları rota seçimi yaratır | Final kaçışının (Özel Kademe) ana sahnesi olabilir (Q-11) |
-| **Yerleşim sokakları** | Düşük hızlı, teknik Pist'ler | Sivil trafik ve dar sokaklar; polis daha temkinli (Demir'in "canlı" emri ile uyumlu) | Eşin evi/garaj, Ölen Dostun mahallesi, anılar |
-| **Tepe / dağ yolları** | Drift'in evi: virajlı iniş-çıkışlar, sıkı saç tokaları | Az kavşak, tek yol: kaçış zor ama takip edenler de zorlanır | Orijinal kazanın yeri olabilir; mezarlık burada (C18) |
-| **Virajlı drift rotaları** | Drift yarışları ve serbest drift | Kovalamacada riskli ama kestirme | Yeraltı sahnesinin buluşma noktaları |
+| **Merkez Bulvar & Çarşı** *(Şehir merkezi)* | Kısa, keskin dönüşlü Pist turları. Taş/asfalt karma zemin, gece vitrin ışıkları | Dar sokaklar, ara geçitler, çok sayıda kavşak; polis barikatı kurmak kolay, kaçmak zor | BLACK NUMBERS'ın vitrin yüzü: bahis salonları, kamera ağı (`#08` Hakan / `#11` Ozan) |
+| **Doğu Sanayi** *(Sanayi bölgesi)* | Geniş yollar, uzun Sprint düzlükleri, depo içi Drift alanları | Konteyner ve depo arası kısa yollar; Heat 1–3 için ideal ilk kaçış dersi | Tarık Kaya'nın yasal tamirhanesi, Arda Çelik'in galerisi, parça atölyeleri (`#12` Leyla / `#14` Cem) |
+| **Eski Liman** *(Mara Docks)* | Rıhtım boyunca hızlı Sprint, vinç altı dönüşler | Açık alanlar yüksek Heat için tehlikeli; tek giriş-çıkışlı rıhtımlar tuzak | Kaçak parça lojistiği (`#13` Dario), finalde Viktor Serez'in yakalandığı **Eski Liman Köprüsü** |
+| **Kuzey Viyadükleri & Çevre Yolu** *(Otoyollar)* | Yüksek hız Sprint'leri, bölgeleri bağlayan omurga | Yüksek Heat'te barikat, dikenli şerit ve Pursuit Breaker yapıları | Özel Kademe final kaçışının ana sahnesi ve 2 çıkış rotasına ayrılan omurga (`Q-11`) |
+| **Yamaç Mahallesi** *(Yerleşim sokakları)* | Düşük hızlı, teknik Pist'ler | Sivil trafik ve dar sokaklar; polis daha temkinli (Demir'in "canlı" emri ile uyumlu) | Emre ve Selin'in mahallesi, Emre'den kalan kayıt dışı eski garaj |
+| **Kuzey Geçidi & Seyir Tepesi** *(Dağ yolları)* | Drift'in evi: virajlı iniş-çıkışlar, sıkı saç tokaları | Az kavşak, toprak servis yolu kestirmesi (ikinci Özel Kademe kaçış rotası) | 5 yıl önceki kazanın yaşandığı viraj; tepede Emre'nin mezarlığı (`C18`) |
 
-**Önerilen yapım sırası (Faz 3'te):** Önce **sanayi + şehir merkezi** ikilisi. Üç disiplinin üçünü de taşıyabilir ve Heat 1–5 için hem kolay hem zor kaçış alanı verir. Otoyol bağlantısı ve tepe yolları sonraki dilimlerde gelir.
+## Pursuit Breakers ↔ Şehir Faturası (Collateral Damage)
+
+- **Most Wanted Nostaljisi + Kanon Bedeli:** Viyadük iskeleleri, liman vinçleri, su kuleleri ve benzinlik/depo tabelaları çarpıldığında polis takibini yavaşlatan yıkımlar oluşturur (Pursuit Breakers).
+- **Sonuçsuz Eğlence Değildir (Kanon #21):** Yıkılan her Pursuit Breaker, devrilen lamba ve çarpılan sivil/kamu mülkü **Şehir Hasar Kaydı'na (Şehir Faturası)** dolar cinsinden işlenir. Fatura büyüdükçe Demir'in telsiz öfkesi sertleşir ve epilogdaki haber yayınları (`C14`) gerçek hasar bilançosunu gösterir.
+
+**Önerilen yapım sırası (Faz 3'te):** Önce **Doğu Sanayi + Merkez Bulvar** ikilisi ve **Kuzey Viyadüğü** bağlantısı. Üç disiplinin üçünü de taşıyabilir ve Heat 1–5 için hem kolay hem zor kaçış alanı verir. Liman ve Kuzey Geçidi sonraki dilimlerde gelir.
 
 **Ölçek önerisi:** Düşük donanım hedefi için bölgeler World Partition ile parçalara bölünür ve her bölge tek başına yüklenebilecek boyutta tutulur.
 

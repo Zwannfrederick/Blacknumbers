@@ -81,17 +81,17 @@ public:
 	 * street to daylight brightness, so nights stay dark and the sodium lamps read as pools of light.
 	 */
 	UPROPERTY(EditAnywhere, Category = "Look")
-	float DayMinExposureEV100 = -10.f;
+	float DayMinExposureEV100 = 0.5f;
 
 	UPROPERTY(EditAnywhere, Category = "Look")
 	float NightMinExposureEV100 = 3.f;
 
 	UPROPERTY(EditAnywhere, Category = "Look")
-	float MaxExposureEV100 = 14.f;
+	float MaxExposureEV100 = 4.5f;
 
 	/** Sky light recapture is expensive without Lumen; refresh only every N in-game hours. */
 	UPROPERTY(EditAnywhere, Category = "Scene", meta = (ClampMin = "0.05"))
-	float SkyRecaptureHours = 0.25f;
+	float SkyRecaptureHours = 2.0f;
 
 private:
 	void ApplyLook();

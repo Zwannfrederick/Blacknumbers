@@ -2,15 +2,22 @@
 
 #include "CoreMinimal.h"
 #include "WheeledVehiclePawn.h"
+#include "Garage/BNGarageTypes.h"
+#include "Vehicle/BNVehicleBoost.h"
 #include "BNVehiclePawn.generated.h"
 
 class UBNEngineAudioComponent;
+class UBNVehicleEffectsComponent;
+class UBNVehicleVisualsComponent;
 class UCameraComponent;
 class UChaosWheeledVehicleMovementComponent;
 class UInputMappingContext;
 class ULocalLightComponent;
+class UPointLightComponent;
+class UPrimitiveComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
+struct FHitResult;
 struct FInputActionValue;
 
 /**
@@ -29,21 +36,21 @@ struct FBNDriftTuning
 
 	/** Drift angle with the wheel just into the turn, and at full lock. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "5", ClampMax = "60", Units = "Degrees"))
-	float MinAngleDegrees = 15.f;
+	float MinAngleDegrees = 14.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "5", ClampMax = "70", Units = "Degrees"))
-	float MaxAngleDegrees = 45.f;
+	float MaxAngleDegrees = 36.f;
 
 	/** How fast the car's angle follows the target (1/s). Higher = snappier. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.5"))
-	float AngleGain = 4.f;
+	float AngleGain = 3.0f;
 
 	/**
 	 * The direction of travel swings toward where the car points at this many degrees per second per degree
 	 * of drift angle: sets how tight the drift line is. Higher = tighter circle.
 	 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0.1"))
-	float LineTightness = 1.6f;
+	float LineTightness = 1.15f;
 
 	/** Throttle push along the drift (cm/s^2 at full throttle) against the speed the slide scrubs off, up to the entry speed. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, meta = (ClampMin = "0"))
@@ -77,6 +84,8 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 	virtual void BeginPlay() override;
+	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
+	virtual void UnPossessed() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
 
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
@@ -102,8 +111,47 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
 	float GetSlipAngleDegrees() const;
 
+	UFUNCTION(BlueprintCallable, Category = "Vehicle")
+	void SetNosWanted(bool bWanted) { bNosWanted = bWanted; }
+
+	UFUNCTION(BlueprintCallable, Category = "Vehicle")
+	void SetSpeedbreakerWanted(bool bWanted) { bSpeedbreakerWanted = bWanted; }
+
+	UFUNCTION(BlueprintCallable, Category = "Vehicle")
+	void GrantNearMissBonus() { BoostState.AddNearMissBonus(Boost); }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetNosFraction() const { return BoostState.NosFraction; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsNosActive() const { return BoostState.bNosActive; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetSpeedbreakerFraction() const { return BoostState.SpeedbreakerFraction; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsSpeedbreakerActive() const { return BoostState.bSpeedbreakerActive; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetLaunchRevFraction() const { return BoostState.LaunchRevFraction; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsInLaunchSweetSpot() const { return BoostState.IsInLaunchSweetSpot(Boost); }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetLaunchBannerSeconds() const { return BoostState.LaunchBannerRemaining; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetNearMissBannerSeconds() const { return BoostState.NearMissBannerRemaining; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsBackfireActive() const { return BoostState.BackfireFlashRemaining > 0.f; }
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Handling")
 	FBNDriftTuning Drift;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Handling")
+	FBNBoostTuning Boost;
 
 	/** Auto-reverse would otherwise run the reverse gear to ~90 km/h. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Handling", meta = (ClampMin = "5"))
@@ -123,6 +171,9 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Body")
 	TArray<TObjectPtr<UStaticMeshComponent>> WheelMeshes;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Body")
+	TObjectPtr<UBNVehicleVisualsComponent> Visuals;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<USpringArmComponent> CameraBoom;
 
@@ -132,23 +183,56 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Audio")
 	TObjectPtr<UBNEngineAudioComponent> EngineAudio;
 
-	/** Chase distances the camera key (C / gamepad right stick click) cycles between. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Effects")
+	TObjectPtr<UBNVehicleEffectsComponent> Effects;
+
+	/** Chase distances the camera key (C / gamepad right stick click) cycles between before Hood/Kaput mode. */
 	UPROPERTY(EditAnywhere, Category = "Camera", meta = (ClampMin = "200"))
 	TArray<float> ChaseDistances = { 650.f, 900.f };
 
 	/** While drifting the camera turns this fraction of the slip angle toward the travel direction. */
 	UPROPERTY(EditAnywhere, Category = "Camera", meta = (ClampMin = "0", ClampMax = "1"))
-	float DriftCameraBlend = 0.3f;
+	float DriftCameraBlend = 0.45f;
 
 	UPROPERTY(EditAnywhere, Category = "Camera", meta = (ClampMin = "0.1"))
-	float DriftCameraInterpSpeed = 2.f;
+	float DriftCameraInterpSpeed = 5.f;
 
 	UFUNCTION(BlueprintCallable, Category = "Camera")
 	void CycleChaseDistance();
 
+	UFUNCTION(BlueprintPure, Category = "Camera")
+	bool IsHoodCamera() const { return ChaseDistanceIndex >= ChaseDistances.Num(); }
+
+	UFUNCTION(BlueprintPure, Category = "Camera")
+	FString GetCameraModeLabel() const;
+
+	/** Cinematic slow-orbit 3/4 hero camera for Title Screen & Selin'in Garaji showcase. */
+	void SetShowcaseMode(bool bActive, float LateralOffsetCm = 0.f);
+	bool IsShowcaseMode() const { return bShowcaseMode; }
+
 	/** Gives up the race this car is in (Backspace / gamepad View). */
 	UFUNCTION(BlueprintCallable, Category = "Race")
 	void AbandonRace();
+
+	/** Starts or escalates a Karamara police pursuit (P / gamepad D-Pad Up). */
+	UFUNCTION(BlueprintCallable, Category = "Police")
+	void TogglePursuit();
+
+	/** Opens or closes Selin'in Garaji when free-roaming (G / gamepad D-Pad Down). */
+	UFUNCTION(BlueprintCallable, Category = "Garage")
+	void ToggleGarage();
+
+	/** Opens or closes the 16-member BLACK NUMBERS Dossier & Evidence Ledger (B / D-Pad Left). */
+	UFUNCTION(BlueprintCallable, Category = "Story")
+	void ToggleStoryDossier();
+
+	/** Opens main pause/race menu or dismisses active menu/story card (ESC / Start). */
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void TogglePauseMenu();
+
+	void ApplyVehicleSpec(EBNCarId CarId, const FBNComputedVehicleStats& Stats);
+	void ApplyVehicleBuild(const FBNComputedVehicleStats& Stats, const FLinearColor& PaintTint);
+	void ApplyPaintTint(const FLinearColor& PaintTint);
 
 	/** Head and tail lights; switched by the level's ABNDayNightCycle (on at night). */
 	UFUNCTION(BlueprintCallable, Category = "Lights")
@@ -167,6 +251,10 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Lights")
 	TArray<TObjectPtr<ULocalLightComponent>> CarLights;
 
+	/** Separate from CarLights so World.LightsFollowNight only checks headlights/taillights. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Lights")
+	TArray<TObjectPtr<UPointLightComponent>> ExhaustLights;
+
 	/** Field of view widens from BaseFov to MaxFov as speed approaches FovMaxSpeedKmh. */
 	UPROPERTY(EditAnywhere, Category = "Camera")
 	float BaseFov = 90.f;
@@ -182,11 +270,25 @@ private:
 	void OnThrottle(const FInputActionValue& Value);
 	void OnBrake(const FInputActionValue& Value);
 	void OnHandbrake(const FInputActionValue& Value);
+	void OnNos(const FInputActionValue& Value);
+	void OnSpeedbreaker(const FInputActionValue& Value);
+	void AdvanceStoryCard();
 
 	void UpdateDrift(float DeltaSeconds);
-	/** Holds the slide at TargetSlip (signed degrees): turns the car and its direction of travel directly. */
+	void UpdateNormalGripAssist(float DeltaSeconds);
+	/** Holds the slide at TargetSlip (signed degrees): turns the car and its direction of travel smoothly. */
 	void ApplyDriftAssist(float DeltaSeconds, float TargetSlip, float Throttle);
 	void SetRearGrip(float Blend);
+	void ApplyPhysicsStats(const FBNComputedVehicleStats& Stats);
+	void UpdateBoostAndEffects(float DeltaSeconds, float RealDt);
+	void UpdateCamera(float DeltaSeconds, float RealDt, float SpeedKmh, float RealTimeSeconds);
+	void UpdateShowcaseCamera(float RealDt);
+	void UpdateNearMiss(float SpeedKmh);
+	void ResetTimeDilation();
+
+	UFUNCTION()
+	void OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+		FVector NormalImpulse, const FHitResult& Hit);
 
 	bool bDrifting = false;
 	bool bInputLocked = false;
@@ -198,7 +300,27 @@ private:
 	float DriftDirection = 0.f;
 	/** Ground speed (cm/s) when the drift started; the throttle keeps the drift up to it. */
 	float DriftEntrySpeed = 0.f;
+	float CurrentDriftTargetSlip = 0.f;
 	int32 ChaseDistanceIndex = 0;
+
+	FBNBoostState BoostState;
+	bool bNosWanted = false;
+	bool bSpeedbreakerWanted = false;
+	bool bOwnsTimeDilation = false;
+	float PlayerThrottleInput = 0.f;
+	float PlayerSteeringTarget = 0.f;
+	float PlayerSteeringSmoothed = 0.f;
+	bool bHasPlayerSteeringInput = false;
+	int32 LastGear = 0;
+	float GearShiftKick = 0.f;
+	float ActiveTireGripScale = 1.f;
+	float LastAppliedTireGripScale = 1.f;
+	float CurrentSocketBaseZ = 150.f;
+	bool bShowcaseMode = false;
+	float ShowcaseYawDeg = 148.f;
+	float ShowcaseLateralOffsetCm = 0.f;
+	EBNCarId ActiveCarId = EBNCarId::KuroganeMSpec;
+	TMap<TWeakObjectPtr<AActor>, double> NearMissCooldowns;
 
 	/** Owns the runtime-created input actions through its key mappings. */
 	UPROPERTY(Transient)

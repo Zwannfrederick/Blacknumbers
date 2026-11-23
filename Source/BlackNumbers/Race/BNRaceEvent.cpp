@@ -4,9 +4,13 @@
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
+#include "Garage/BNGarageSubsystem.h"
+#include "Police/BNPursuitSubsystem.h"
 #include "Race/BNRaceDefinition.h"
 #include "Race/BNRivalController.h"
+#include "Story/BNStorySubsystem.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Vehicle/BNVehiclePawn.h"
 
@@ -134,13 +138,43 @@ void ABNRaceEvent::TickIdle(ABNVehiclePawn& Car)
 
 void ABNRaceEvent::StartRace(ABNVehiclePawn* Car)
 {
+	BeginRaceInternal(Car, 0, 0.f, nullptr, FLinearColor::White, 0);
+}
+
+void ABNRaceEvent::StartBossRace(ABNVehiclePawn* Car, int32 BossRank, float BossSkill,
+	const FBNComputedVehicleStats& BossStats, const FLinearColor& BossTint, int32 DriftTargetScore)
+{
+	BeginRaceInternal(Car, BossRank, BossSkill, &BossStats, BossTint, DriftTargetScore);
+}
+
+void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float BossSkill,
+	const FBNComputedVehicleStats* BossStats, const FLinearColor& BossTint, int32 DriftTargetScore)
+{
 	if (!Car || !Definition || State == EBNRaceState::Countdown || State == EBNRaceState::Racing)
 	{
 		return;
 	}
+	ActiveBossRank = BossRank;
+	ActiveBossDriftTarget = DriftTargetScore;
+	ActiveBossSkill = BossSkill;
+	ActiveBossStats = BossStats ? *BossStats : FBNComputedVehicleStats();
+	ActiveBossTint = BossTint;
+
 	Player.Car = Car;
 	bArmed = false;
 	ClearRivals();
+
+	// Never carry an active free-roam police chase into a race grid (teleporting away from cops would trigger phantom Evade).
+	if (UWorld* World = GetWorld())
+	{
+		if (UBNPursuitSubsystem* Pursuit = World->GetSubsystem<UBNPursuitSubsystem>())
+		{
+			if (Pursuit->GetState().Phase != EBNPursuitPhase::None)
+			{
+				Pursuit->StopPursuit();
+			}
+		}
+	}
 
 	Car->SetActorTransform(Definition->Grid, false, nullptr, ETeleportType::TeleportPhysics);
 	Car->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
@@ -273,7 +307,9 @@ void ABNRaceEvent::SpawnRivals()
 	const bool bCircuit = Definition->Discipline == EBNRaceDiscipline::Circuit;
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	for (int32 i = 0; i < Definition->RivalSkills.Num(); ++i)
+	const int32 RivalCount = ActiveBossRank > 0 ? 1 : Definition->RivalSkills.Num();
+
+	for (int32 i = 0; i < RivalCount; ++i)
 	{
 		const float Lane = (i % 2 == 0 ? 1.f : -1.f) * GridLaneOffset;
 		const FVector Slot = Definition->Grid.TransformPosition(FVector(-GridRowSpacing * ((i + 1) / 2), Lane, 0.f));
@@ -284,6 +320,10 @@ void ABNRaceEvent::SpawnRivals()
 			UE_LOG(LogTemp, Error, TEXT("%s: could not spawn rival %d"), *GetName(), i);
 			continue;
 		}
+		if (ActiveBossRank > 0)
+		{
+			Car->ApplyVehicleBuild(ActiveBossStats, ActiveBossTint);
+		}
 		Car->AIControllerClass = ABNRivalController::StaticClass();
 		Car->SpawnDefaultController();
 		ABNRivalController* Driver = Cast<ABNRivalController>(Car->GetController());
@@ -293,7 +333,8 @@ void ABNRaceEvent::SpawnRivals()
 			Car->Destroy();
 			continue;
 		}
-		Driver->Setup(this, Definition->RivalSkills[i], Lane);
+		const float Skill = ActiveBossRank > 0 ? ActiveBossSkill : Definition->RivalSkills[i];
+		Driver->Setup(this, Skill, Lane);
 		Car->SetInputLocked(true);
 		FBNRacer& Rival = Rivals.AddDefaulted_GetRef();
 		Rival.Car = Car;
@@ -348,6 +389,8 @@ void ABNRaceEvent::EndRace()
 void ABNRaceEvent::Finish()
 {
 	const float RaceTime = State == EBNRaceState::Racing ? GetRaceTime() : 0.f;
+	const bool bDrift = Definition && Definition->Discipline == EBNRaceDiscipline::Drift;
+	const bool bDriftTimedOut = bDrift && State == EBNRaceState::Racing && GetTimeLeft() <= 0.1f;
 	DriftScore.Finish();
 	if (ABNVehiclePawn* Car = Player.Car.Get())
 	{
@@ -358,6 +401,29 @@ void ABNRaceEvent::Finish()
 	State = EBNRaceState::Finished;
 	StateStart = GetWorld()->GetTimeSeconds();
 	const FBNRaceProgress& Progress = Player.Progress;
+
+	const bool bCompleted = Progress.IsFinished() || bDriftTimedOut;
+	const int32 FinishedBossRank = ActiveBossRank;
+	const int32 BossDriftTarget = ActiveBossDriftTarget;
+	const bool bWonBoss = FinishedBossRank > 0 && bCompleted && (bDrift ? DriftScore.Total() >= BossDriftTarget : GetPlayerPosition() == 1);
+	ActiveBossRank = 0;
+	ActiveBossDriftTarget = 0;
+
+	if (FinishedBossRank > 0)
+	{
+		if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
+		{
+			Story->OnBossRaceFinished(FinishedBossRank, bWonBoss, Player.Car.Get());
+		}
+	}
+	else if (bCompleted)
+	{
+		if (UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+		{
+			Prog->GrantRaceReward(GetPlayerPosition(), Rivals.Num() + 1, bDrift, DriftScore.Total());
+		}
+	}
+
 	UE_LOG(LogTemp, Display, TEXT("BN race '%s' over: finished=%d place=%d/%d time=%.2fs laps=%d drift=%d"),
 		Definition ? *Definition->DisplayName.ToString() : TEXT("?"), Progress.IsFinished(), GetPlayerPosition(), Rivals.Num() + 1,
 		Progress.IsFinished() ? Progress.FinishTime() : RaceTime, Progress.LapTimes().Num(), DriftScore.Total());

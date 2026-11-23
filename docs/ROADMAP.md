@@ -1,20 +1,20 @@
 # BLACK NUMBERS — Yol Haritası
 
-> **Durum:** Yaşayan doküman · **Son güncelleme:** 2026-11-17
+> **Durum:** Yaşayan doküman · **Son güncelleme:** 2026-11-20
 > Hikâye referansı: [BLACK_NUMBERS_STORY.md](BLACK_NUMBERS_STORY.md). Bu doküman hikâyeyi değiştirmez, onu oynanabilir hâle getirme sırasını belirler.
 
 ## Mantık
 
-Hikâye dört oynanış sistemine dayanır: **sokak yarışı (Sprint, Pist, Drift)**, **araç gelişimi (Tier 1–6)**, **polis kovalamacası (Heat 1–10 ve Özel Kademe)** ve **hikâye ilerlemesi (16 BLACK NUMBERS üyesi, deliller, ifşalar)**. Hikâye bu sistemleri kilit olaylarla açar:
+Hikâye dört oynanış sistemine dayanır: **sokak yarışı (Sprint, Pist, Drift + Perfect Launch)**, **araç gelişimi (Tier 1–6 + NOS)**, **polis kovalamacası (Heat 1–10 ve Özel Kademe; Speedbreaker, Pursuit Breakers ↔ Şehir Faturası)** ve **hikâye ilerlemesi (16 BLACK NUMBERS üyesi, deliller, ifşalar)**. Hikâye bu sistemleri kilit olaylarla açar:
 
 | Hikâye olayı | Açtığı sistem |
 |---|---|
-| Yarış zaferleri | Yeni BN rakipleri, delil |
-| Kimlik ifşası (R4) | Heat 6 ve Demir |
-| Mekanikçiyle barışma (R6) | Tier 6 |
+| Yarış zaferleri | Yeni BN rakipleri, delil (`R2`–`R8`) |
+| Kimlik ifşası (`R4`, `#08` Hakan) | Heat 6 ve Demir |
+| Tarık ile barışma (`R6`, `#05` Kaan) | Tier 6 (özel basınçlı NOS dâhil) |
 | Son kovalamaca | Özel Kademe |
 
-Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi başına oynanabilir bir sonuç bırakır. Hikâyeye bağlı fazlar, §18'deki açık soruların bir kısmı karara bağlanmadan başlayamaz (bkz. [Karar bekleyenler](#karar-bekleyenler)).
+Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi başına oynanabilir bir sonuç bırakır. Anlatıdaki `Q-01..Q-14` ve `S-01..S-15` kararları [BLACK_NUMBERS_STORY.md](BLACK_NUMBERS_STORY.md) içinde bağlanmıştır.
 
 **Teknik ilkeler**
 - Arabalar, yarışlar, Heat seviyeleri ve BN üyeleri **veri olarak** tanımlanır (Data Asset). Yeni içerik kod yazmadan eklenir.
@@ -63,113 +63,114 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 **Bitti sayılır:** Aynı bölgede bir Sprint, bir Pist ve bir Drift yarışı baştan sona oynanır.
 *Durum: otomatik testler geçiyor (rakipler oval pisti 2 tur kendi başına bitiriyor), 3 rakiple 1080p'de ~195 FPS. Proje sahibinin üç yarışı oynaması bekleniyor. Ayrıntı: [PHASE2.md](PHASE2.md).*
 
-## Faz 3 — Şehir Dikey Dilimi
+## Faz 2.5 — NFS Most Wanted Nostalji & Adrenalin Katmanı ✅
 
-**Amaç:** Yarışların ve kovalamacaların geçeceği küçük ama gerçek bir şehir bölgesi.
+**Amaç:** Mevcut sürüş ve yarış çekirdeğine 2005 dönemi Most Wanted temposunu, hız hissini ve özgün Karamara sanat yönünü eklemek.
 
-- [ ] Yol ağı: kavşaklar, ana cadde, ara sokaklar, otoyol rampası
-- [ ] Bölge düzeni: yarış rotaları ve kaçış yolları için kısa yollar
-- [ ] Performans bütçesi: düşük donanımda 60 FPS hedefi, ölçüm testi
-- [ ] Kırılabilir dekor: sokak lambaları, bariyer, çöp kutusu çarpınca devrilir/parçalanır (performans bütçesine göre)
-- [ ] Şehrin kimliği netleşince (Q-02) sanat yönü: dönem, mimari, renk paleti
+- [x] **NOS / Nitro (`Left Shift` / Gamepad B):** Drift, yüksek hız ve yakın geçişle (Near-Miss) dolan anlık itki, FOV + kamera geri çekilme darbesi, egzoz ışığı ve sentezlenmiş turbo/NOS sesi *(testli)*
+- [x] **Speedbreaker (`X` / `Left Ctrl` / Gamepad RB):** Zamanı yavaşlatan, dönüş kararlılığını keskinleştiren ve görsel-işitsel odak efekti veren taktiksel mekanik *(testli)*
+- [x] **Perfect Launch:** Yarış geri sayımında devir tutturup yeşil bölgede kalkana anlık çıkış patlaması *(testli)*
+- [x] **MW Radyal Takometre HUD & Kamera Hissi:** 24 dilimli kavisli devir göstergesi, vites kutusu/redline, NOS & Speedbreaker barları, yüksek hız titremesi ve vites geçişinde egzoz patlaması *(testli)*
+- [x] **Karamara Sonbahar-Kehribar Paleti & Konsept Sanat Yönü:** [ART_DIRECTION.md](ART_DIRECTION.md) + 4 özgün konsept görsel
 
-**Bitti sayılır:** Faz 2'deki yarışlar bu bölgeye taşınır, bölge serbest dolaşılabilir.
+## Faz 3 — Şehir Dikey Dilimi (Karamara) ✅
 
-## Faz 4 — Polis Kovalamacası (Heat 1–5)
+**Amaç:** Yarışların ve kovalamacaların geçeceği Karamara'nın ilk dikey dilimini (Doğu Sanayi + Merkez Bulvar + Liman Caddesi + Batı Bulvarı + Kuzey Viyadük bağlantısı) kurmak.
+
+- [x] Yol ağı (`/Game/Maps/KaramaraSlice`): 2×2 ana şehir ızgarası, ara sokak kestirmesi, pürüzsüz eğimli yükseltilmiş Kuzey Viyadüğü rampaları (`Tools/build_karamara_map.py`) *(testli)*
+- [x] Bölge düzeni: Merkez Bulvar pisti, Kuzey Viyadüğü sprinti, Doğu Sanayi konteyner drift avlusu (`3` şehir yarışı) *(testli)*
+- [x] Selin'in Garajı (`ABNGarageZone`) ve 6 Pursuit Breaker kemeri
+- [x] Kırılabilir dekor (`ABNBreakableProp`): bariyer, çöp kutusu ve sandıklar çarpınca parçalanıp **Şehir Hasar Kaydı'na (Şehir Faturası)** işlenir *(testli)*
+- [x] Karamara sanat yönü: [ART_DIRECTION.md](ART_DIRECTION.md) — sonbahar kehribarı gündüz, sodyum-kobalt gece, `bn.Map Karamara` geçişi
+
+**Bitti sayılır:** Faz 2'deki 3 disiplin Karamara'da oynanabilir, yükseltilmiş viyadük çıkışı ve kırılabilir dekor otomatik testle doğrulandı (`BlackNumbers.City.KaramaraSliceAndBreakables`).
+
+## Faz 4 — Polis Kovalamacası (Heat 1–5) ✅ (Çekirdek)
 
 **Amaç:** Standart polis baskısı. Heat 6 ve sonrası bu altyapının üstüne kurulur.
 
-- [ ] Polis araçları ve takip yapay zekâsı: takip, kıstırma, PIT manevrası
-- [ ] Heat göstergesi: dikkat çekme, takip, gözden kaybolma, soğuma süresi, yakalanma
-- [ ] Heat 1–5 kademeleri **veri olarak**: araç sayısı, taktik, yol barikatı
-- [ ] Polis telsiz konuşmaları (çevresel anlatım için altyapı)
-- [ ] Yarış sırasında polisin karışması
+- [x] Polis araçları ve takip yapay zekâsı (`ABNPoliceController`): takip, formasyon kıstırma, tepe lambası, prosedürel 3B Wail/Yelp siren *(testli)*
+- [x] Heat göstergesi ve durum makinesi (`FBNPursuitState` / `UBNPursuitSubsystem`): takip, yakalanma (`BUSTED`), kaçış (`EVADE`), soğuma (`COOLDOWN`) ve iz kaybettirme *(testli)*
+- [x] Heat 1–11 kademeleri **veri olarak** (`FBNHeatTierSpec`): araç sayısı, hız, agresiflik, Heat 3+ yol barikatları; Kanon §8 gereği Heat 6+ kimlik ifşasına (`R4`) kadar kilitli *(testli)*
+- [x] **Şehir Faturası (Collateral Damage) & Pursuit Breakers (`ABNPursuitBreaker`):** Yıkılabilir yapılar çarpılınca devrilip takip eden polisleri devre dışı bırakır ve oturum hasar kaydına işler *(testli)*
+- [x] Polis telsiz konuşmaları ve HUD (`ABNHUD::DrawPursuit`): Heat/Busted/Cooldown barı, Karamara Merkez/Birim telsiz satırı ve kalıcı Şehir Faturası
+- [ ] Yarış sırasında polisin devreye girmesi + sivil trafikle etkileşim *(Faz 3 şehir yolu & Faz 6 ile bağlanacak)*
 
-**Bitti sayılır:** Oyuncu Heat 1'den 5'e kadar kovalanabilir, ya kaçar ya yakalanır.
+**Bitti sayılır:** Oyuncu Heat 1'den 5'e kadar kovalanabilir, Pursuit Breaker yıkabilir, ya kaçar ya yakalanır. *Otomatik testler (`BlackNumbers.Police.*`) geçiyor; test pistinde 4 Pursuit Breaker yerleştirildi.*
 
-## Faz 5 — Garaj ve Araç Gelişimi (Tier 1–5)
+## Faz 5 — Garaj ve Araç Gelişimi (Tier 1–5 / Tier 6 Kilidi) ✅
 
-**Amaç:** Yarış kazanmanın arabayı geliştirmeye dönüşmesi.
+**Amaç:** Yarış kazanmanın ve kovalamacadan kaçmanın arabayı geliştirmeye ve koleksiyonu büyütmeye dönüşmesi.
 
-- [ ] Para ve itibar, kayıt sistemi
-- [ ] Garaj (Eşin sağladığı yer): araç seçimi ve parça takma
-- [ ] Parçalar Tier 1–5: motor, şanzıman, süspansiyon, lastik, ağırlık. Fizik değerlerini **dengeli sınırlar içinde** değiştirir (sürüş testi sınırları korur)
-- [ ] Birden fazla araç (gerçek modeller gelince geçici spor araba kalkar)
+- [x] Para (`Cash`), itibar (`Reputation`) ve `UBNSaveGame` kayıt sistemi (`UBNProgressionSubsystem`) *(testli)*
+- [x] Garaj (`ABNGarageZone` + `G` tuşu ile Canvas garaj menüsü): araç seçimi ve parça takma
+- [x] Parçalar Tier 1–5 (ve `R6` sonrası açılan Tier 6): Motor, Şanzıman, Lastik, Şasi, NOS (`FBNComputedVehicleStats`). Fizik değerlerini Chaos üzerinde canlı günceller ve sürüş test sınırlarını korur *(testli)*
+- [x] Üç özgün kurgusal araç (`Kurogane M-Spec`, `Valken RS-4`, `Vandal 440R`): farklı tork, tutuş, drift itkisi ve boya tonları
 
-**Bitti sayılır:** Oyuncu kazandığı parayla parça alır ve fark sürüşte hissedilir.
+**Bitti sayılır:** Oyuncu kazandığı parayla parça/araç alır, fark sürüşte ölçülür ve kayıt dosyasında saklanır (`BlackNumbers.Garage.*`).
 
-## Faz 6 — BLACK NUMBERS Listesi ve Hikâye İskeleti
+## Faz 6 — BLACK NUMBERS Listesi ve Hikâye İskeleti ✅
 
-**Amaç:** Hikâye ilerlemesinin sistemlere bağlanması. *Q-04, Q-05 ve S-03 kararlarını gerektirir.*
+**Amaç:** Hikâye ilerlemesinin sistemlere bağlanması ([BLACK_NUMBERS_STORY.md](BLACK_NUMBERS_STORY.md) §5.3 kadrosu ve §10.2 kanıt zinciri).
 
-- [ ] 16 BN üyesi **veri olarak**: §5.3 boss şablonu (işlev, kişilik, sürüş tarzı, araç, disiplin, verdiği delil)
-- [ ] Rütbe ilerlemesi: üyeye meydan okuma koşulları (yarış sayısı, itibar, Heat başarısı)
-- [ ] Delil defteri: toplanan deliller ve ifşa kilometre taşları R1–R8
-- [ ] Hikâye durum makinesi: Perde 1–5, bayraklar (kimlik ifşası → Heat 6, barışma → Tier 6)
-- [ ] Geçici sinematikler: storyboard/metin ekranları (gerçek sinematikler Faz 8'de)
-- [ ] Mekanikçinin **kademeli** tutum değişimi: engelleme → şüphe → barışma
+- [x] 16 BN üyesi **veri olarak**: §5.3 boss şablonu (`FBNBossSpec` #16–#01: işlev, kişilik, sürüş tarzı, özgün araç, disiplin, verdiği delil) *(testli)*
+- [x] Rütbe ilerlemesi: sıralı boss yarışları (`#16 -> #01`), `#01` için `R8` kanıt zinciri kilidi *(testli)*
+- [x] Delil defteri: toplanan deliller ve ifşa kilometre taşları R1–R8 (`UBNStorySubsystem`) *(testli)*
+- [x] Hikâye durum makinesi: Perde 1–5, bayraklar (`bIdentityExposed` → Heat 6, `bTarikReconciled` → Tier 6) *(testli)*
+- [x] Geçici sinematikler: Slate storyboard kartları (`C03–C19`; Sequencer sinematikleri Faz 8'de)
+- [x] Mekanikçinin **kademeli** tutum değişimi: `Hostile` → `Suspicious` (`R3`) → `DeepDoubt` (`R4`) → `Reconciled` (`R6`) → `Retired` (`Epilog`) *(testli)*
 
-**Bitti sayılır:** Perde 1 ve Perde 2 baştan sona oynanır. İlk somut delil (R3) bulunur.
+**Bitti sayılır:** Perde 1 ve Perde 2 baştan sona oynanır. İlk somut delil (R3) bulunur (`BlackNumbers.Story.*`).
 
-## Faz 7 — Perde 3–5: Demir ve Son Kovalamaca
+## Faz 7 — Perde 3–5: Demir ve Son Kovalamaca ✅
 
 Üç bağımsız doğrulanabilir alt faza bölünür. Her biri bir öncekinin üzerine kurulur.
 
-### Faz 7A — Kimlik İfşası ve Heat 6
+### Faz 7A — Kimlik İfşası ve Heat 6 ✅
 
-- [ ] Kahramanın kimliğinin ifşası: büyük ve oynanabilir bir olay (R4, C06)
-- [ ] Heat 6 açılır. Demir sahaya iner, emri **CANLI**
-- [ ] Hikâye durum makinesine bağlanır (ifşa bayrağı → Heat 6)
-- [ ] Polis telsizinde Demir'in kişisel katılımı duyulur
+- [x] Kahramanın kimliğinin ifşası: `#08` Hakan Ertürk zaferiyle oynanabilir olay (`R4`, `C06`) *(testli)*
+- [x] Heat 6 açılır. Demir sahaya iner, emri **CANLI** *(testli)*
+- [x] Hikâye durum makinesine bağlanır (ifşa bayrağı → `SetMaxAllowedHeat(10)`) *(testli)*
+- [x] Polis telsizinde Demir'in kişisel katılımı duyulur
 
-**Kabul:** İfşa olayı oynanır. Olaydan önce Heat 6'ya çıkılamaz, sonra çıkılabilir (otomatik test). Heat 6 kovalamacası Heat 5'ten ölçülebilir biçimde zordur (araç sayısı, taktik).
+**Kabul:** Olaydan önce Heat 6'ya çıkılamaz, sonrasında çıkılabilir (`BlackNumbers.Story.Tier6AndFinalChasePIE`).
 
-### Faz 7B — Heat 7–10, Barışma ve Tier 6
+### Faz 7B — Heat 7–10, Barışma ve Tier 6 ✅
 
-- [ ] Heat 7–10 kademeleri: giderek sofistikeleşen taktikler, emir hâlâ **CANLI**
-- [ ] Mekanikçiyle tam barışma (R6, C08); öncesinde kademeli tutum değişimi
-- [ ] **Tier 6** parçaları yalnızca Mekanikçiden, yalnızca barışmadan sonra
-- [ ] Tier 6 dengeli fiziği korur (sürüş testlerinin sınırları içinde kalır)
+- [x] Heat 7–10 kademeleri: giderek sofistikeleşen taktikler, emir hâlâ **CANLI** *(testli)*
+- [x] Mekanikçiyle tam barışma (`R6`, `#05` Kaan, `C08`); öncesinde kademeli tutum değişimi *(testli)*
+- [x] **Tier 6** parçaları yalnızca Tarık barışınca açılır *(testli)*
+- [x] Tier 6 dengeli fiziği korur (sürüş testlerinin sınırları içinde kalır) *(testli)*
 
-**Kabul:** Barışmadan önce Tier 6 satın alınamaz, sonra alınabilir (otomatik test). Tier 6 takılı araç sürüş testlerini geçer. Heat 7–10 veri olarak tanımlıdır ve her kademe bir öncekinden zordur.
+**Kabul:** Barışmadan önce Tier 6 satın alınamaz, sonra alınabilir (`BlackNumbers.Story.*`).
 
-### Faz 7C — Final Yarışı, Özel Kademe ve Sonuçlar
+### Faz 7C — Final Yarışı, Özel Kademe ve Sonuçlar ✅
 
-- [ ] Son yarış ve Liderin **delillerle** teslim edilmesi (R8, C09–C11)
-- [ ] **Özel Kademe** final kovalamacası: polisi yenerek değil, **rota seçimi ve beceriyle** kaçış; Demir'in "ÖLÜ YA DA DİRİ" emri
-- [ ] Eşin kaçışa yardımı (biçimi S-13'e bağlı)
-- [ ] Tahribatın anlatı sonuçları (oynanıştaki kapsamı S-14'e bağlı)
+- [x] Son yarış ve `#01` Viktor Serez'in **R3–R8 delillerle** teslim edilmesi (`C09–C11`) *(testli)*
+- [x] **Özel Kademe** final kovalamacası (`bn.StoryStartFinalChase`): Demir'in **"ONU BANA GETİRİN! ÖLÜ YA DA DİRİ!"** emri ve **2 alternatif kaçış rotası** (`Liman Tünelleri` / `Kuzey Geçidi Servis Yolu`) *(testli)*
+- [x] Selin'in kaçış yardımı ve Epilog storyboard çekirdeği (`C14–C19` — gerçek **Şehir Faturası** ve Tarık kanon replikleri) *(testli)*
 
-**Kabul:** Özel Kademe yalnızca final kovalamacasında açılır (otomatik test). Kaçış en az iki farklı rota ile tamamlanabilir. Kovalamaca Heat 10'dan ölçülebilir biçimde yoğundur. Liderin teslimi, toplanan delillere bağlıdır (delil eksikse yüzleşme açılmaz).
+## Faz 8 — Sequencer Sinematikleri, Ses & Paketleme
 
-## Faz 8 — Epilog, Sinematikler ve Cila
-
-- [ ] Sinematikler C01–C19 (Sequencer)
-- [ ] Epilog: mezar ziyareti, Mekanikçinin Tier 6 reddi (kanon replikler), haber yayınları
-- [ ] Ses, müzik, arayüz cilası
+- [ ] Tam Sequencer sinematikleri C01–C19 *(metin/storyboard çekirdeği + Epilog kartları Faz 6–7'de eklendi)*
+- [ ] Harici ses/müzik & son cila
 - [ ] Performans ve paketleme (Linux + Windows)
 
 ---
 
 ## Karar Bekleyenler
 
-Bu sorular cevaplanmadan ilgili faz tamamlanamaz. Cevaplar hikâye dokümanının §17 bölümüne taşınır.
+Anlatı ve dünya kimliğine ait `Q-01..Q-14` ve `S-01..S-15` maddelerinin tamamı 2026-11-20 tarihinde [BLACK_NUMBERS_STORY.md](BLACK_NUMBERS_STORY.md) §0, §5.3 ve §17'de karara bağlanmıştır. Yalnızca uygulama bütçesi kararı bekleyen teknik kalem aşağıdadır:
 
-| Soru | Engellediği faz | Neden |
+| Soru | İlgili faz | Durum / Not |
 |---|---|---|
-| Q-02 Şehrin adı ve kimliği. Bölge önerisi: [PROPOSALS.md](PROPOSALS.md#şehir-bölgeleri) | Faz 3 sanat yönü | Mimari, dönem, palet buna bağlı |
-| Q-04, Q-05 16 üyenin kimliği ve verdikleri deliller | Faz 6 | Rakip verisi ve delil zinciri |
-| S-03 Lider 16'nın içinde mi (#1), üstünde mi? | Faz 6 | Liste yapısı ve final yarışı |
-| S-08 Heat 1–5'te polis Kahramanı kim olarak kovalar? | Faz 4 telsiz/anlatı | Kovalamacanın anlatı çerçevesi |
-| S-10 Son yarış ile Liderle yüzleşme aynı olay mı? | Faz 7 | Final kurgusu |
-| S-14 Tahribat oynanışta da görünecek mi? | Faz 7 | Hasar sistemi gerekip gerekmediği |
-| Q-11 Final yarış rotası ve kaçış sekansı | Faz 7 | Şehir düzeni bunu taşımalı (Faz 3'te yer ayrılır) |
-| Sivil trafik olacak mı? Öneri: [PROPOSALS.md](PROPOSALS.md#sivil-trafik) | Faz 3 (temel), Faz 4 (polise tepki) | Şehrin canlılığı ve performans bütçesi |
+| Sivil trafik yoğunluk bütçesi (`PROPOSALS.md#sivil-trafik`) | Faz 3 (temel), Faz 4 (polise tepki) | Önerilen tavan: düşük ayarda en fazla ~20 görünür araç (~6 tam fizik); Faz 3 profillemesinde kesinleşir |
 
 ## Değişiklik Günlüğü
 
 | Tarih | Değişiklik |
 |---|---|
+| 2026-11-20 | Hikâye boşlukları (Karamara şehri, 16 üye, süreklilik) kilitlendi; Faz 2.5 (NOS, Speedbreaker, Perfect Launch, MW HUD, konsept sanat) ve Şehir Faturası bağlantıları eklendi. |
 | 2026-11-17 | İlk sürüm. Faz 0 tamam, Faz 1 başladı (sokak lambası sınıfı). |
 | 2026-11-17 | Sahip geri bildirimi: NFS tarzı drift, daha hızlı rakipler, gün batımı geçişi yumuşatıldı, ışık önceliği uyarısı giderildi. |
 | 2026-11-17 | Faz 2 ikinci parça: rakip YZ (3 rakip, beceri, sollama), sıralama, yarıştan çıkma tuşu. Sahibin oyun testi bekleniyor. |

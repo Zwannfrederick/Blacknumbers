@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Garage/BNGarageTypes.h"
 #include "Race/BNDriftScorer.h"
 #include "Race/BNRaceProgress.h"
 #include "BNRaceEvent.generated.h"
@@ -50,6 +51,16 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Race")
 	void StartRace(ABNVehiclePawn* Car);
 
+	/** Puts Car on the grid for a 1v1 BLACK NUMBERS boss showdown (or Drift boss target score). */
+	void StartBossRace(ABNVehiclePawn* Car, int32 BossRank, float BossSkill,
+		const FBNComputedVehicleStats& BossStats, const FLinearColor& BossTint, int32 DriftTargetScore = 0);
+
+	UFUNCTION(BlueprintPure, Category = "Race")
+	int32 GetActiveBossRank() const { return ActiveBossRank; }
+
+	UFUNCTION(BlueprintPure, Category = "Race")
+	int32 GetActiveBossDriftTarget() const { return ActiveBossDriftTarget; }
+
 	/** Ends the race now and shows the results (drift time-out, or the player giving up). */
 	UFUNCTION(BlueprintCallable, Category = "Race")
 	void EndRace();
@@ -90,6 +101,8 @@ public:
 	float GetTimeLeft() const;
 
 private:
+	void BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float BossSkill,
+		const FBNComputedVehicleStats* BossStats, const FLinearColor& BossTint, int32 DriftTargetScore);
 	void TickIdle(ABNVehiclePawn& Car);
 	void TickRacing(ABNVehiclePawn& Car, float DeltaSeconds);
 	void ShowGate(int32 Index);
@@ -111,4 +124,10 @@ private:
 	double StateStart = 0.0;
 	/** The beacon only triggers after the car has been outside it, so spawning or finishing on it does not restart. */
 	bool bArmed = false;
+
+	int32 ActiveBossRank = 0;
+	int32 ActiveBossDriftTarget = 0;
+	float ActiveBossSkill = 0.85f;
+	FBNComputedVehicleStats ActiveBossStats;
+	FLinearColor ActiveBossTint = FLinearColor::White;
 };

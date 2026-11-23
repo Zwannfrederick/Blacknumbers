@@ -286,6 +286,34 @@ def build_races():
     race_event("Race_SkidpadDrift", drift, (21500, -8500, 0))
 
 
+def build_pursuit_breakers():
+    breakers = [
+        ("Breaker_SanayiIskele", (-16500, -10000, 0), 90.0, "Sanayi Iskele Taki", 25000),
+        ("Breaker_DoguVinc", (15500, -10000, 0), 90.0, "Dogu Depo Vinci", 35000),
+        ("Breaker_KuzeyTabela", (-8000, 3200, 0), 0.0, "Kuzey Viyaduk Tabelasi", 30000),
+        ("Breaker_LimanKemer", (11000, 3200, 0), 0.0, "Liman Konteyner Kemeri", 40000),
+    ]
+    for label, loc, yaw, title, cost in breakers:
+        breaker = spawn(unreal.BNPursuitBreaker, label, loc, yaw=yaw, folder="Police/Breakers")
+        breaker.set_editor_property("structure_name", title)
+        breaker.set_editor_property("collateral_cost_dollars", cost)
+        breaker.get_editor_property("pillar_l").set_material(0, MI["MI_Metal_Dark"])
+        breaker.get_editor_property("pillar_r").set_material(0, MI["MI_Metal_Dark"])
+        breaker.get_editor_property("overhead_beam").set_material(0, MI["MI_HazardYellow"])
+
+
+def build_garage_and_breakables():
+    garage = spawn(unreal.BNGarageZone, "Garage_Selin", (-14500, -8500, 0), yaw=0.0, folder="Garage")
+    garage.get_editor_property("pillar_l").set_material(0, MI["MI_Metal_Dark"])
+    garage.get_editor_property("pillar_r").set_material(0, MI["MI_Metal_Dark"])
+    garage.get_editor_property("beacon_beam").set_material(0, MI["MI_GarageBeacon"])
+
+    for i in range(6):
+        prop = spawn(unreal.BNBreakableProp, "TestProp_%d" % (i + 1), (-15500 + i * 700, -4500, 42.5), folder="Props/Breakable")
+        prop.set_editor_property("prop_kind", unreal.BNBreakableKind.BARRIER)
+        prop.get_editor_property("prop_mesh").set_material(0, MI["MI_Barrier_Red"])
+
+
 # ---------------------------------------------------------------- level
 def reset_level():
     # The map is the editor startup map, so it cannot be deleted while loaded: empty it instead.
@@ -340,6 +368,8 @@ build_test_areas()
 build_street()
 build_lighting()
 build_races()
+build_pursuit_breakers()
+build_garage_and_breakables()
 spawn(unreal.PlayerStart, "PlayerStart", (-18000, 0, 100))  # the only start: drive tests use the runway
 
 for lamp in [a for a in actors.get_all_level_actors() if isinstance(a, unreal.BNStreetLamp)]:

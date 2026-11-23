@@ -116,24 +116,24 @@ namespace BNTimeOfDay
 		};
 
 		return {
-			// Night: cool blue-green shadows, room left for orange street lamps.
+			// Night: cool cobalt-slate shadows, room left for sodium-orange street lamps.
 			Key(0.f, 0.f, FLinearColor(1.f, 0.6f, 0.4f), 0.4f, 0.15f,
-				FLinearColor(0.05f, 0.07f, 0.12f), 0.03f, FLinearColor(0.85f, 0.95f, 1.1f), 0.85f, 1.5f),
+				FLinearColor(0.04f, 0.07f, 0.13f), 0.03f, FLinearColor(0.84f, 0.94f, 1.12f), 0.85f, 1.5f),
 			// Dawn
-			Key(5.5f, 2.f, FLinearColor(1.f, 0.55f, 0.35f), 0.1f, 0.4f,
-				FLinearColor(0.6f, 0.45f, 0.4f), 0.035f, FLinearColor(1.05f, 0.95f, 0.9f), 0.95f, 0.5f),
+			Key(5.5f, 2.2f, FLinearColor(1.f, 0.56f, 0.34f), 0.1f, 0.4f,
+				FLinearColor(0.62f, 0.46f, 0.39f), 0.035f, FLinearColor(1.06f, 0.96f, 0.88f), 0.96f, 0.5f),
 			// Morning
-			Key(8.f, 8.f, FLinearColor(1.f, 0.9f, 0.75f), 0.f, 0.9f,
-				FLinearColor(0.75f, 0.72f, 0.6f), 0.025f, FLinearColor(1.05f, 1.f, 0.88f), 1.05f, 0.f),
-			// Noon: warm, hazy, slightly bleached.
-			Key(13.f, 10.f, FLinearColor(1.f, 0.95f, 0.85f), 0.f, 1.f,
-				FLinearColor(0.8f, 0.78f, 0.65f), 0.02f, FLinearColor(1.08f, 1.02f, 0.85f), 1.1f, 0.f),
-			// Golden hour
-			Key(18.f, 5.f, FLinearColor(1.f, 0.6f, 0.3f), 0.f, 0.6f,
-				FLinearColor(0.9f, 0.6f, 0.4f), 0.03f, FLinearColor(1.12f, 0.98f, 0.8f), 1.15f, 0.3f),
+			Key(8.f, 8.f, FLinearColor(1.f, 0.88f, 0.72f), 0.f, 0.9f,
+				FLinearColor(0.76f, 0.71f, 0.56f), 0.025f, FLinearColor(1.07f, 1.f, 0.86f), 1.06f, 0.f),
+			// Noon: Karamara autumn-amber haze (nostalgic mid-2000s warmth, crisp contrast).
+			Key(13.f, 10.f, FLinearColor(1.f, 0.92f, 0.78f), 0.f, 1.f,
+				FLinearColor(0.82f, 0.75f, 0.58f), 0.022f, FLinearColor(1.12f, 1.02f, 0.80f), 1.12f, 0.f),
+			// Golden hour: deep burnt-amber late afternoon.
+			Key(18.f, 5.2f, FLinearColor(1.f, 0.58f, 0.26f), 0.f, 0.6f,
+				FLinearColor(0.92f, 0.58f, 0.36f), 0.032f, FLinearColor(1.16f, 0.98f, 0.74f), 1.18f, 0.3f),
 			// Dusk
-			Key(20.f, 0.3f, FLinearColor(0.9f, 0.4f, 0.3f), 0.2f, 0.25f,
-				FLinearColor(0.3f, 0.25f, 0.35f), 0.035f, FLinearColor(0.95f, 0.92f, 1.05f), 0.9f, 1.f),
+			Key(20.f, 0.3f, FLinearColor(0.92f, 0.42f, 0.30f), 0.2f, 0.25f,
+				FLinearColor(0.28f, 0.25f, 0.36f), 0.035f, FLinearColor(0.95f, 0.92f, 1.06f), 0.9f, 1.f),
 		};
 	}
 }

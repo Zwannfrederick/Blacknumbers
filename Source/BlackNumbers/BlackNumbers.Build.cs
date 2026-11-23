@@ -10,8 +10,8 @@ public class BlackNumbers : ModuleRules
 		bUseUnity = false;
 		PublicDependencyModuleNames.AddRange(new[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "ChaosVehicles", "AudioMixer" });
 
-		// bn.Benchmark reads frame timing globals.
-		PrivateDependencyModuleNames.AddRange(new[] { "RenderCore", "RHI" });
+		// bn.Benchmark reads frame timing globals; Slate powers interactive in-game menus.
+		PrivateDependencyModuleNames.AddRange(new[] { "RenderCore", "RHI", "Slate", "SlateCore" });
 
 		if (Target.bBuildEditor)
 		{

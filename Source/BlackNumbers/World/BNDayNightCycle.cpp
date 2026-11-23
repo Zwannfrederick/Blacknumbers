@@ -114,6 +114,26 @@ void ABNDayNightCycle::ApplyLook()
 		Settings.AutoExposureMinBrightness = BNTimeOfDay::ExposureFloorEV100(SunElevation, DayMinExposureEV100, NightMinExposureEV100);
 		Settings.bOverride_AutoExposureMaxBrightness = true;
 		Settings.AutoExposureMaxBrightness = MaxExposureEV100;
+		Settings.bOverride_AutoExposureSpeedUp = true;
+		Settings.AutoExposureSpeedUp = 1.2f;
+		Settings.bOverride_AutoExposureSpeedDown = true;
+		Settings.AutoExposureSpeedDown = 1.2f;
+		Settings.bOverride_BloomIntensity = true;
+		Settings.BloomIntensity = 0.15f;
+		Settings.bOverride_BloomThreshold = true;
+		Settings.BloomThreshold = 2.0f;
+		Settings.bOverride_LensFlareIntensity = true;
+		Settings.LensFlareIntensity = 0.f;
+		Settings.bOverride_MotionBlurAmount = true;
+		Settings.MotionBlurAmount = 0.2f;
+		Settings.bOverride_AmbientOcclusionIntensity = true;
+		Settings.AmbientOcclusionIntensity = 0.45f;
+		Settings.bOverride_ScreenSpaceReflectionIntensity = true;
+		Settings.ScreenSpaceReflectionIntensity = 55.f;
+		Settings.bOverride_ScreenSpaceReflectionQuality = true;
+		Settings.ScreenSpaceReflectionQuality = 65.f;
+		Settings.bOverride_ScreenSpaceReflectionMaxRoughness = true;
+		Settings.ScreenSpaceReflectionMaxRoughness = 0.6f;
 	}
 }
 
