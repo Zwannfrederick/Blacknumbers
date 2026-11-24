@@ -151,12 +151,12 @@ def build_landmarks(ctx):
                         yaw=yaw, collision=False, folder=gf)
         sb.static_mesh_component.set_material(0, MI[sign_mi])
 
-    # 5. Roadside Turkish Billboards
+    # 5. Roadside Turkish Billboards (all verified >10 m clear of all roads)
     billboards = [
         ("Billboard_Merkez", (-6000.0, -13500.0, 0.0), 45.0, "MI_Sign_Merkez"),
         ("Billboard_Sanayi", (32000.0, 32000.0, 0.0), -30.0, "MI_Sign_DoguSanayi"),
         ("Billboard_Liman",  (44000.0, -16000.0, 0.0), 15.0, "MI_Sign_EskiLiman"),
-        ("Billboard_Gecit",  (-21000.0, -64000.0, 1850.0), 120.0, "MI_Sign_KuzeyGecidi"),
+        ("Billboard_Gecit",  (-14200.0, -59500.0, 1650.0), 120.0, "MI_Sign_KuzeyGecidi"),
     ]
     for label, loc, yaw, sign_mi in billboards:
         bb = place_mesh(label, "SM_BN_Billboard", loc, yaw=yaw, folder=gf)
@@ -188,17 +188,16 @@ def build_landmarks(ctx):
                      c_mats[(idx + lv) % len(c_mats)], "PM_Concrete", collision=True,
                      yaw=yaw, cast_shadow=True, cull_cm=55000)
 
-    # 7. Selin's Enclosed Garage Courtyard in Yamac Mahallesi (Z = +1600 cm)
+    # 7. Selin's Enclosed Garage Courtyard in Yamac Mahallesi (Z = +1600 cm, clear of roads 33->34 & 33->35)
     yf = "Districts/YamacMahallesi"
     gx, gy, gz, gyaw = knet.SELIN_GARAGE_POS
-    # Flat concrete courtyard slab & U-shaped brick workshop shell behind the garage entrance
-    block("SelinCourtyard_Pad", (gx - 900.0, gy + 1200.0, gz - 15.0), (34.0, 30.0, 0.4),
+    block("SelinCourtyard_Pad", (gx - 2200.0, gy - 2000.0, gz - 15.0), (26.0, 22.0, 0.4),
           "MI_Concrete", "PM_Concrete", folder=yf)
-    block("SelinWorkshop_Main", (gx - 2200.0, gy + 1800.0, gz + 450.0), (14.0, 24.0, 9.0),
+    block("SelinWorkshop_Main", (gx - 2800.0, gy - 2600.0, gz + 450.0), (14.0, 16.0, 9.0),
           "MI_Building_Brick", "PM_Concrete", folder=yf)
-    block("SelinWorkshop_Side", (gx - 600.0, gy + 2600.0, gz + 350.0), (18.0, 6.0, 7.0),
+    block("SelinWorkshop_Side", (gx + 2600.0, gy - 1800.0, gz + 350.0), (12.0, 10.0, 7.0),
           "MI_Building_Plaster", "PM_Concrete", folder=yf)
-    place_mesh("SelinWorkshop_Front", "SM_BN_Storefront", (gx - 1480.0, gy + 1800.0, gz),
+    place_mesh("SelinWorkshop_Front", "SM_BN_Storefront", (gx - 2080.0, gy - 2600.0, gz),
                yaw=0.0, collision=False, folder=yf)
 
 
@@ -234,6 +233,9 @@ def build_buildings_and_storefronts(ctx, clearance):
                     scale_down = max(0.55, clr / (max(w, d) * 0.62))
                     w *= scale_down
                     d *= scale_down
+                # Verify ALL 4 building footprint corners clear every adjacent road by >= 280 cm!
+                if any(clearance(px + sx * w, py + sy * d)[0] < 280.0 for sx in (-0.5, 0.5) for sy in (-0.5, 0.5)):
+                    continue
                 # Tall modern glass towers near downtown core; mid-rise brick/plaster around edges
                 is_core = (abs(px) < 22000.0 and abs(py) < 18000.0)
                 h = rng.uniform(2200.0, 4600.0) if is_core else rng.uniform(1200.0, 2600.0)
@@ -328,7 +330,38 @@ def build_street_furniture_and_foliage(ctx, nodes, edges, clearance):
     MI = ctx["MI"]
     meshes = ctx["meshes"]
 
-    # 1. Sodium street lamps on ALL 6 districts (~110 lamps total, spaced smoothly along roads)
+    # Pre-index road segments & junction degrees so lamps and jersey barriers NEVER block an intersecting road!
+    node_degree = {nid: 0 for nid in nodes}
+    edge_segs = []
+    for e in edges:
+        node_degree[e["node_a"]] += 1
+        node_degree[e["node_b"]] += 1
+        ep = e["points"]
+        hw = e["width"] * 0.5
+        for k in range(len(ep) - 1):
+            u, v = ep[k], ep[k + 1]
+            edge_segs.append((
+                e["index"], hw,
+                min(u[0], v[0]) - hw - 600.0, max(u[0], v[0]) + hw + 600.0,
+                min(u[1], v[1]) - hw - 600.0, max(u[1], v[1]) + hw + 600.0,
+                u[0], u[1], u[2], v[0], v[1], v[2],
+            ))
+
+    def encroaches_road(x, y, z, pad_cm, z_tol_cm=320.0, ignore_edge_idx=-1):
+        for eidx, hw, minx, maxx, miny, maxy, ax, ay, az, bx, by, bz in edge_segs:
+            if eidx == ignore_edge_idx or x < minx or x > maxx or y < miny or y > maxy:
+                continue
+            vx, vy = bx - ax, by - ay
+            l2 = vx * vx + vy * vy
+            t = 0.0 if l2 < 1.0 else max(0.0, min(1.0, ((x - ax) * vx + (y - ay) * vy) / l2))
+            qx, qy, qz = ax + vx * t, ay + vy * t, az + (bz - az) * t
+            if abs(qz - z) <= z_tol_cm and math.hypot(x - qx, y - qy) < hw + pad_cm:
+                return True
+        return False
+
+    junction_nodes = [(n["pos"][0], n["pos"][1], n["pos"][2]) for nid, n in nodes.items() if node_degree[nid] >= 3]
+
+    # 1. Sodium street lamps on ALL 6 districts (strictly clear of ALL roads and intersections)
     lamp_positions = []
     for e in edges:
         if e["dirt"]:
@@ -348,12 +381,16 @@ def build_street_furniture_and_foliage(ctx, nodes, edges, clearance):
             if accum >= spacing:
                 accum -= spacing
                 side = 1.0 if (len(lamp_positions) % 2 == 0) else -1.0
-                off = hw + 135.0
+                off = hw + 220.0
                 lx = 0.5 * (a[0] + b[0]) + nx * off * side
                 ly = 0.5 * (a[1] + b[1]) + ny * off * side
                 lz = 0.5 * (a[2] + b[2])
-                # Skip lamps that fall too close to another intersecting road
+                # Skip lamps that fall too close to another lamp, any road asphalt, or any junction
                 if any(math.hypot(lx - ox, ly - oy) < 2400.0 for ox, oy in lamp_positions):
+                    continue
+                if encroaches_road(lx, ly, lz, pad_cm=160.0, z_tol_cm=420.0, ignore_edge_idx=-1):
+                    continue
+                if any(math.hypot(lx - jx, ly - jy) < 1600.0 and abs(lz - jz) < 400.0 for jx, jy, jz in junction_nodes):
                     continue
                 lamp_positions.append((lx, ly))
                 yaw = math.degrees(math.atan2(-ny * side, -nx * side))
@@ -456,6 +493,11 @@ def build_street_furniture_and_foliage(ctx, nodes, edges, clearance):
                 for side in (-1.0, 1.0):
                     bx = px + nx * hw * side
                     by = py + ny * hw * side
+                    # Never block intersecting on-ramps, off-ramps, or multi-way junctions!
+                    if encroaches_road(bx, by, pz, pad_cm=300.0, z_tol_cm=280.0, ignore_edge_idx=e["index"]):
+                        continue
+                    if any(math.hypot(bx - jx, by - jy) < 1750.0 and abs(pz - jz) < 350.0 for jx, jy, jz in junction_nodes):
+                        continue
                     h_barrier.add_instance(unreal.Transform(
                         location=unreal.Vector(bx, by, pz),
                         rotation=unreal.Rotator(roll=0.0, pitch=pitch, yaw=yaw),

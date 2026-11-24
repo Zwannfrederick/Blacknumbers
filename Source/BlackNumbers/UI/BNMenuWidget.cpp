@@ -358,6 +358,49 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 	UBNPursuitSubsystem* Pursuit = World ? World->GetSubsystem<UBNPursuitSubsystem>() : nullptr;
 
 	TSharedRef<SVerticalBox> RaceList = SNew(SVerticalBox);
+	ABNRaceEvent* ActiveRace = ABNRaceEvent::FindActiveRace(World);
+	const bool bHasActiveRace = ActiveRace != nullptr;
+
+	if (bHasActiveRace)
+	{
+		const FString ActiveName = ActiveRace->Definition
+			? ActiveRace->Definition->DisplayName.ToString() : TEXT("Aktif Yarış");
+		const TWeakObjectPtr<ABNRaceEvent> WeakActive = ActiveRace;
+		RaceList->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 12.f))
+		[
+			SNew(SBorder)
+			.BorderImage(WhiteBrush())
+			.BorderBackgroundColor(BNUITheme::CrimsonDarkCard)
+			.Padding(FMargin(16.f, 12.f))
+			[
+				SNew(SHorizontalBox)
+				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(FString::Printf(TEXT("AKTİF YARIŞ SÜRÜYOR: %s  —  Başka yarış başlatmak için önce bu yarıştan çık."), *ActiveName)))
+					.Font(BNUITheme::Font(11, true))
+					.ColorAndOpacity(BNUITheme::ChalkWhite)
+					.AutoWrapText(true)
+				]
+				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(12.f, 0.f, 0.f, 0.f))
+				[
+					BNUITheme::MakeMWButton(FText::FromString(TEXT("YARIŞTAN ÇIK")), EBNButtonVariant::DangerCrimson,
+						FOnClicked::CreateLambda([this, WeakActive]()
+						{
+							if (WeakActive.IsValid())
+							{
+								WeakActive->EndRace();
+							}
+							if (OwnerHUD.IsValid())
+							{
+								OwnerHUD->CloseMenu();
+							}
+							return FReply::Handled();
+						}))
+				]
+			]
+		];
+	}
 
 	if (Story)
 	{
@@ -435,7 +478,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 										St->ChallengeSelectedBoss(Car);
 									}
 									return FReply::Handled();
-								}), bCanFight, 12, FMargin(18.f, 11.f))
+								}), bCanFight && !bHasActiveRace, 12, FMargin(18.f, 11.f))
 						]
 					]
 				]
@@ -506,7 +549,9 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 						]
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
-							BNUITheme::MakeMWButton(FText::FromString(TEXT("YARIŞA BAŞLA")), EBNButtonVariant::CyanIntel,
+							BNUITheme::MakeMWButton(
+								FText::FromString(bHasActiveRace ? TEXT("YARIŞ AKTİF") : TEXT("YARIŞA BAŞLA")),
+								EBNButtonVariant::CyanIntel,
 								FOnClicked::CreateLambda([this, WeakRace]()
 								{
 									ABNVehiclePawn* Car = GetPlayerCar(OwnerHUD);
@@ -516,7 +561,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 										WeakRace->StartRace(Car);
 									}
 									return FReply::Handled();
-								}))
+								}), !bHasActiveRace)
 						]
 					]
 				]

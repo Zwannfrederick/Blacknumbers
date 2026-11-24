@@ -181,6 +181,7 @@ bool FBNEngineProfilesAndAudioTest::RunTest(const FString& Parameters)
 #include "EngineUtils.h"
 #include "Police/BNPoliceController.h"
 #include "Police/BNPursuitSubsystem.h"
+#include "Race/BNRaceEvent.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/AutomationEditorCommon.h"
 #include "Tests/BNPlayTestUtils.h"
@@ -277,6 +278,86 @@ bool FBNPoliceOverhaulPieTest::RunTest(const FString& Parameters)
 
 		case EPhase::Cleanup:
 			TestEqual(TEXT("StopPursuit clears all active chasers"), Pursuit->GetActivePoliceCount(), 0);
+			return true;
+		}
+		return true;
+	}));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
+	return true;
+}
+
+// PIE regression test on KaramaraSlice: driving into another race's world beacon while a race is already active
+// must NEVER start a second race, and other idle race beacons must stay hidden until the active race ends.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNActiveRaceLockPieTest, "BlackNumbers.Race.ActiveRaceBlocksOtherBeacons",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNActiveRaceLockPieTest::RunTest(const FString& Parameters)
+{
+	ADD_LATENT_AUTOMATION_COMMAND(FEditorLoadMap(TEXT("/Game/Maps/KaramaraSlice")));
+	ADD_LATENT_AUTOMATION_COMMAND(FStartPIECommand(false));
+	const double WaitStart = FPlatformTime::Seconds();
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, WaitStart]()
+	{
+		if (FindPlayerCar()) { return true; }
+		if (FPlatformTime::Seconds() - WaitStart > 30.0)
+		{
+			AddError(TEXT("Player car not spawned on KaramaraSlice"));
+			return true;
+		}
+		return false;
+	}));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.5f));
+
+	struct FLockState
+	{
+		TWeakObjectPtr<ABNRaceEvent> RaceA;
+		TWeakObjectPtr<ABNRaceEvent> RaceB;
+		int32 Step = 0;
+		double StepStart = 0.0;
+	};
+	const TSharedRef<FLockState> State = MakeShared<FLockState>();
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]()
+	{
+		UWorld* World = PlayWorld();
+		ABNVehiclePawn* Player = FindPlayerCar();
+		if (!World || !Player) { AddError(TEXT("Missing World or Player")); return true; }
+		const double Now = World->GetTimeSeconds();
+
+		if (State->Step == 0)
+		{
+			TArray<ABNRaceEvent*> Events;
+			for (TActorIterator<ABNRaceEvent> It(World); It; ++It) { Events.Add(*It); }
+			TestTrue(TEXT("KaramaraSlice has >= 2 race events"), Events.Num() >= 2);
+			if (Events.Num() < 2) { return true; }
+			State->RaceA = Events[0];
+			State->RaceB = Events[1];
+			State->RaceA->StartRace(Player);
+			State->Step = 1;
+			State->StepStart = Now;
+			return false;
+		}
+		if (State->Step == 1)
+		{
+			if (Now - State->StepStart < 0.25) { return false; }
+			ABNRaceEvent* RaceA = State->RaceA.Get();
+			ABNRaceEvent* RaceB = State->RaceB.Get();
+			TestEqual(TEXT("FindActiveRace reports RaceA"), ABNRaceEvent::FindActiveRace(World), RaceA);
+			TestFalse(TEXT("other race beacon hidden while RaceA active"), RaceB->Beacon && RaceB->Beacon->IsVisible());
+			// Teleport right onto RaceB's beacon while RaceA is still running!
+			Player->SetActorLocation(RaceB->GetActorLocation() + FVector(0.f, 0.f, 70.f), false, nullptr, ETeleportType::TeleportPhysics);
+			State->Step = 2;
+			State->StepStart = Now;
+			return false;
+		}
+		if (State->Step == 2)
+		{
+			if (Now - State->StepStart < 0.35) { return false; }
+			ABNRaceEvent* RaceA = State->RaceA.Get();
+			ABNRaceEvent* RaceB = State->RaceB.Get();
+			TestEqual(TEXT("RaceB stayed Idle when driven over mid-race"), RaceB->GetState(), EBNRaceState::Idle);
+			TestEqual(TEXT("RaceA remains the sole active race"), ABNRaceEvent::FindActiveRace(World), RaceA);
+			RaceA->EndRace();
 			return true;
 		}
 		return true;

@@ -6,6 +6,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/GameInstance.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Garage/BNGarageSubsystem.h"
 #include "Materials/MaterialInterface.h"
@@ -30,7 +31,7 @@ namespace
 	constexpr float WallNormalMaxZ = 0.6f;
 	/** Rival grid: rows behind the player, alternating right and left of the player's line. */
 	constexpr float GridRowSpacing = 900.f;
-	constexpr float GridLaneOffset = 400.f;
+	constexpr float GridLaneOffset = 300.f;
 
 	ABNVehiclePawn* PlayerCar(const UWorld* World)
 	{
@@ -178,8 +179,44 @@ void ABNRaceEvent::Tick(float DeltaSeconds)
 	}
 }
 
+ABNRaceEvent* ABNRaceEvent::FindActiveRace(const UWorld* World, const ABNRaceEvent* IgnoreEvent)
+{
+	if (!World)
+	{
+		return nullptr;
+	}
+	for (TActorIterator<ABNRaceEvent> It(const_cast<UWorld*>(World)); It; ++It)
+	{
+		ABNRaceEvent* Event = *It;
+		if (!Event || Event == IgnoreEvent)
+		{
+			continue;
+		}
+		if (Event->State == EBNRaceState::Countdown || Event->State == EBNRaceState::Racing)
+		{
+			return Event;
+		}
+	}
+	return nullptr;
+}
+
 void ABNRaceEvent::TickIdle(ABNVehiclePawn& Car)
 {
+	// Never display or trigger another race's world beacon while ANY race is already active!
+	if (FindActiveRace(GetWorld(), this) != nullptr)
+	{
+		bArmed = false;
+		if (Beacon && Beacon->IsVisible())
+		{
+			Beacon->SetVisibility(false);
+		}
+		return;
+	}
+	if (Beacon && !Beacon->IsVisible())
+	{
+		Beacon->SetVisibility(true);
+	}
+
 	const float Distance = FVector::Dist2D(Car.GetActorLocation(), GetActorLocation());
 	if (Distance > StartRadius * RearmRadiusScale)
 	{
@@ -210,6 +247,18 @@ void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float 
 	if (!Car || !Definition || State == EBNRaceState::Countdown || State == EBNRaceState::Racing)
 	{
 		return;
+	}
+	// Hard invariant: never allow two races to run concurrently in the same world.
+	if (ABNRaceEvent* OtherActive = FindActiveRace(GetWorld(), this))
+	{
+		OtherActive->EndRace();
+		OtherActive->ClearRivals();
+		OtherActive->State = EBNRaceState::Idle;
+		OtherActive->bArmed = false;
+		if (OtherActive->Beacon)
+		{
+			OtherActive->Beacon->SetVisibility(false);
+		}
 	}
 	ActiveBossRank = BossRank;
 	ActiveBossDriftTarget = DriftTargetScore;

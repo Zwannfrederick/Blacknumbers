@@ -141,6 +141,7 @@ bool FBNKaramaraCityTest::RunTest(const FString& Parameters)
 			State->SpawnedProp = World->SpawnActor<ABNBreakableProp>(ABNBreakableProp::StaticClass(), TestPropLocation, FRotator::ZeroRotator, Params);
 			TestNotNull(TEXT("spawned test breakable prop"), State->SpawnedProp.Get());
 
+			Pursuit->SetFreeRoamPatrolsEnabled(false);
 			PlaceStopped(*Car, ViaductApproachStart, ViaductApproachYaw);
 			Enter(EPhase::Settle);
 			return false;

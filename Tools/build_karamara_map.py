@@ -159,9 +159,43 @@ def build_road_geometry(nodes, edges):
     sidewalks, viaduct support piers, embankment retaining slopes, and intersection pads via HISM batching."""
     roads = HismBatcher("Karamara_RoadNetwork_HISM", "RoadNetwork/HISM")
 
+    # Pre-index road segments so sidewalks, embankments, and piers NEVER intrude into intersecting or lower roads!
+    all_segs = []
+    for e in edges:
+        ep = e["points"]
+        hw = e["width"] * 0.5
+        for k in range(len(ep) - 1):
+            u, v = ep[k], ep[k + 1]
+            all_segs.append((
+                e["index"], hw,
+                min(u[0], v[0]) - hw - 1800.0, max(u[0], v[0]) + hw + 1800.0,
+                min(u[1], v[1]) - hw - 1800.0, max(u[1], v[1]) + hw + 1800.0,
+                u[0], u[1], u[2], v[0], v[1], v[2],
+            ))
+
+    def hits_other_road(own_idx, x, y, z, pad_cm, z_tol_cm=220.0, only_lower=False):
+        for eidx, hw, minx, maxx, miny, maxy, ax, ay, az, bx, by, bz in all_segs:
+            if eidx == own_idx or x < minx or x > maxx or y < miny or y > maxy:
+                continue
+            vx, vy = bx - ax, by - ay
+            l2 = vx * vx + vy * vy
+            t = 0.0 if l2 < 1.0 else max(0.0, min(1.0, ((x - ax) * vx + (y - ay) * vy) / l2))
+            qx, qy, qz = ax + vx * t, ay + vy * t, az + (bz - az) * t
+            if only_lower:
+                if qz >= z - 60.0:
+                    continue
+            elif abs(qz - z) > z_tol_cm:
+                continue
+            if math.hypot(x - qx, y - qy) < hw + pad_cm:
+                return True
+        return False
+
     # Track widest incident edge per node for clean circular junction pads
     node_width = {nid: 1400.0 for nid in nodes}
     node_mat = {nid: ("MI_Asphalt", "PM_Asphalt") for nid in nodes}
+    for e in edges:
+        node_width[e["node_a"]] = max(node_width[e["node_a"]], e["width"])
+        node_width[e["node_b"]] = max(node_width[e["node_b"]], e["width"])
 
     for e in edges:
         pts = e["points"]
@@ -171,13 +205,15 @@ def build_road_geometry(nodes, edges):
         mat = "MI_Dirt" if is_dirt else ("MI_Cobblestone" if is_carsi else "MI_Asphalt")
         phys = "PM_Dirt" if is_dirt else "PM_Asphalt"
 
-        node_width[e["node_a"]] = max(node_width[e["node_a"]], w)
-        node_width[e["node_b"]] = max(node_width[e["node_b"]], w)
         if is_dirt:
             node_mat[e["node_a"]] = ("MI_Dirt", "PM_Dirt")
             node_mat[e["node_b"]] = ("MI_Dirt", "PM_Dirt")
 
         pier_accum = 2200.0
+        na_pos, nb_pos = nodes[e["node_a"]]["pos"], nodes[e["node_b"]]["pos"]
+        na_clear = node_width[e["node_a"]] * 0.65 + 450.0
+        nb_clear = node_width[e["node_b"]] * 0.65 + 450.0
+
         for i in range(len(pts) - 1):
             a, b = pts[i], pts[i + 1]
             dx, dy, dz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
@@ -206,23 +242,31 @@ def build_road_geometry(nodes, edges):
                     roads.add("EdgeLine", (mx + nx * eo, my + ny * eo, mz + 1.5), (slab_len_m, 0.14, 0.02),
                               "MI_LineWhite", None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=28000)
 
-                # Raised urban sidewalks along flat Merkez / Sanayi / Yamac streets
+                # Raised urban sidewalks along flat Merkez / Sanayi / Yamac streets — strictly clear of junctions!
                 if not e["highway"] and e["district"] in (knet.DIST_MERKEZ, knet.DIST_SANAYI, knet.DIST_YAMAC):
-                    sw_w = 300.0
-                    for side in (-1.0, 1.0):
-                        so = (w * 0.5 + sw_w * 0.5) * side
-                        roads.add("Sidewalk", (mx + nx * so, my + ny * so, mz - 12.0),
-                                  (slab_len_m, sw_w / 100.0, 0.52), "MI_Sidewalk", "PM_Concrete",
-                                  collision=True, yaw=yaw, pitch=pitch, cast_shadow=False)
+                    near_junction = (
+                        math.hypot(mx - na_pos[0], my - na_pos[1]) < na_clear
+                        or math.hypot(mx - nb_pos[0], my - nb_pos[1]) < nb_clear
+                    )
+                    if not near_junction:
+                        sw_w = 300.0
+                        for side in (-1.0, 1.0):
+                            so = (w * 0.5 + sw_w * 0.5) * side
+                            sx, sy = mx + nx * so, my + ny * so
+                            if not hits_other_road(e["index"], sx, sy, mz, pad_cm=260.0, z_tol_cm=200.0):
+                                roads.add("Sidewalk", (sx, sy, mz - 12.0),
+                                          (slab_len_m, sw_w / 100.0, 0.52), "MI_Sidewalk", "PM_Concrete",
+                                          collision=True, yaw=yaw, pitch=pitch, cast_shadow=False)
 
             # Structural support under elevated segments (Z > 120 cm)
             if mz > 120.0:
                 is_bridge_span = (e["node_a"], e["node_b"]) in ((20, 21), (21, 20))
-                if e["highway"] and not is_bridge_span:
+                over_lower_road = hits_other_road(e["index"], mx, my, mz, pad_cm=w * 0.55 + 250.0, only_lower=True)
+                if (e["highway"] or over_lower_road) and not is_bridge_span:
                     roads.add("ViaductGirder", (mx, my, mz - 95.0), (slab_len_m, slab_w_m * 0.86, 1.3),
                               "MI_Concrete", "PM_Concrete", collision=True, yaw=yaw, pitch=pitch, cast_shadow=True)
                     pier_accum += seg3d
-                    if pier_accum >= 4500.0:
+                    if pier_accum >= 4500.0 and not over_lower_road:
                         pier_accum = 0.0
                         pier_h = mz + 120.0
                         roads.add("ViaductPier", (mx, my, (mz - 100.0) * 0.5 - 60.0),

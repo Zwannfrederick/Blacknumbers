@@ -28,10 +28,16 @@ ABNBreakableProp::ABNBreakableProp()
 	RootComponent = PropMesh;
 	PropMesh->SetStaticMesh(CubeMesh);
 	PropMesh->SetSimulatePhysics(false);
+	// Overlap vehicles & pawns instead of BlockAll so smashing a wooden crate/bin/plastic barrier never bounces
+	// or launches the car like an infinite-mass bunker before BreakProp fires; keep WorldStatic Block for flying debris!
 	PropMesh->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
+	PropMesh->SetCollisionResponseToChannel(ECC_Vehicle, ECR_Overlap);
+	PropMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	PropMesh->SetGenerateOverlapEvents(true);
 	PropMesh->SetNotifyRigidBodyCollision(true);
 	PropMesh->SetCastShadow(false);
 	PropMesh->OnComponentHit.AddDynamic(this, &ABNBreakableProp::OnPropHit);
+	PropMesh->OnComponentBeginOverlap.AddDynamic(this, &ABNBreakableProp::OnPropOverlap);
 }
 
 void ABNBreakableProp::OnConstruction(const FTransform& Transform)
@@ -74,6 +80,23 @@ void ABNBreakableProp::OnPropHit(UPrimitiveComponent* HitComponent, AActor* Othe
 	if (Car && FMath::Abs(Car->GetSpeedKmh()) >= MinBreakSpeedKmh)
 	{
 		BreakProp(Car->GetVelocity(), Car->IsPlayerControlled());
+	}
+}
+
+void ABNBreakableProp::OnPropOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (bBroken)
+	{
+		return;
+	}
+	if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(OtherActor))
+	{
+		if (FMath::Abs(Car->GetSpeedKmh()) >= MinBreakSpeedKmh)
+		{
+			Car->AddCameraImpulse(0.22f);
+			BreakProp(Car->GetVelocity(), Car->IsPlayerControlled());
+		}
 	}
 }
 

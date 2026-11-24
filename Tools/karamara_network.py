@@ -294,8 +294,52 @@ def _heading_deg(p0, p1):
     return math.degrees(math.atan2(p1[1] - p0[1], p1[0] - p0[0]))
 
 
+def _smooth_race_path(pts, closed=False):
+    """Rounds sharp >40-deg intersection vertices into gentle curved corner arcs so UE's USplineComponent
+    never overshoots into corner buildings and AI rivals can track every city turn cleanly."""
+    n = len(pts)
+    if n < 3:
+        return list(pts)
+    out = []
+    # For closed circuits, strip duplicate last point while rounding, then re-close at the end
+    work = pts[:-1] if (closed and math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) < 50.0) else list(pts)
+    m = len(work)
+    for i in range(m):
+        if not closed and (i == 0 or i == m - 1):
+            out.append(work[i])
+            continue
+        p_prev = work[(i - 1) % m]
+        p_cur = work[i]
+        p_next = work[(i + 1) % m]
+        v1 = (p_cur[0] - p_prev[0], p_cur[1] - p_prev[1], p_cur[2] - p_prev[2])
+        v2 = (p_next[0] - p_cur[0], p_next[1] - p_cur[1], p_next[2] - p_cur[2])
+        l1 = math.hypot(v1[0], v1[1])
+        l2 = math.hypot(v2[0], v2[1])
+        if l1 < 10.0 or l2 < 10.0:
+            out.append(p_cur)
+            continue
+        dot = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2)))
+        ang = math.degrees(math.acos(dot))
+        if ang > 40.0:
+            # Quadratic Bezier chamfer pulled 950 cm back along each leg inside the wide junction pad
+            cut1 = min(950.0, l1 * 0.42)
+            cut2 = min(950.0, l2 * 0.42)
+            a = tuple(p_cur[c] - v1[c] * (cut1 / l1) for c in range(3))
+            b = tuple(p_cur[c] + v2[c] * (cut2 / l2) for c in range(3))
+            for t in (0.0, 0.35, 0.65, 1.0):
+                u = 1.0 - t
+                q = tuple(u * u * a[c] + 2.0 * u * t * p_cur[c] + t * t * b[c] for c in range(3))
+                out.append(q)
+        else:
+            out.append(p_cur)
+    if closed and out:
+        out.append(out[0])
+    return out
+
+
 def _make_checkpoints_from_path(pts, num_gates, closed=False):
-    """Picks evenly spaced (x, y, z, yaw_deg) checkpoint gates directly on the road polyline."""
+    """Picks evenly spaced (x, y, z, yaw_deg) checkpoint gates directly on straight/gentle portions of the
+    road polyline, nudging away from sharp corner apexes so gates never sit twisted across a junction corner."""
     cum = [0.0]
     for i in range(1, len(pts)):
         cum.append(cum[-1] + math.sqrt(sum((pts[i][c] - pts[i - 1][c]) ** 2 for c in range(3))))
@@ -312,16 +356,31 @@ def _make_checkpoints_from_path(pts, num_gates, closed=False):
                 return p[0], p[1], p[2], yaw
         return pts[-1][0], pts[-1][1], pts[-1][2], 0.0
 
+    def curvature_at(d):
+        _, _, _, y0 = at_dist(max(0.0, d - 900.0))
+        _, _, _, y1 = at_dist(min(total, d + 900.0))
+        diff = abs(((y1 - y0 + 180.0) % 360.0) - 180.0)
+        return diff
+
     gates = []
-    if closed:
-        for i in range(num_gates):
-            gates.append(at_dist(total * (i + 1) / float(num_gates) - 1500.0 if i == num_gates - 1 else total * (i + 1) / float(num_gates)))
-    else:
-        for i in range(1, num_gates + 1):
-            frac = i / float(num_gates)
-            d = total * frac - (800.0 if i == num_gates else 0.0)
-            gates.append(at_dist(d))
-    return gates, at_dist(600.0), total
+    for i in range(num_gates):
+        if closed:
+            d = total * (i + 1) / float(num_gates) - (1500.0 if i == num_gates - 1 else 0.0)
+        else:
+            d = total * (i + 1) / float(num_gates) - (800.0 if i == num_gates - 1 else 0.0)
+        # If the nominal distance lands right on a sharp corner (>32 deg turn), pick the cleanest nearby straight!
+        if curvature_at(d) > 32.0:
+            best_d = d
+            best_c = curvature_at(d)
+            for shift in (-2400.0, 2400.0, -3800.0, 3800.0):
+                cand = max(1400.0, min(total - 1000.0, d + shift))
+                c = curvature_at(cand)
+                if c < best_c:
+                    best_c = c
+                    best_d = cand
+            d = best_d
+        gates.append(at_dist(d))
+    return gates, at_dist(1400.0), total
 
 
 def build_race_specs(nodes, edges, edge_lookup):
@@ -329,10 +388,14 @@ def build_race_specs(nodes, edges, edge_lookup):
     specs = []
 
     def add_route(asset_name, title, discipline, node_chain, num_gates, laps=1, time_limit=75.0,
-                  gate_width=2000.0, rivals=(0.76, 0.86, 0.94), beacon_offset=(0.0, -1400.0)):
+                  gate_width=1750.0, rivals=(0.76, 0.86, 0.94), beacon_offset=(0.0, -1400.0)):
         closed = (discipline == "CIRCUIT")
-        pts = trace_node_chain(nodes, edges, edge_lookup, node_chain)
+        raw_pts = trace_node_chain(nodes, edges, edge_lookup, node_chain)
+        pts = _smooth_race_path(raw_pts, closed=closed)
         gates, grid, total_cm = _make_checkpoints_from_path(pts, num_gates, closed=closed)
+        # Fit gate width cleanly to the narrowest road on this route so posts stay on shoulders, never inside walls!
+        min_road_w = min(edges[edge_lookup[(node_chain[k], node_chain[k + 1])][0]]["width"] for k in range(len(node_chain) - 1))
+        clamped_gw = min(gate_width, min_road_w + 150.0)
         # Beacon sits right off the start shoulder so player spots it cleanly without accidental instant re-trigger
         gyaw_rad = math.radians(grid[3])
         rx, ry = -math.sin(gyaw_rad), math.cos(gyaw_rad)
@@ -341,7 +404,7 @@ def build_race_specs(nodes, edges, edge_lookup):
         specs.append(dict(
             name=asset_name, title=title, discipline=discipline,
             grid=(grid[0], grid[1], grid[2] + 65.0, grid[3]),
-            checkpoints=gates, laps=laps, time_limit=time_limit, gate_width=gate_width,
+            checkpoints=gates, laps=laps, time_limit=time_limit, gate_width=clamped_gw,
             racing_line=pts, rivals=rivals, beacon=(bx, by, grid[2]), length_m=total_cm / 100.0,
         ))
 

@@ -317,8 +317,24 @@ void ABNVehiclePawn::Tick(float DeltaSeconds)
 		? GetWorld()->GetWorldSettings()->GetEffectiveTimeDilation() : 1.f;
 	const float RealDt = DeltaSeconds / FMath::Max(WorldDilation, 0.05f);
 
-	// Damp spin in the air so jumps land on the wheels.
-	GetMesh()->SetAngularDamping(IsOnGround() ? 0.f : AirborneAngularDamping);
+	// Damp spin in the air and gently self-right roll/pitch so hill crests & knocks always land on all 4 wheels.
+	const bool bGrounded = IsOnGround();
+	USkeletalMeshComponent* ChassisBody = GetMesh();
+	ChassisBody->SetAngularDamping(bGrounded ? 0.15f : AirborneAngularDamping);
+	if (!bGrounded)
+	{
+		FVector AirVel = ChassisBody->GetPhysicsLinearVelocity();
+		if (AirVel.Z > 260.f)
+		{
+			AirVel.Z = 260.f;
+			ChassisBody->SetPhysicsLinearVelocity(AirVel);
+		}
+		FVector AirAng = ChassisBody->GetPhysicsAngularVelocityInDegrees();
+		const FRotator Rot = GetActorRotation();
+		AirAng.X = FMath::Clamp(AirAng.X - Rot.Roll * 2.2f * DeltaSeconds * 10.f, -55.f, 55.f);
+		AirAng.Y = FMath::Clamp(AirAng.Y - Rot.Pitch * 2.2f * DeltaSeconds * 10.f, -55.f, 55.f);
+		ChassisBody->SetPhysicsAngularVelocityInDegrees(AirAng);
+	}
 
 	if (bInputLocked)
 	{
@@ -540,6 +556,44 @@ void ABNVehiclePawn::OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* Oth
 		NearMissCooldowns.Add(OtherCar, GetWorld()->GetRealTimeSeconds() + CrashNearMissSuppressSeconds);
 	}
 	const float ImpulseMag = NormalImpulse.Size();
+
+	// Anti-launch & wall-glance physics stabilizer: kill absurd Chaos vertical rocket bounces & flip spins
+	// on wall/barrier/curb/car impacts so crashes slide cleanly like Most Wanted instead of catapulting into the air.
+	if (FMath::Abs(Hit.ImpactNormal.Z) < 0.65f && ImpulseMag > 25000.f)
+	{
+		if (USkeletalMeshComponent* Body = GetMesh())
+		{
+			FVector Vel = Body->GetPhysicsLinearVelocity();
+			bool bAdjustedVel = false;
+			if (Vel.Z > 150.f)
+			{
+				Vel.Z = 150.f;
+				bAdjustedVel = true;
+			}
+			const FVector Normal2D = FVector(Hit.ImpactNormal.X, Hit.ImpactNormal.Y, 0.f).GetSafeNormal();
+			if (!Normal2D.IsNearlyZero())
+			{
+				const float BounceOut = FVector::DotProduct(FVector(Vel.X, Vel.Y, 0.f), Normal2D);
+				if (BounceOut > 200.f)
+				{
+					const FVector Subtract = Normal2D * (BounceOut - 160.f);
+					Vel.X -= Subtract.X;
+					Vel.Y -= Subtract.Y;
+					bAdjustedVel = true;
+				}
+			}
+			if (bAdjustedVel)
+			{
+				Body->SetPhysicsLinearVelocity(Vel);
+			}
+			FVector Ang = Body->GetPhysicsAngularVelocityInDegrees();
+			Ang.X = FMath::Clamp(Ang.X, -40.f, 40.f);
+			Ang.Y = FMath::Clamp(Ang.Y, -40.f, 40.f);
+			Ang.Z = FMath::Clamp(Ang.Z, -135.f, 135.f);
+			Body->SetPhysicsAngularVelocityInDegrees(Ang);
+		}
+	}
+
 	if (ImpulseMag > CollisionSparkMinImpulse)
 	{
 		const float Intensity = FMath::Clamp((ImpulseMag - CollisionSparkMinImpulse) / 320000.f, 0.25f, 1.f);

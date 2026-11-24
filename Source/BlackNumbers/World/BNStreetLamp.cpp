@@ -1,12 +1,18 @@
 #include "World/BNStreetLamp.h"
 
+#include "Audio/BNAudioSubsystem.h"
+#include "Components/BoxComponent.h"
 #include "Components/SpotLightComponent.h"
-#include "Materials/MaterialInstanceDynamic.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
+#include "GameFramework/PlayerController.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/PackageName.h"
+#include "Police/BNPursuitSubsystem.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Vehicle/BNVehicleEffects.h"
+#include "Vehicle/BNVehiclePawn.h"
 #include "World/BNDayNightCycle.h"
 
 namespace
@@ -21,6 +27,10 @@ namespace
 	constexpr float CoolDownSeconds = 1.5f;
 	/** Photocells differ: each lamp switches up to this long after the cycle says so. */
 	constexpr float MaxSwitchDelaySeconds = 2.5f;
+	constexpr float KnockDurationSeconds = 0.55f;
+	constexpr float KnockMinSpeedKmh = 20.f;
+	constexpr float KnockResetSeconds = 25.f;
+	constexpr float KnockResetMinDistCm = 7500.f;
 	const FName GlowEmissiveParam(TEXT("Emissive"));
 
 	UStaticMeshComponent* MakePart(AActor& Owner, USceneComponent* Parent, const TCHAR* Name, UStaticMesh* Mesh,
@@ -45,16 +55,26 @@ ABNStreetLamp::ABNStreetLamp()
 	PrimaryActorTick.bStartWithTickEnabled = false; // ticks only while warming up or cooling down
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 
-	// Basic shapes are 100 cm with a centred pivot; OnConstruction upgrades to SM_BN_StreetLamp when available.
+	// Visual pole stays NoCollision so L-shaped overhead arm never generates a convex launch ramp;
+	// slim HitTrigger snaps the lamp down on impact like Most Wanted 2005!
 	Pole = MakePart(*this, RootComponent, TEXT("Pole"), Cylinder.Object,
 		FVector(0.f, 0.f, PoleHeight * 0.5f), FVector(0.15f, 0.15f, PoleHeight / 100.f));
-	Pole->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
 	Arm = MakePart(*this, RootComponent, TEXT("Arm"), Cube.Object,
 		FVector(ArmReach * 0.5f, 0.f, PoleHeight - 10.f), FVector(ArmReach / 100.f + 0.2f, 0.12f, 0.12f));
 	Glow = MakePart(*this, RootComponent, TEXT("Glow"), Cube.Object,
 		FVector(ArmReach, 0.f, PoleHeight - 18.f), FVector(0.5f, 0.25f, 0.03f));
 	Glow->SetCastShadow(false);
 	Glow->SetVisibility(false);
+
+	HitTrigger = CreateDefaultSubobject<UBoxComponent>(TEXT("HitTrigger"));
+	HitTrigger->SetupAttachment(RootComponent);
+	HitTrigger->SetRelativeLocation(FVector(0.f, 0.f, 150.f));
+	HitTrigger->SetBoxExtent(FVector(34.f, 34.f, 150.f));
+	HitTrigger->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	HitTrigger->SetCollisionResponseToAllChannels(ECR_Ignore);
+	HitTrigger->SetCollisionResponseToChannel(ECC_Vehicle, ECR_Overlap);
+	HitTrigger->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	HitTrigger->OnComponentBeginOverlap.AddDynamic(this, &ABNStreetLamp::OnPoleOverlap);
 
 	Light = CreateDefaultSubobject<USpotLightComponent>(TEXT("Light"));
 	Light->SetupAttachment(RootComponent);
@@ -125,9 +145,113 @@ void ABNStreetLamp::BeginPlay()
 	ApplyBrightness();
 }
 
+void ABNStreetLamp::OnPoleOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+	int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	if (bKnockedDown)
+	{
+		return;
+	}
+	ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(OtherActor);
+	if (!Car || FMath::Abs(Car->GetSpeedKmh()) < KnockMinSpeedKmh)
+	{
+		return;
+	}
+	FVector Dir = Car->GetVelocity().GetSafeNormal2D();
+	if (Dir.IsNearlyZero())
+	{
+		Dir = Car->GetActorForwardVector().GetSafeNormal2D();
+	}
+	KnockDown(Dir, Car);
+}
+
+void ABNStreetLamp::KnockDown(const FVector& ImpactDirWorld, ABNVehiclePawn* HitCar)
+{
+	bKnockedDown = true;
+	KnockTimer = 0.f;
+	ResetTimer = 0.f;
+
+	// Compute local topple pitch/roll away from car travel direction
+	const FVector LocalDir = GetActorTransform().InverseTransformVectorNoScale(ImpactDirWorld).GetSafeNormal2D();
+	KnockTargetRot = FRotator(-LocalDir.X * 86.f, 0.f, LocalDir.Y * 86.f);
+	ApplyBrightness();
+	SetActorTickInterval(0.f);
+	SetActorTickEnabled(true);
+
+	if (HitCar)
+	{
+		HitCar->AddCameraImpulse(0.35f);
+		if (UBNVehicleEffectsComponent* Fx = HitCar->FindComponentByClass<UBNVehicleEffectsComponent>())
+		{
+			Fx->TriggerCollisionSparks(GetActorLocation() + FVector(0.f, 0.f, 110.f), -ImpactDirWorld, 0.85f);
+		}
+	}
+	if (UWorld* World = GetWorld())
+	{
+		if (UBNAudioSubsystem* Audio = World->GetSubsystem<UBNAudioSubsystem>())
+		{
+			Audio->PlaySfxAtLocation(EBNSfxId::BreakMetal, GetActorLocation(), 0.78f);
+		}
+		if (HitCar && HitCar->IsPlayerControlled())
+		{
+			if (UBNPursuitSubsystem* Pursuit = World->GetSubsystem<UBNPursuitSubsystem>())
+			{
+				Pursuit->ReportCollateralDamage(1500, TEXT("Sokak Lambası"));
+			}
+		}
+	}
+}
+
+void ABNStreetLamp::ResetLamp()
+{
+	bKnockedDown = false;
+	KnockTimer = 0.f;
+	ResetTimer = 0.f;
+	if (Pole)
+	{
+		Pole->SetRelativeRotation(FRotator::ZeroRotator);
+	}
+	ApplyBrightness();
+	if (Brightness == (bLit ? 1.f : 0.f))
+	{
+		SetActorTickEnabled(false);
+	}
+}
+
 void ABNStreetLamp::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+	if (bKnockedDown)
+	{
+		if (KnockTimer < KnockDurationSeconds)
+		{
+			KnockTimer = FMath::Min(KnockTimer + DeltaSeconds, KnockDurationSeconds);
+			const float Alpha = KnockTimer / KnockDurationSeconds;
+			const float Eased = Alpha * Alpha;
+			if (Pole)
+			{
+				Pole->SetRelativeRotation(KnockTargetRot * Eased);
+			}
+		}
+		else
+		{
+			SetActorTickInterval(0.5f);
+			ResetTimer += DeltaSeconds;
+			if (ResetTimer >= KnockResetSeconds)
+			{
+				const UWorld* World = GetWorld();
+				const APlayerController* PC = World ? World->GetFirstPlayerController() : nullptr;
+				const APawn* Player = PC ? PC->GetPawn() : nullptr;
+				if (!Player || FVector::Dist2D(Player->GetActorLocation(), GetActorLocation()) > KnockResetMinDistCm)
+				{
+					SetActorTickInterval(0.f);
+					ResetLamp();
+				}
+			}
+		}
+		return;
+	}
+
 	if (SwitchDelay > 0.f)
 	{
 		SwitchDelay -= DeltaSeconds;
@@ -143,13 +267,13 @@ void ABNStreetLamp::Tick(float DeltaSeconds)
 
 void ABNStreetLamp::ApplyBrightness()
 {
-	const bool bOn = Brightness > 0.f;
+	const bool bOn = !bKnockedDown && Brightness > 0.f;
 	Light->SetVisibility(bOn);
 	Light->SetIntensity(LampCandelas * Brightness);
 	Glow->SetVisibility(bOn);
 	if (GlowMaterial)
 	{
-		GlowMaterial->SetVectorParameterValue(GlowEmissiveParam, GlowEmissive * Brightness);
+		GlowMaterial->SetVectorParameterValue(GlowEmissiveParam, GlowEmissive * (bOn ? Brightness : 0.f));
 	}
 }
 

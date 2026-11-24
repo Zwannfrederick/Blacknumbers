@@ -36,7 +36,8 @@ namespace
 	constexpr float MinLaneChangeSafeSpeed = 3000.f;
 	constexpr float StuckSpeed = 300.f;
 	constexpr float UpsideDownZ = 0.3f;
-	constexpr float StuckSecondsToRespawn = 4.f;
+	constexpr float StuckSecondsToRespawn = 2.8f;
+	constexpr float ProgressStuckSecondsToRespawn = 3.2f;
 	constexpr float CmPerSecToMph = 0.022369f;
 	/** Stanley-style correction: steer back toward the line at this rate (1/s) of the sideways error. */
 	constexpr float CrossTrackGain = 1.f;
@@ -129,38 +130,71 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 	const float Speed = Move->GetForwardSpeed();
 	const float Distance = Line.GetDistanceAlongSplineAtLocation(Location, ESplineCoordinateSpace::World);
 
+	// Detect both zero-speed jams AND slow wall-grinding / off-track loops where spline progress stalls!
+	if (LastProgressDistance < 0.f)
+	{
+		LastProgressDistance = Distance;
+	}
+	float DeltaProgress = Distance - LastProgressDistance;
+	const float SplineLen = Line.GetSplineLength();
+	if (Line.IsClosedLoop() && SplineLen > 100.f && DeltaProgress < -SplineLen * 0.5f)
+	{
+		DeltaProgress += SplineLen;
+	}
+	if (DeltaProgress >= 260.f)
+	{
+		LastProgressDistance = Distance;
+		ProgressStuckSeconds = 0.f;
+	}
+	else
+	{
+		ProgressStuckSeconds += DeltaSeconds;
+	}
+
 	const bool bStuck = FMath::Abs(Speed) < StuckSpeed || Car.GetActorUpVector().Z < UpsideDownZ;
 	StuckSeconds = bStuck ? StuckSeconds + DeltaSeconds : 0.f;
-	if (StuckSeconds >= StuckSecondsToRespawn)
+	if (StuckSeconds >= StuckSecondsToRespawn || ProgressStuckSeconds >= ProgressStuckSecondsToRespawn)
 	{
 		Respawn(Car, Line, Distance);
 		return;
 	}
 
-	// Steering: pure pursuit. Wheel angle for the arc through the aim point, as a fraction of the lock the
-	// car's speed-sensitive steering allows right now.
-	const float AimDistance = WrapDistance(Line, Distance + FMath::Clamp(FMath::Abs(Speed) * SteerLookAheadSeconds, MinSteerLookAhead, MaxSteerLookAhead));
-	const FVector Aim = Line.GetLocationAtDistanceAlongSpline(AimDistance, ESplineCoordinateSpace::World)
-		+ Line.GetRightVectorAtDistanceAlongSpline(AimDistance, ESplineCoordinateSpace::World) * LaneOffset;
-	const FVector Local = Car.GetActorTransform().InverseTransformPosition(Aim);
-	const USkeletalMeshComponent* Mesh = Car.GetMesh();
-	const float Wheelbase = FVector::Dist(Mesh->GetSocketLocation(TEXT("Phys_Wheel_FL")), Mesh->GetSocketLocation(TEXT("Phys_Wheel_BL")));
-	// Tyres slip, so the arc alone runs wide in long corners: add a term for the sideways error to the lane.
-	const FVector OnLine = Line.GetLocationAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::World)
-		+ Line.GetRightVectorAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::World) * LaneOffset;
-	const float CrossTrack = Car.GetActorTransform().InverseTransformPosition(OnLine).Y;
-	const float WheelAngle = FMath::RadiansToDegrees(FMath::Atan(Wheelbase * 2.f * Local.Y / FMath::Max(Local.SizeSquared2D(), 1.f))
-		+ FMath::Atan2(CrossTrackGain * CrossTrack, FMath::Max(FMath::Abs(Speed), MinCrossTrackSpeed)));
-	const FRichCurve* SteerCurve = Move->SteeringSetup.SteeringCurve.GetRichCurveConst();
-	const float LockScale = SteerCurve && SteerCurve->GetNumKeys() > 0 ? SteerCurve->Eval(FMath::Abs(Speed) * CmPerSecToMph) : 1.f;
-	const float MaxWheelAngle = FMath::Max(Move->Wheels[0]->MaxSteerAngle * LockScale, 1.f);
-	Move->SetSteeringInput(FMath::Clamp(WheelAngle / MaxWheelAngle, -1.f, 1.f));
-
-	// Pedals: chase the safe speed, never faster than a car close ahead in the same lane. Held up by a
-	// slower car with the other lane clear (beside and ahead), move over to pass.
 	const float GripG = FMath::Lerp(GripRange.X, GripRange.Y, Skill);
 	const float BrakeG = FMath::Lerp(BrakeRange.X, BrakeRange.Y, Skill);
 	const float Safe = SafeSpeed(Line, Distance, GripG, BrakeG);
+
+	// Center toward the apex in tight corners so rivals never clip inside/outside barriers at ±300..400 cm offset.
+	const float CornerCenterScale = FMath::GetMappedRangeValueClamped(FVector2f(1400.f, 3400.f), FVector2f(0.15f, 1.f), Safe);
+	const float EffectiveLane = LaneOffset * CornerCenterScale;
+
+	// Steering: pure pursuit with adaptive lookahead tightened on slow corners + full-lock recovery if facing off-line.
+	const float CornerLookCap = FMath::Clamp(Safe * 0.55f, MinSteerLookAhead, MaxSteerLookAhead);
+	const float AimDistance = WrapDistance(Line, Distance + FMath::Clamp(FMath::Abs(Speed) * SteerLookAheadSeconds, MinSteerLookAhead, CornerLookCap));
+	const FVector Aim = Line.GetLocationAtDistanceAlongSpline(AimDistance, ESplineCoordinateSpace::World)
+		+ Line.GetRightVectorAtDistanceAlongSpline(AimDistance, ESplineCoordinateSpace::World) * EffectiveLane;
+	const FVector Local = Car.GetActorTransform().InverseTransformPosition(Aim);
+	if (Local.X < 120.f)
+	{
+		// Facing nearly perpendicular or backwards relative to the spline: steer full lock back toward the track!
+		Move->SetSteeringInput(Local.Y >= 0.f ? 1.f : -1.f);
+	}
+	else
+	{
+		const USkeletalMeshComponent* Mesh = Car.GetMesh();
+		const float Wheelbase = FVector::Dist(Mesh->GetSocketLocation(TEXT("Phys_Wheel_FL")), Mesh->GetSocketLocation(TEXT("Phys_Wheel_BL")));
+		const FVector OnLine = Line.GetLocationAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::World)
+			+ Line.GetRightVectorAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::World) * EffectiveLane;
+		const float CrossTrack = Car.GetActorTransform().InverseTransformPosition(OnLine).Y;
+		const float WheelAngle = FMath::RadiansToDegrees(FMath::Atan(Wheelbase * 2.f * Local.Y / FMath::Max(Local.SizeSquared2D(), 1.f))
+			+ FMath::Atan2(CrossTrackGain * CrossTrack, FMath::Max(FMath::Abs(Speed), MinCrossTrackSpeed)));
+		const FRichCurve* SteerCurve = Move->SteeringSetup.SteeringCurve.GetRichCurveConst();
+		const float LockScale = SteerCurve && SteerCurve->GetNumKeys() > 0 ? SteerCurve->Eval(FMath::Abs(Speed) * CmPerSecToMph) : 1.f;
+		const float MaxWheelAngle = FMath::Max(Move->Wheels[0]->MaxSteerAngle * LockScale, 1.f);
+		Move->SetSteeringInput(FMath::Clamp(WheelAngle / MaxWheelAngle, -1.f, 1.f));
+	}
+
+	// Pedals: chase the safe speed, never faster than a car close ahead in the same lane. Held up by a
+	// slower car with the other lane clear (beside and ahead), move over to pass.
 	const float Ahead = LaneSpeed(Car, 0.f, 0.f);
 	LaneChangeCooldown = FMath::Max(LaneChangeCooldown - DeltaSeconds, 0.f);
 	if (Ahead < Safe - OvertakeMargin && Safe >= MinLaneChangeSafeSpeed && LaneChangeCooldown <= 0.f && LaneOffset == TargetLaneOffset
@@ -213,13 +247,19 @@ float ABNRivalController::LaneSpeed(const ABNVehiclePawn& Car, float LateralShif
 
 void ABNRivalController::Respawn(ABNVehiclePawn& Car, const USplineComponent& Line, float Distance)
 {
-	const FVector Location = Line.GetLocationAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::World)
-		+ Line.GetRightVectorAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::World) * LaneOffset + FVector(0.f, 0.f, 100.f);
-	const float Yaw = Line.GetDirectionAtDistanceAlongSpline(Distance, ESplineCoordinateSpace::World).Rotation().Yaw;
-	Car.SetActorLocationAndRotation(Location, FRotator(0.f, Yaw, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
-	Car.GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+	// Always place the recovered bot dead-center on the clean road ahead so it never re-snags the same curb/wall.
+	LaneOffset = 0.f;
+	TargetLaneOffset = 0.f;
+	const float ForwardDist = WrapDistance(Line, Distance + 700.f);
+	const FVector Location = Line.GetLocationAtDistanceAlongSpline(ForwardDist, ESplineCoordinateSpace::World) + FVector(0.f, 0.f, 75.f);
+	const FVector Dir = Line.GetDirectionAtDistanceAlongSpline(ForwardDist, ESplineCoordinateSpace::World).GetSafeNormal();
+	const FRotator Heading(FMath::Clamp(Dir.Rotation().Pitch, -12.f, 12.f), Dir.Rotation().Yaw, 0.f);
+	Car.SetActorLocationAndRotation(Location, Heading, false, nullptr, ETeleportType::TeleportPhysics);
+	Car.GetMesh()->SetPhysicsLinearVelocity(Dir * 650.f);
 	Car.GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 	StuckSeconds = 0.f;
+	ProgressStuckSeconds = 0.f;
+	LastProgressDistance = ForwardDist;
 	++Respawns;
 	UE_LOG(LogTemp, Display, TEXT("BN rival %s put back on the racing line (%d)"), *Car.GetName(), Respawns);
 }

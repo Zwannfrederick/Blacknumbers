@@ -4,9 +4,12 @@
 #include "GameFramework/Actor.h"
 #include "BNStreetLamp.generated.h"
 
+class UBoxComponent;
 class UMaterialInstanceDynamic;
 class USpotLightComponent;
 class UStaticMeshComponent;
+class UPrimitiveComponent;
+struct FHitResult;
 
 /**
  * Sodium street lamp that switches on at night, warming up over a few seconds (each lamp after its own short
@@ -49,14 +52,28 @@ public:
 	UPROPERTY(VisibleAnywhere, Category = "Lamp")
 	TObjectPtr<USpotLightComponent> Light;
 
+	/** Slim pole-only overlap trigger so high-speed hits topple the lamp cleanly instead of launching the car. */
+	UPROPERTY(VisibleAnywhere, Category = "Lamp")
+	TObjectPtr<UBoxComponent> HitTrigger;
+
 protected:
 	virtual void BeginPlay() override;
 
 private:
+	UFUNCTION()
+	void OnPoleOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor, UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
+
+	void KnockDown(const FVector& ImpactDirWorld, class ABNVehiclePawn* HitCar);
+	void ResetLamp();
 	void ApplyBrightness();
 
 	bool bLit = false;
+	bool bKnockedDown = false;
 	float Brightness = 0.f;
+	float KnockTimer = 0.f;
+	float ResetTimer = 0.f;
+	FRotator KnockTargetRot = FRotator::ZeroRotator;
 	/** Seconds left before this lamp starts to change after being switched. */
 	float SwitchDelay = 0.f;
 	FLinearColor GlowEmissive = FLinearColor::Black;

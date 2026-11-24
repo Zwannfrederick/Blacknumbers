@@ -55,6 +55,8 @@ private:
 	float LaunchDelay = 0.f;
 	float SecondsUnlocked = 0.f;
 	float StuckSeconds = 0.f;
+	float ProgressStuckSeconds = 0.f;
+	float LastProgressDistance = -1.f;
 	float LaneChangeCooldown = 0.f;
 	int32 Respawns = 0;
 };

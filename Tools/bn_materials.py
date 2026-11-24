@@ -439,6 +439,10 @@ def build():
     for name, friction in PHYSICAL.items():
         pm = _load_or_create(name, PHYS_DIR, unreal.PhysicalMaterial, unreal.PhysicalMaterialFactoryNew())
         pm.set_editor_property("friction", friction)
+        # Zero restitution prevents Chaos vehicles from bouncing/launching off walls, curbs, or barriers.
+        pm.set_editor_property("restitution", 0.0)
+        pm.set_editor_property("override_restitution_combine_mode", True)
+        pm.set_editor_property("restitution_combine_mode", unreal.FrictionCombineMode.MIN)
         physical[name] = pm
 
     mpc = bn_materials_special.ensure_world_mpc(MAT_DIR, _load_or_create)

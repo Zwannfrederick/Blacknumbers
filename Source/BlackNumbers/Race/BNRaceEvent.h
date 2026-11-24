@@ -67,6 +67,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Race")
 	void EndRace();
 
+	/** Returns any race currently in Countdown or Racing in World (optionally ignoring one event). */
+	static ABNRaceEvent* FindActiveRace(const UWorld* World, const ABNRaceEvent* IgnoreEvent = nullptr);
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Race")
 	TObjectPtr<UBNRaceDefinition> Definition;
 

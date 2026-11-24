@@ -508,7 +508,7 @@ MESH_MANIFEST = [
     ("SM_BN_Tree_Autumn_B", build_tree_autumn_b, ["MI_TreeTrunk", "MI_Foliage_AutumnB"], "none"),
     ("SM_BN_Tree_Pine", build_tree_pine, ["MI_TreeTrunk", "MI_Foliage_Pine"], "none"),
     ("SM_BN_Bush", build_bush, ["MI_Foliage_Bush"], "none"),
-    ("SM_BN_StreetLamp", build_street_lamp, ["MI_Metal_Dark", "MI_Concrete", "MI_Guardrail", "MI_LampGlow"], "simple"),
+    ("SM_BN_StreetLamp", build_street_lamp, ["MI_Metal_Dark", "MI_Concrete", "MI_Guardrail", "MI_LampGlow"], "none"),
     ("SM_BN_TrafficLight", build_traffic_light, ["MI_Metal_Dark", "MI_TrafficLightRed", "MI_TrafficLightAmber", "MI_TrafficLightGreen"], "simple"),
     ("SM_BN_JerseyBarrier", build_jersey_barrier, ["MI_Concrete", "MI_HazardYellow"], "simple"),
     ("SM_BN_GantryTruss", build_gantry_truss, ["MI_Guardrail", "MI_Concrete"], "simple"),
