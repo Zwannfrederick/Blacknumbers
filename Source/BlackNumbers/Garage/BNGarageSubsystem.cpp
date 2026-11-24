@@ -34,6 +34,28 @@ void UBNProgressionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UBNProgressionSubsystem::ApplyProfileToCar(ABNVehiclePawn& Car) const
 {
 	Car.ApplyVehicleSpec(Profile.ActiveCar, Profile.GetActiveStats());
+	if (Profile.GetActivePaintIndex() >= 0)
+	{
+		Car.ApplyPaintTint(Profile.GetActivePaintTint());
+	}
+}
+
+bool UBNProgressionSubsystem::TrySetCustomPaint(int32 PaletteIndex, ABNVehiclePawn* Car)
+{
+	Profile.SetActivePaintIndex(PaletteIndex);
+	if (Car)
+	{
+		Car->ApplyPaintTint(Profile.GetActivePaintTint());
+	}
+	const TArray<TPair<FString, FLinearColor>>& Palette = FBNVehicleSpec::GetPaintPalette();
+	FeedbackText = Palette.IsValidIndex(PaletteIndex)
+		? FString::Printf(TEXT("Boya uygulandı: %s"), *Palette[PaletteIndex].Key)
+		: TEXT("Fabrika boyasına dönüldü.");
+	if (ShouldAutoPersist())
+	{
+		SaveProfile();
+	}
+	return true;
 }
 
 bool UBNProgressionSubsystem::TryBuyOrSelectCar(EBNCarId CarId, ABNVehiclePawn* Car)
@@ -161,9 +183,11 @@ bool UBNProgressionSubsystem::SaveProfile(const FString& SlotName) const
 
 	SaveObj->OwnedCars.SetNum(FBNUpgradeSpec::NumCars);
 	SaveObj->FlatUpgrades.SetNum(FBNUpgradeSpec::NumCars * FBNUpgradeSpec::NumSlots);
+	SaveObj->CustomPaintIndices.SetNum(FBNUpgradeSpec::NumCars);
 	for (int32 c = 0; c < FBNUpgradeSpec::NumCars; ++c)
 	{
 		SaveObj->OwnedCars[c] = Profile.OwnedCars[c];
+		SaveObj->CustomPaintIndices[c] = Profile.CustomPaintIndices[c];
 		for (int32 s = 0; s < FBNUpgradeSpec::NumSlots; ++s)
 		{
 			SaveObj->FlatUpgrades[c * FBNUpgradeSpec::NumSlots + s] = Profile.Upgrades[c][s];
@@ -197,6 +221,7 @@ bool UBNProgressionSubsystem::LoadProfile(const FString& SlotName)
 	for (int32 c = 0; c < FBNUpgradeSpec::NumCars; ++c)
 	{
 		Profile.OwnedCars[c] = Loaded->OwnedCars.IsValidIndex(c) ? Loaded->OwnedCars[c] : false;
+		Profile.CustomPaintIndices[c] = Loaded->CustomPaintIndices.IsValidIndex(c) ? Loaded->CustomPaintIndices[c] : -1;
 		for (int32 s = 0; s < FBNUpgradeSpec::NumSlots; ++s)
 		{
 			const int32 FlatIdx = c * FBNUpgradeSpec::NumSlots + s;

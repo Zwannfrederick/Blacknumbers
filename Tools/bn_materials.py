@@ -12,6 +12,7 @@ import sys
 import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bn_materials_special  # noqa: E402
 import bn_pbr_textures  # noqa: E402
 
 ROOT = "/Game/World"
@@ -43,8 +44,9 @@ PHYSICAL = {
 SURFACES = {
     # --- Existing 17 canonical instances (names preserved 100%) ---
     "MI_Asphalt": dict(
-        base_color=(0.72, 0.72, 0.76), albedo="T_Asphalt_D", normal="T_Asphalt_N", roughness_map="T_Asphalt_R",
-        tile_scale=0.18, roughness=0.88, roughness_min=0.24, specular=0.42, normal_strength=0.95, macro_var=0.18,
+        base_color=(0.74, 0.74, 0.78), albedo="T_Asphalt_D", normal="T_Asphalt_N", roughness_map="T_Asphalt_R",
+        tile_scale=0.18, roughness=0.90, roughness_min=0.46, specular=0.45, normal_strength=0.95, macro_var=0.18,
+        puddle_amount=0.58,
     ),
     "MI_Concrete": dict(
         base_color=(0.76, 0.75, 0.72), albedo="T_Concrete_D", normal="T_Concrete_N", roughness_map="T_Concrete_R",
@@ -135,11 +137,12 @@ SURFACES = {
     "MI_Sidewalk": dict(
         base_color=(0.82, 0.80, 0.76), albedo="T_Sidewalk_D", normal="T_Sidewalk_N", roughness_map="T_Sidewalk_R",
         tile_scale=0.38, roughness=0.88, roughness_min=0.48, specular=0.40, normal_strength=0.95, macro_var=0.14,
+        puddle_amount=0.22,
     ),
-    "MI_WaterHarbor": dict(
-        base_color=(0.015, 0.048, 0.068), normal="T_Water_N",
-        tile_scale=0.08, roughness=0.11, roughness_min=0.06, specular=0.76, metallic=0.05,
-        normal_strength=0.55, macro_var=0.08,
+    "MI_Cobblestone": dict(
+        base_color=(0.90, 0.87, 0.82), albedo="T_Cobblestone_D", normal="T_Cobblestone_N", roughness_map="T_Cobblestone_R",
+        tile_scale=0.32, roughness=0.84, roughness_min=0.40, specular=0.44, normal_strength=1.10, macro_var=0.16,
+        puddle_amount=0.32,
     ),
     "MI_FoliageAutumn": dict(
         base_color=(0.94, 0.86, 0.78), albedo="T_Foliage_D", normal="T_Foliage_N", roughness_map="T_Foliage_R",
@@ -156,6 +159,31 @@ SURFACES = {
     "MI_Guardrail": dict(
         base_color=(0.50, 0.52, 0.55), albedo="T_Container_D", normal="T_Container_N", roughness_map="T_Container_R",
         tile_scale=0.60, roughness=0.46, roughness_min=0.24, specular=0.62, metallic=0.82, normal_strength=0.45, macro_var=0.10,
+    ),
+    "MI_BridgeSteel": dict(
+        base_color=(0.38, 0.12, 0.09), albedo="T_Container_D", normal="T_Container_N", roughness_map="T_Container_R",
+        tile_scale=0.26, roughness=0.58, roughness_min=0.28, specular=0.58, metallic=0.72, normal_strength=0.70, macro_var=0.12,
+    ),
+    "MI_MountainRock": dict(
+        base_color=(0.44, 0.43, 0.39), albedo="T_Dirt_D", normal="T_Dirt_N", roughness_map="T_Dirt_R",
+        tile_scale=0.06, roughness=0.94, roughness_min=0.70, specular=0.25, normal_strength=1.15, macro_var=0.28,
+    ),
+    "MI_TrafficLightRed": dict(
+        base_color=(0.95, 0.08, 0.04), roughness=0.22, roughness_min=0.22, normal_strength=0.0, macro_var=0.0,
+        emissive=(6.0, 0.35, 0.12),
+    ),
+    "MI_TrafficLightAmber": dict(
+        base_color=(0.98, 0.62, 0.06), roughness=0.22, roughness_min=0.22, normal_strength=0.0, macro_var=0.0,
+        emissive=(5.5, 2.8, 0.2),
+    ),
+    "MI_TrafficLightGreen": dict(
+        base_color=(0.08, 0.90, 0.36), roughness=0.22, roughness_min=0.22, normal_strength=0.0, macro_var=0.0,
+        emissive=(0.25, 5.2, 1.4),
+    ),
+    "MI_SpikeStrip": dict(
+        base_color=(0.82, 0.84, 0.88), albedo="T_HazardMetal_D", normal="T_HazardMetal_N", roughness_map="T_HazardMetal_R",
+        tile_scale=1.2, roughness=0.28, roughness_min=0.16, specular=0.78, metallic=0.88, normal_strength=0.8, macro_var=0.0,
+        emissive=(1.8, 0.25, 0.08),
     ),
 }
 
@@ -263,9 +291,10 @@ def _build_box_uv(mat, tile_scale):
     return final_if
 
 
-def _build_master(textures):
+def _build_master(textures, mpc):
     mat = _load_or_create(MASTER, MAT_DIR, unreal.Material, unreal.MaterialFactoryNew())
     mel.delete_all_material_expressions(mat)
+    mat.set_editor_property("used_with_instanced_static_meshes", True)
 
     def param(cls, name, default, x, y):
         p = mel.create_material_expression(mat, cls, x, y)
@@ -285,6 +314,7 @@ def _build_master(textures):
     tile_scale = param(unreal.MaterialExpressionScalarParameter, "TileScale", 0.25, -1720, 560)
     rough_max = param(unreal.MaterialExpressionScalarParameter, "Roughness", 0.85, -200, 120)
     rough_min = param(unreal.MaterialExpressionScalarParameter, "RoughnessMin", 0.20, -200, 220)
+    puddle_amt = param(unreal.MaterialExpressionScalarParameter, "PuddleAmount", 0.0, -200, 20)
     specular = param(unreal.MaterialExpressionScalarParameter, "Specular", 0.50, 220, 20)
     metallic = param(unreal.MaterialExpressionScalarParameter, "Metallic", 0.0, 220, -80)
     normal_str = param(unreal.MaterialExpressionScalarParameter, "NormalStrength", 1.0, -200, 520)
@@ -311,6 +341,30 @@ def _build_master(textures):
     macro_sample.set_editor_property("sampler_type", _sampler_for(noise_tex))
     _connect(macro_uv, "", macro_sample, "UVs")
 
+    # Macro world-space puddle mask (~85 m irregular puddles instead of repeating 5.5 m spots)
+    wpos_p = mel.create_material_expression(mat, unreal.MaterialExpressionWorldPosition, -960, -680)
+    wxy_p = _mask(mat, wpos_p, r=True, g=True, x=-760, y=-680)
+    puddle_uv = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, -580, -680)
+    puddle_uv.set_editor_property("const_b", 0.00011)
+    _connect(wxy_p, "", puddle_uv, "A")
+    puddle_noise = mel.create_material_expression(mat, unreal.MaterialExpressionTextureSample, -360, -720)
+    puddle_noise.set_editor_property("texture", noise_tex)
+    puddle_noise.set_editor_property("sampler_type", _sampler_for(noise_tex))
+    _connect(puddle_uv, "", puddle_noise, "UVs")
+    puddle_sub = mel.create_material_expression(mat, unreal.MaterialExpressionSubtract, -120, -700)
+    puddle_sub.set_editor_property("const_b", 0.56)
+    _connect(puddle_noise, "R", puddle_sub, "A")
+    puddle_gain = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, 40, -700)
+    puddle_gain.set_editor_property("const_b", 4.2)
+    _connect(puddle_sub, "", puddle_gain, "A")
+    puddle_clamp = mel.create_material_expression(mat, unreal.MaterialExpressionClamp, 200, -700)
+    puddle_clamp.set_editor_property("min_default", 0.0)
+    puddle_clamp.set_editor_property("max_default", 1.0)
+    _connect(puddle_gain, "", puddle_clamp, "")
+    wet_alpha = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, 360, -640)
+    _connect(puddle_clamp, "", wet_alpha, "A")
+    _connect(puddle_amt, "", wet_alpha, "B")
+
     one_minus_mv = mel.create_material_expression(mat, unreal.MaterialExpressionOneMinus, 80, -180)
     _connect(macro_var, "", one_minus_mv, "")
     macro_shade = mel.create_material_expression(mat, unreal.MaterialExpressionLinearInterpolate, 220, -240)
@@ -321,19 +375,30 @@ def _build_master(textures):
     tinted = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, 80, -420)
     _connect(albedo_tex, "RGB", tinted, "A")
     _connect(base_col, "", tinted, "B")
-    final_albedo = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, 380, -340)
-    _connect(tinted, "", final_albedo, "A")
-    _connect(macro_shade, "", final_albedo, "B")
+    macro_albedo = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, 340, -340)
+    _connect(tinted, "", macro_albedo, "A")
+    _connect(macro_shade, "", macro_albedo, "B")
+    wet_darken = mel.create_material_expression(mat, unreal.MaterialExpressionLinearInterpolate, 440, -520)
+    wet_darken.set_editor_property("const_a", 1.0)
+    wet_darken.set_editor_property("const_b", 0.64)
+    _connect(wet_alpha, "", wet_darken, "Alpha")
+    final_albedo = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, 580, -360)
+    _connect(macro_albedo, "", final_albedo, "A")
+    _connect(wet_darken, "", final_albedo, "B")
 
-    # Roughness: Clamp(Lerp(RoughnessMin, Roughness, RoughnessMap.R), 0.04, 1.0)
+    # Roughness: Lerp(base_rough, 0.10, wet_alpha) clamped to [0.04, 1.0]
     rough_lerp = mel.create_material_expression(mat, unreal.MaterialExpressionLinearInterpolate, 140, 120)
     _connect(rough_min, "", rough_lerp, "A")
     _connect(rough_max, "", rough_lerp, "B")
     _connect(rough_tex, "R", rough_lerp, "Alpha")
-    rough_clamp = mel.create_material_expression(mat, unreal.MaterialExpressionClamp, 340, 120)
+    rough_wet = mel.create_material_expression(mat, unreal.MaterialExpressionLinearInterpolate, 320, 120)
+    rough_wet.set_editor_property("const_b", 0.10)
+    _connect(rough_lerp, "", rough_wet, "A")
+    _connect(wet_alpha, "", rough_wet, "Alpha")
+    rough_clamp = mel.create_material_expression(mat, unreal.MaterialExpressionClamp, 500, 120)
     rough_clamp.set_editor_property("min_default", 0.04)
     rough_clamp.set_editor_property("max_default", 1.0)
-    _connect(rough_lerp, "", rough_clamp, "")
+    _connect(rough_wet, "", rough_clamp, "")
 
     # Normal: Lerp((0, 0, 1), NormalMap, NormalStrength)
     flat_vec = mel.create_material_expression(mat, unreal.MaterialExpressionConstant3Vector, -40, 420)
@@ -343,13 +408,17 @@ def _build_master(textures):
     _connect(normal_tex, "RGB", final_normal, "B")
     _connect(normal_str, "", final_normal, "Alpha")
 
-    # Emissive: Emissive + EmissiveMap.RGB * EmissiveMaskColor
+    # Emissive: Emissive + EmissiveMap.RGB * EmissiveMaskColor * MPC_BN_World.NightFactor
+    night_f = bn_materials_special.add_night_factor_node(mat, mel, mpc, -40, 1080)
     em_masked = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, 120, 840)
     _connect(emissive_tex, "RGB", em_masked, "A")
     _connect(emissive_mask_col, "", em_masked, "B")
-    final_emissive = mel.create_material_expression(mat, unreal.MaterialExpressionAdd, 340, 760)
+    em_night = mel.create_material_expression(mat, unreal.MaterialExpressionMultiply, 280, 920)
+    _connect(em_masked, "", em_night, "A")
+    _connect(night_f, "", em_night, "B")
+    final_emissive = mel.create_material_expression(mat, unreal.MaterialExpressionAdd, 460, 760)
     _connect(emissive_const, "", final_emissive, "A")
-    _connect(em_masked, "", final_emissive, "B")
+    _connect(em_night, "", final_emissive, "B")
 
     _connect_prop(final_albedo, "", unreal.MaterialProperty.MP_BASE_COLOR)
     _connect_prop(metallic, "", unreal.MaterialProperty.MP_METALLIC)
@@ -372,7 +441,8 @@ def build():
         pm.set_editor_property("friction", friction)
         physical[name] = pm
 
-    master = _build_master(textures)
+    mpc = bn_materials_special.ensure_world_mpc(MAT_DIR, _load_or_create)
+    master = _build_master(textures, mpc)
     instances = {}
     for name, cfg in SURFACES.items():
         mi = _load_or_create(name, MAT_DIR, unreal.MaterialInstanceConstant, unreal.MaterialInstanceConstantFactoryNew())
@@ -384,6 +454,7 @@ def build():
         mel.set_material_instance_scalar_parameter_value(mi, "TileScale", float(cfg.get("tile_scale", 0.25)))
         mel.set_material_instance_scalar_parameter_value(mi, "Roughness", float(cfg.get("roughness", 0.85)))
         mel.set_material_instance_scalar_parameter_value(mi, "RoughnessMin", float(cfg.get("roughness_min", 0.20)))
+        mel.set_material_instance_scalar_parameter_value(mi, "PuddleAmount", float(cfg.get("puddle_amount", 0.0)))
         mel.set_material_instance_scalar_parameter_value(mi, "Specular", float(cfg.get("specular", 0.50)))
         mel.set_material_instance_scalar_parameter_value(mi, "Metallic", float(cfg.get("metallic", 0.0)))
         mel.set_material_instance_scalar_parameter_value(mi, "NormalStrength", float(cfg.get("normal_strength", 1.0)))
@@ -407,7 +478,36 @@ def build():
         mel.update_material_instance(mi)
         instances[name] = mi
 
+    def _param(mat, cls, pname, default, x, y):
+        p = mel.create_material_expression(mat, cls, x, y)
+        p.set_editor_property("parameter_name", pname)
+        p.set_editor_property("default_value", default)
+        return p
+
+    def _tex_param(mat, pname, tex_obj, sampler_type, uv_node, x, y):
+        t = mel.create_material_expression(mat, unreal.MaterialExpressionTextureSampleParameter2D, x, y)
+        t.set_editor_property("parameter_name", pname)
+        t.set_editor_property("texture", tex_obj)
+        t.set_editor_property("sampler_type", sampler_type)
+        _connect(uv_node, "", t, "UVs")
+        return t
+
+    special = bn_materials_special.build_special_materials(
+        MAT_DIR,
+        textures,
+        mpc,
+        {
+            "load_or_create": _load_or_create,
+            "connect": _connect,
+            "connect_prop": _connect_prop,
+            "mask": _mask,
+            "param": _param,
+            "tex_param": _tex_param,
+        },
+    )
+    instances.update(special)
+
     if not assets.save_directory(ROOT, only_if_is_dirty=False, recursive=True):
         raise RuntimeError("Could not save " + ROOT)
-    unreal.log("BN: built %d PBR material instances and %d physical materials" % (len(instances), len(physical)))
+    unreal.log("BN: built %d PBR material instances, MPC_BN_World, and %d physical materials" % (len(instances), len(physical)))
     return instances, physical

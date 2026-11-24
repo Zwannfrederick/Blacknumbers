@@ -17,15 +17,18 @@
 #include "Vehicle/BNVehiclePawn.h"
 #include "World/BNBreakableProp.h"
 #include "World/BNDayNightCycle.h"
+#include "World/BNRoadGraph.h"
 #include "World/BNStreetLamp.h"
 
 using namespace BNPlayTest;
 
 namespace
 {
-	const FVector ViaductApproachStart(-25500.f, -24000.f, 60.f);
-	const FVector TestPropLocation(-23700.f, -24000.f, 42.5f);
-	constexpr float TargetRampMinZ = 250.f;
+	// Straight North Viaduct on-ramp climbing north (-Y, Yaw=-90) from Node 1 (-12000,-22000,0) to Node 25 (-12000,-54000,1200)
+	const FVector ViaductApproachStart(-12000.f, -22500.f, 70.f);
+	const FVector TestPropLocation(-12000.f, -25200.f, 145.f);
+	constexpr float ViaductApproachYaw = -90.f;
+	constexpr float TargetRampMinZ = 350.f;
 	constexpr float DriveTimeoutSeconds = 12.f;
 
 	template <typename ActorType>
@@ -94,11 +97,28 @@ bool FBNKaramaraCityTest::RunTest(const FString& Parameters)
 		case EPhase::VerifyCity:
 		{
 			TestTrue(TEXT("Karamara has day/night cycle"), CountActors<ABNDayNightCycle>(World) >= 1);
-			TestTrue(TEXT("Karamara has >= 25 street lamps"), CountActors<ABNStreetLamp>(World) >= 25);
+			TestTrue(TEXT("Karamara has >= 60 street lamps across 6 districts"), CountActors<ABNStreetLamp>(World) >= 60);
 			TestTrue(TEXT("Karamara has Selin's Garage"), CountActors<ABNGarageZone>(World) >= 1);
-			TestTrue(TEXT("Karamara has >= 4 Pursuit Breakers"), CountActors<ABNPursuitBreaker>(World) >= 4);
-			TestTrue(TEXT("Karamara has >= 15 Breakable Props"), CountActors<ABNBreakableProp>(World) >= 15);
+			TestTrue(TEXT("Karamara has 10 Pursuit Breakers"), CountActors<ABNPursuitBreaker>(World) >= 10);
+			TestTrue(TEXT("Karamara has >= 50 Breakable Props"), CountActors<ABNBreakableProp>(World) >= 50);
 
+			const UBNRoadGraphSubsystem* RoadGraph = World->GetSubsystem<UBNRoadGraphSubsystem>();
+			TestNotNull(TEXT("RoadGraphSubsystem present"), RoadGraph);
+			if (RoadGraph)
+			{
+				TestTrue(TEXT("RoadGraph loaded DA_KaramaraRoadGraph"), RoadGraph->HasGraph());
+				TestTrue(TEXT("RoadGraph has >= 40 nodes"), RoadGraph->GetNodes().Num() >= 40);
+				TestTrue(TEXT("RoadGraph has >= 60 edges"), RoadGraph->GetEdges().Num() >= 60);
+				TestTrue(TEXT("RoadGraph has 6 Cooldown spots"), RoadGraph->GetCooldownSpots().Num() >= 6);
+				float MaxNodeZ = 0.f;
+				for (const FBNRoadNode& N : RoadGraph->GetNodes())
+				{
+					MaxNodeZ = FMath::Max(MaxNodeZ, N.Position.Z);
+				}
+				TestTrue(TEXT("Kuzey Gecidi summit reaches >= 50 m (5000 cm)"), MaxNodeZ >= 5000.f);
+			}
+
+			int32 RaceCount = 0;
 			bool bCircuit = false, bSprint = false, bDrift = false;
 			for (TActorIterator<ABNRaceEvent> It(World); It; ++It)
 			{
@@ -106,10 +126,12 @@ bool FBNKaramaraCityTest::RunTest(const FString& Parameters)
 				{
 					continue;
 				}
+				++RaceCount;
 				bCircuit |= It->Definition->Discipline == EBNRaceDiscipline::Circuit;
 				bSprint |= It->Definition->Discipline == EBNRaceDiscipline::Sprint;
 				bDrift |= It->Definition->Discipline == EBNRaceDiscipline::Drift;
 			}
+			TestTrue(TEXT("Karamara has 9 unique races"), RaceCount >= 9);
 			TestTrue(TEXT("Karamara has Circuit race"), bCircuit);
 			TestTrue(TEXT("Karamara has Sprint race"), bSprint);
 			TestTrue(TEXT("Karamara has Drift race"), bDrift);
@@ -119,7 +141,7 @@ bool FBNKaramaraCityTest::RunTest(const FString& Parameters)
 			State->SpawnedProp = World->SpawnActor<ABNBreakableProp>(ABNBreakableProp::StaticClass(), TestPropLocation, FRotator::ZeroRotator, Params);
 			TestNotNull(TEXT("spawned test breakable prop"), State->SpawnedProp.Get());
 
-			PlaceStopped(*Car, ViaductApproachStart, 0.f);
+			PlaceStopped(*Car, ViaductApproachStart, ViaductApproachYaw);
 			Enter(EPhase::Settle);
 			return false;
 		}

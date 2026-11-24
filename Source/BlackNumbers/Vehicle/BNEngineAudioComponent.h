@@ -2,8 +2,19 @@
 
 #include "CoreMinimal.h"
 #include "Components/SynthComponent.h"
+#include "Garage/BNGarageTypes.h"
 #include <atomic>
 #include "BNEngineAudioComponent.generated.h"
+
+UENUM(BlueprintType)
+enum class EBNEngineProfile : uint8
+{
+	TurboI4 = 0,
+	SportI6 = 1,
+	MuscleV8 = 2,
+	RallyV6 = 3,
+	ExoticV10 = 4,
+};
 
 /** What the engine, tyres, NOS and backfire should sound like right now; derived purely from vehicle state. */
 struct FBNEngineSoundTargets
@@ -29,9 +40,13 @@ namespace BNEngineSound
 	/** Straight six, four-stroke: three firings per crank revolution. */
 	constexpr float FiringsPerRevolution = 3.f;
 
+	BLACKNUMBERS_API float FiringsPerRevForProfile(EBNEngineProfile Profile);
+	BLACKNUMBERS_API EBNEngineProfile ProfileForCar(EBNCarId CarId);
+
 	/** bOnGround: no tyre sound while airborne. */
 	BLACKNUMBERS_API FBNEngineSoundTargets Evaluate(float Rpm, float MaxRpm, float Throttle, float SlipDegrees, float SpeedKmh,
-		bool bOnGround = true, bool bNosActive = false, float TimeDilation = 1.f, bool bBackfire = false);
+		bool bOnGround = true, bool bNosActive = false, float TimeDilation = 1.f, bool bBackfire = false,
+		EBNEngineProfile Profile = EBNEngineProfile::SportI6);
 }
 
 /**
@@ -50,6 +65,10 @@ public:
 
 	const FBNEngineSoundTargets& GetTargets() const { return Targets; }
 
+	void SetEngineProfile(EBNEngineProfile Profile);
+	void SetEngineProfileForCar(EBNCarId CarId);
+	EBNEngineProfile GetEngineProfile() const { return ActiveProfile; }
+
 	UPROPERTY(EditAnywhere, Category = "Engine Sound", meta = (ClampMin = "0", ClampMax = "1"))
 	float MasterGain = 0.5f;
 
@@ -61,6 +80,7 @@ private:
 	FBNEngineSoundTargets Targets;
 
 	// Game thread only (turbo spool & BOV lift-off/upshift detection).
+	EBNEngineProfile ActiveProfile = EBNEngineProfile::SportI6;
 	float PrevThrottle = 0.f;
 	int32 PrevGear = 0;
 	float TurboSpool = 0.f;
@@ -68,6 +88,7 @@ private:
 	float BovPeak = 0.f;
 
 	// Game thread -> audio thread.
+	std::atomic<uint8> AtomicProfile{ static_cast<uint8>(EBNEngineProfile::SportI6) };
 	std::atomic<float> TargetHz{ 0.f };
 	std::atomic<float> TargetEngineGain{ 0.f };
 	std::atomic<float> TargetSkidGain{ 0.f };
@@ -75,6 +96,7 @@ private:
 	std::atomic<float> TargetPitchScale{ 1.f };
 	std::atomic<float> TargetBackfireGain{ 0.f };
 	std::atomic<float> TargetBovGain{ 0.f };
+	std::atomic<float> TargetTurboWhine{ 0.f };
 	std::atomic<uint32> BovTriggerSeq{ 0 };
 
 	// Audio thread only.
@@ -88,6 +110,8 @@ private:
 	float CurrentPitchScale = 1.f;
 	float CurrentBackfireGain = 0.f;
 	float Phase = 0.f;
+	float TurboWhinePhase = 0.f;
+	float CurrentTurboWhine = 0.f;
 	float SquealPhase = 0.f;
 	float WobblePhase = 0.f;
 	float NosPhase = 0.f;

@@ -60,6 +60,12 @@ struct BLACKNUMBERS_API FBNBossSpec
 	FString DisciplineLabel;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString RaceAssetName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	EBNCarId BaseCar = EBNCarId::KuroganeMSpec;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
 	FString EvidenceCode;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Story")

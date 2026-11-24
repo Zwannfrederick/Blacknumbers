@@ -9,6 +9,9 @@
 #include "Engine/SkyLight.h"
 #include "EngineUtils.h"
 #include "HAL/IConsoleManager.h"
+#include "Kismet/KismetMaterialLibrary.h"
+#include "Materials/MaterialParameterCollection.h"
+#include "Misc/PackageName.h"
 
 ABNDayNightCycle::ABNDayNightCycle()
 {
@@ -52,6 +55,19 @@ void ABNDayNightCycle::ApplyLook()
 	const FBNTimeOfDayKey Look = BNTimeOfDay::Evaluate(Keys, TimeOfDay);
 	const float SunPitch = BNTimeOfDay::SunPitchDegrees(TimeOfDay);
 	const float SunElevation = BNTimeOfDay::SunElevationDegrees(TimeOfDay);
+	LastNightFactor = FMath::GetMappedRangeValueClamped(FVector2f(6.f, -6.f), FVector2f(0.f, 1.f), SunElevation);
+
+	if (UWorld* World = GetWorld())
+	{
+		if (!WorldMPC && FPackageName::DoesPackageExist(TEXT("/Game/World/Materials/MPC_BN_World")))
+		{
+			WorldMPC = LoadObject<UMaterialParameterCollection>(nullptr, TEXT("/Game/World/Materials/MPC_BN_World.MPC_BN_World"));
+		}
+		if (WorldMPC)
+		{
+			UKismetMaterialLibrary::SetScalarParameterValue(World, WorldMPC, TEXT("NightFactor"), LastNightFactor);
+		}
+	}
 
 	if (Sun)
 	{

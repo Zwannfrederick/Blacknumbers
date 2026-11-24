@@ -1,10 +1,10 @@
 #include "World/BNTrafficSubsystem.h"
 
+#include "Audio/BNAudioSubsystem.h"
 #include "Components/SceneComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SpotLightComponent.h"
 #include "Components/StaticMeshComponent.h"
-#include "Engine/SkeletalMesh.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
@@ -13,159 +13,75 @@
 #include "HAL/IConsoleManager.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Misc/PackageName.h"
 #include "Police/BNPoliceController.h"
 #include "Police/BNPursuitSubsystem.h"
-#include "ReferenceSkeleton.h"
 #include "Vehicle/BNVehicleEffects.h"
 #include "Vehicle/BNVehiclePawn.h"
 #include "World/BNDayNightCycle.h"
+#include "World/BNRoadGraph.h"
 
 namespace
 {
+	constexpr int32 TargetTrafficCount = 20;
 	constexpr float CmPerSecToKmh = 0.036f;
 	constexpr float KmhToCmPerSec = 100000.f / 3600.f;
 
-	// Exact Karamara street & viaduct coordinates from Tools/build_karamara_map.py.
-	constexpr float RoadTopZ = 2.f;
-	constexpr float ViaductY = -24000.f;
-	constexpr float ViaductDeckZ = 700.f;
-	constexpr float ViaductRampWStart = -22000.f;
-	constexpr float ViaductDeckStart = -12000.f;
-	constexpr float ViaductDeckEnd = 12000.f;
-	constexpr float ViaductRampEEnd = 22000.f;
-
-	// Right-hand lane offsets (road half-width 800 cm; +/- 420 cm leaves curb & centerline clearance).
-	constexpr float InnerRingX = 19580.f, InnerRingY = 13580.f;
-	constexpr float OuterRingX = 20420.f, OuterRingY = 14420.f;
-	constexpr float ViaductEastY = ViaductY + 420.f, ViaductWestY = ViaductY - 420.f;
-	constexpr float ViaductStartX = -24200.f, ViaductEndX = 25200.f;
-
-	constexpr float YieldGapMaxCm = 1900.f, YieldGapStopCm = 820.f;
-	constexpr float SirenYieldRadiusCm = 3200.f;
-	constexpr float CollisionRadiusCm = 360.f, NearMissRadiusCm = 460.f;
-	constexpr float CollisionMinRelSpeedKmh = 30.f, NearMissMinPlayerSpeedKmh = 80.f;
-	constexpr float VerticalInteractionTolCm = 180.f;
+	constexpr float YieldGapMaxCm = 2000.f;
+	constexpr float YieldGapStopCm = 850.f;
+	constexpr float SirenYieldRadiusCm = 3400.f;
+	constexpr float CollisionRadiusCm = 350.f;
+	constexpr float NearMissRadiusCm = 480.f;
+	constexpr float CollisionMinRelSpeedKmh = 30.f;
+	constexpr float NearMissMinPlayerSpeedKmh = 80.f;
+	constexpr float VerticalInteractionTolCm = 220.f;
 	constexpr int32 TrafficCollateralDollars = 3500;
-	constexpr float KnockDurationSeconds = 1.35f, PauseDurationSeconds = 2.2f;
-	constexpr float MinRespawnPlayerDistCm = 17000.f;
+	constexpr float KnockDurationSeconds = 1.35f;
+	constexpr float PauseDurationSeconds = 2.0f;
 
-	constexpr float HeadlightBeamCandelas = 3200.f, HeadlightBeamRadius = 2400.f;
+	constexpr float RecycleMaxDistCm = 58000.f;
+	constexpr float RecycleMinDistCm = 14000.f;
+	constexpr float RecycleSpawnMaxCm = 46000.f;
+	constexpr float HeadlightBeamCandelas = 3000.f;
+	constexpr float HeadlightBeamRadius = 2200.f;
 	const FLinearColor HeadlightBeamColor(1.f, 0.94f, 0.82f);
-	const FLinearColor HeadlightLensColor(1.75f, 1.65f, 1.35f, 0.90f);
-	const FLinearColor TaillightLensColor(1.55f, 0.08f, 0.04f, 0.90f);
 
+	// Realistic Turkish urban street palette (includes classic yellow taxis, white commercial vans, silver/dark sedans)
 	const FLinearColor CivilianPalette[] = {
-		FLinearColor(0.78f, 0.79f, 0.80f), FLinearColor(0.42f, 0.45f, 0.49f),
-		FLinearColor(0.14f, 0.15f, 0.17f), FLinearColor(0.08f, 0.14f, 0.28f),
-		FLinearColor(0.84f, 0.62f, 0.06f), FLinearColor(0.42f, 0.07f, 0.08f),
-		FLinearColor(0.09f, 0.22f, 0.14f), FLinearColor(0.20f, 0.34f, 0.46f),
-		FLinearColor(0.58f, 0.53f, 0.44f), FLinearColor(0.48f, 0.24f, 0.12f),
-		FLinearColor(0.08f, 0.24f, 0.27f), FLinearColor(0.24f, 0.25f, 0.27f),
-		FLinearColor(0.76f, 0.72f, 0.63f), FLinearColor(0.32f, 0.05f, 0.10f),
+		FLinearColor(0.92f, 0.72f, 0.04f, 1.f), // Karamara Taksi Sarısı
+		FLinearColor(0.84f, 0.85f, 0.86f, 1.f), // Ticari Beyaz
+		FLinearColor(0.46f, 0.49f, 0.53f, 1.f), // Metalik Gri
+		FLinearColor(0.14f, 0.15f, 0.17f, 1.f), // Antrasit
+		FLinearColor(0.08f, 0.16f, 0.34f, 1.f), // Gece Lacivert
+		FLinearColor(0.52f, 0.07f, 0.08f, 1.f), // Bordo
+		FLinearColor(0.10f, 0.25f, 0.16f, 1.f), // Koyu Yeşil
+		FLinearColor(0.64f, 0.58f, 0.48f, 1.f), // Şampanya Bej
+		FLinearColor(0.20f, 0.36f, 0.48f, 1.f), // Buz Mavi
+		FLinearColor(0.92f, 0.72f, 0.04f, 1.f), // Karamara Taksi Sarısı
 	};
 
-	struct FTrafficSpawnSpec { int32 RouteIndex; float Fraction; float CruiseKmh; };
-
-	// 14 civilian cars: Inner Ring CW (6), Outer Ring CCW (5), Viaduct East (2), Viaduct West (1).
-	const FTrafficSpawnSpec SpawnSpecs[] = {
-		{ 0, 0.06f, 54.f }, { 0, 0.23f, 58.f }, { 0, 0.40f, 50.f },
-		{ 0, 0.56f, 60.f }, { 0, 0.73f, 52.f }, { 0, 0.90f, 56.f },
-		{ 1, 0.10f, 52.f }, { 1, 0.30f, 58.f }, { 1, 0.50f, 48.f },
-		{ 1, 0.70f, 56.f }, { 1, 0.88f, 54.f },
-		{ 2, 0.36f, 74.f }, { 2, 0.72f, 80.f }, { 3, 0.34f, 76.f },
+	const TCHAR* const TrafficMeshPackages[] = {
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_Sedan"),
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_Hatchback"),
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_Van"),
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_BoxTruck"),
+		TEXT("/Game/Vehicles/OffroadCar/SM_Offroad_Body"),
 	};
-
-	FVector ComputeRefBoneLocation(const USkeletalMesh& SkelMesh, const TCHAR* BoneName, const FVector& Fallback)
-	{
-		const FReferenceSkeleton& RefSkel = SkelMesh.GetRefSkeleton();
-		int32 Idx = RefSkel.FindBoneIndex(FName(BoneName));
-		if (Idx == INDEX_NONE) { return Fallback; }
-		const TArray<FTransform>& RefPose = RefSkel.GetRefBonePose();
-		FTransform CompTM = FTransform::Identity;
-		while (Idx != INDEX_NONE && RefPose.IsValidIndex(Idx))
-		{
-			CompTM = CompTM * RefPose[Idx];
-			Idx = RefSkel.GetParentIndex(Idx);
-		}
-		return CompTM.GetLocation();
-	}
-
-	void BuildRoundedLoopPoints(const TArray<FVector>& Corners, float Radius, int32 Subdivisions, TArray<FVector>& OutPoints)
-	{
-		OutPoints.Reset();
-		const int32 N = Corners.Num();
-		for (int32 i = 0; i < N && N >= 3; ++i)
-		{
-			const FVector& Prev = Corners[(i + N - 1) % N];
-			const FVector& Curr = Corners[i];
-			const FVector& Next = Corners[(i + 1) % N];
-			const FVector P0 = Curr - (Curr - Prev).GetSafeNormal() * Radius;
-			const FVector P2 = Curr + (Next - Curr).GetSafeNormal() * Radius;
-			for (int32 s = 0; s <= Subdivisions; ++s)
-			{
-				const float T = static_cast<float>(s) / static_cast<float>(Subdivisions);
-				const float Inv = 1.f - T;
-				OutPoints.Add(Inv * Inv * P0 + 2.f * Inv * T * Curr + T * T * P2);
-			}
-		}
-	}
-
-	FVector SamplePolylinePoint(const TArray<FVector>& Points, const TArray<float>& CumDist,
-		float TotalLength, bool bClosed, float Dist)
-	{
-		const int32 Count = Points.Num();
-		if (Count == 0 || TotalLength <= KINDA_SMALL_NUMBER) { return FVector::ZeroVector; }
-		if (bClosed)
-		{
-			Dist = FMath::Fmod(Dist, TotalLength);
-			if (Dist < 0.f) { Dist += TotalLength; }
-		}
-		else
-		{
-			Dist = FMath::Clamp(Dist, 0.f, TotalLength);
-		}
-
-		const int32 SegCount = bClosed ? Count : (Count - 1);
-		for (int32 i = 0; i < SegCount; ++i)
-		{
-			const float D0 = CumDist[i], D1 = CumDist[i + 1];
-			if (Dist <= D1 || i == SegCount - 1)
-			{
-				const float Alpha = FMath::Clamp((Dist - D0) / FMath::Max(D1 - D0, KINDA_SMALL_NUMBER), 0.f, 1.f);
-				return FMath::Lerp(Points[i], Points[(i + 1) % Count], Alpha);
-			}
-		}
-		return Points[0];
-	}
-
-	UStaticMeshComponent* AttachTrafficMesh(AActor* Actor, USceneComponent* Root, UStaticMesh* Mesh,
-		const FVector& RelLoc, const FRotator& RelRot, const FVector& RelScale, bool bCastShadow)
-	{
-		if (!Actor || !Root || !Mesh) { return nullptr; }
-		UStaticMeshComponent* Comp = NewObject<UStaticMeshComponent>(Actor);
-		Comp->SetStaticMesh(Mesh);
-		Comp->SetMobility(EComponentMobility::Movable);
-		Comp->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		Comp->SetGenerateOverlapEvents(false);
-		Comp->SetCastShadow(bCastShadow);
-		Comp->SetCanEverAffectNavigation(false);
-		Comp->SetupAttachment(Root);
-		Comp->SetRelativeLocationAndRotation(RelLoc, RelRot);
-		Comp->SetRelativeScale3D(RelScale);
-		Comp->RegisterComponent();
-		return Comp;
-	}
+	const TCHAR* const TrafficMeshAssets[] = {
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_Sedan.SM_BN_Traffic_Sedan"),
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_Hatchback.SM_BN_Traffic_Hatchback"),
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_Van.SM_BN_Traffic_Van"),
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_BoxTruck.SM_BN_Traffic_BoxTruck"),
+		TEXT("/Game/Vehicles/OffroadCar/SM_Offroad_Body.SM_Offroad_Body"),
+	};
 }
 
 float UBNTrafficSubsystem::SampleViaductElevationZ(float X)
 {
-	if (X <= ViaductRampWStart || X >= ViaductRampEEnd) { return RoadTopZ; }
-	if (X < ViaductDeckStart)
-	{
-		return FMath::Lerp(RoadTopZ, ViaductDeckZ, (X - ViaductRampWStart) / (ViaductDeckStart - ViaductRampWStart));
-	}
-	if (X <= ViaductDeckEnd) { return ViaductDeckZ; }
-	return FMath::Lerp(ViaductDeckZ, RoadTopZ, (X - ViaductDeckEnd) / (ViaductRampEEnd - ViaductDeckEnd));
+	if (X <= -22000.f || X >= 22000.f) { return 2.f; }
+	if (X < -12000.f) { return FMath::Lerp(2.f, 700.f, (X + 22000.f) / 10000.f); }
+	if (X <= 12000.f) { return 700.f; }
+	return FMath::Lerp(700.f, 2.f, (X - 12000.f) / 10000.f);
 }
 
 bool UBNTrafficSubsystem::ShouldCreateSubsystem(UObject* Outer) const
@@ -186,7 +102,6 @@ void UBNTrafficSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 	bIsKaramaraMap = InWorld.GetMapName().Contains(TEXT("Karamara"));
 	if (!bIsKaramaraMap) { return; }
 
-	BuildKaramaraRoutes();
 	LoadTrafficAssets();
 
 	if (TActorIterator<ABNDayNightCycle> Cycle(&InWorld); Cycle)
@@ -203,7 +118,7 @@ void UBNTrafficSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 void UBNTrafficSubsystem::Deinitialize()
 {
 	ClearTraffic();
-	Routes.Reset();
+	VehicleMeshes.Reset();
 	bIsKaramaraMap = false;
 	bWorldBegunPlay = false;
 	Super::Deinitialize();
@@ -248,133 +163,243 @@ void UBNTrafficSubsystem::GetTrafficLocations(TArray<FVector>& OutLocations) con
 	}
 }
 
-void UBNTrafficSubsystem::BuildKaramaraRoutes()
-{
-	Routes.Reset();
-	auto FinalizeRoute = [](FTrafficRoute& Route)
-	{
-		Route.CumulativeDist.Reset();
-		Route.TotalLength = 0.f;
-		const int32 N = Route.Points.Num();
-		if (N < 2) { return; }
-		Route.CumulativeDist.Add(0.f);
-		const int32 SegCount = Route.bClosed ? N : (N - 1);
-		for (int32 i = 0; i < SegCount; ++i)
-		{
-			Route.TotalLength += FVector::Dist(Route.Points[i], Route.Points[(i + 1) % N]);
-			Route.CumulativeDist.Add(Route.TotalLength);
-		}
-	};
-
-	// Route 0 (Inner CW ring) & Route 1 (Outer CCW ring): non-overlapping right-hand lanes across all 4 boulevards.
-	FTrafficRoute LoopCW;
-	LoopCW.bClosed = true;
-	BuildRoundedLoopPoints({
-		FVector(-InnerRingX, -InnerRingY, RoadTopZ), FVector( InnerRingX, -InnerRingY, RoadTopZ),
-		FVector( InnerRingX,  InnerRingY, RoadTopZ), FVector(-InnerRingX,  InnerRingY, RoadTopZ)
-	}, 700.f, 6, LoopCW.Points);
-	FinalizeRoute(LoopCW);
-	Routes.Add(MoveTemp(LoopCW));
-
-	FTrafficRoute LoopCCW;
-	LoopCCW.bClosed = true;
-	BuildRoundedLoopPoints({
-		FVector( OuterRingX, -OuterRingY, RoadTopZ), FVector(-OuterRingX, -OuterRingY, RoadTopZ),
-		FVector(-OuterRingX,  OuterRingY, RoadTopZ), FVector( OuterRingX,  OuterRingY, RoadTopZ)
-	}, 1400.f, 6, LoopCCW.Points);
-	FinalizeRoute(LoopCCW);
-	Routes.Add(MoveTemp(LoopCCW));
-
-	// Route 2 (Kuzey Viyadugu Eastbound) & Route 3 (Westbound): smooth 3.99-deg ramps up to Z = 700 deck.
-	FTrafficRoute ViaductE;
-	ViaductE.bClosed = false;
-	for (float X = ViaductStartX; X <= ViaductEndX + 1.f; X += 500.f)
-	{
-		const float CX = FMath::Min(X, ViaductEndX);
-		ViaductE.Points.Add(FVector(CX, ViaductEastY, SampleViaductElevationZ(CX)));
-	}
-	FinalizeRoute(ViaductE);
-	Routes.Add(MoveTemp(ViaductE));
-
-	FTrafficRoute ViaductW;
-	ViaductW.bClosed = false;
-	for (float X = ViaductEndX; X >= ViaductStartX - 1.f; X -= 500.f)
-	{
-		const float CX = FMath::Max(X, ViaductStartX);
-		ViaductW.Points.Add(FVector(CX, ViaductWestY, SampleViaductElevationZ(CX)));
-	}
-	FinalizeRoute(ViaductW);
-	Routes.Add(MoveTemp(ViaductW));
-}
-
 void UBNTrafficSubsystem::LoadTrafficAssets()
 {
-	if (!CarBodyMesh) { CarBodyMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Vehicles/SportsCar/SM_SportsCar.SM_SportsCar")); }
-	if (!CarGlassMesh) { CarGlassMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Vehicles/SportsCar/SM_SportsCar_Glass.SM_SportsCar_Glass")); }
-	if (!CarWheelMesh) { CarWheelMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Vehicles/SportsCar/SM_SportsCar_Wheel.SM_SportsCar_Wheel")); }
-	if (!CubeMesh) { CubeMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Engine/BasicShapes/Cube.Cube")); }
-	if (!LightLensMaterial)
+	VehicleMeshes.Reset();
+	for (int32 i = 0; i < UE_ARRAY_COUNT(TrafficMeshPackages); ++i)
 	{
-		LightLensMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/EngineDebugMaterials/M_SimpleUnlitTranslucent.M_SimpleUnlitTranslucent"));
-		if (!LightLensMaterial)
+		if (FPackageName::DoesPackageExist(TrafficMeshPackages[i]))
 		{
-			LightLensMaterial = LoadObject<UMaterialInterface>(nullptr, TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial"));
+			if (UStaticMesh* Mesh = LoadObject<UStaticMesh>(nullptr, TrafficMeshAssets[i]))
+			{
+				VehicleMeshes.Add(Mesh);
+			}
 		}
 	}
-	if (const USkeletalMesh* Skel = LoadObject<USkeletalMesh>(nullptr, TEXT("/Game/Vehicles/SportsCar/SKM_SportsCar.SKM_SportsCar")))
+	if (VehicleMeshes.IsEmpty())
 	{
-		static const TCHAR* const Bones[4] = { TEXT("Phys_Wheel_FL"), TEXT("Phys_Wheel_FR"), TEXT("Phys_Wheel_BL"), TEXT("Phys_Wheel_BR") };
-		for (int32 i = 0; i < 4; ++i)
+		if (UStaticMesh* Fallback = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/Vehicles/SportsCar/SM_SportsCar.SM_SportsCar")))
 		{
-			WheelLocalOffsets[i] = ComputeRefBoneLocation(*Skel, Bones[i], WheelLocalOffsets[i]);
+			VehicleMeshes.Add(Fallback);
 		}
 	}
 }
 
-void UBNTrafficSubsystem::SampleRoute(int32 RouteIndex, float Distance, FVector& OutLocation, FRotator& OutRotation) const
+bool UBNTrafficSubsystem::PickEdgeNearPlayer(const FVector& PlayerLoc, float MinDistCm, float MaxDistCm,
+	int32 IgnoreCarIdx, int32& OutEdgeIdx, bool& bOutRev, float& OutDistAlong) const
 {
-	if (!Routes.IsValidIndex(RouteIndex))
+	const UWorld* World = GetWorld();
+	const UBNRoadGraphSubsystem* RoadGraph = World ? World->GetSubsystem<UBNRoadGraphSubsystem>() : nullptr;
+	if (!RoadGraph || !RoadGraph->HasGraph())
 	{
-		OutLocation = FVector::ZeroVector;
-		OutRotation = FRotator::ZeroRotator;
+		return false;
+	}
+	const TArray<FBNRoadEdge>& Edges = RoadGraph->GetEdges();
+	if (Edges.IsEmpty())
+	{
+		return false;
+	}
+
+	int32 BestEdge = INDEX_NONE;
+	bool bBestRev = false;
+	float BestDistAlong = 0.f;
+	float BestScore = -BIG_NUMBER;
+
+	for (int32 Attempt = 0; Attempt < 32; ++Attempt)
+	{
+		const int32 EIdx = FMath::RandRange(0, Edges.Num() - 1);
+		if (Edges[EIdx].bDirt)
+		{
+			continue;
+		}
+		const float EdgeLen = RoadGraph->GetEdgeLengthCm(EIdx);
+		if (EdgeLen < 1200.f)
+		{
+			continue;
+		}
+		const bool bRev = FMath::RandBool();
+		const float DistAlong = FMath::FRandRange(200.f, EdgeLen - 200.f);
+		FVector Loc, Tan;
+		if (!RoadGraph->SampleEdgeAtDistance(EIdx, DistAlong, bRev, Loc, Tan))
+		{
+			continue;
+		}
+		const float DistToPlayer = FVector::Dist2D(Loc, PlayerLoc);
+		if (DistToPlayer < MinDistCm || DistToPlayer > MaxDistCm)
+		{
+			continue;
+		}
+
+		// Ensure no immediate overlap with another traffic car on same edge & direction
+		float MinCarGap = 99999.f;
+		for (int32 j = 0; j < Cars.Num(); ++j)
+		{
+			if (j == IgnoreCarIdx || Cars[j].EdgeIdx != EIdx || Cars[j].bReversed != bRev)
+			{
+				continue;
+			}
+			MinCarGap = FMath::Min(MinCarGap, FMath::Abs(Cars[j].DistanceAlong - DistAlong));
+		}
+		if (MinCarGap < 2200.f)
+		{
+			continue;
+		}
+		const float Score = FMath::Min(MinCarGap, 8000.f) - FMath::Abs(DistToPlayer - 0.5f * (MinDistCm + MaxDistCm)) * 0.2f;
+		if (Score > BestScore)
+		{
+			BestScore = Score;
+			BestEdge = EIdx;
+			bBestRev = bRev;
+			BestDistAlong = DistAlong;
+		}
+	}
+
+	if (BestEdge == INDEX_NONE)
+	{
+		// Fallback to any paved edge on graph
+		for (int32 e = 0; e < Edges.Num(); ++e)
+		{
+			if (!Edges[e].bDirt && RoadGraph->GetEdgeLengthCm(e) >= 1200.f)
+			{
+				BestEdge = e;
+				bBestRev = (IgnoreCarIdx % 2 == 1);
+				BestDistAlong = RoadGraph->GetEdgeLengthCm(e) * 0.5f;
+				break;
+			}
+		}
+	}
+	if (BestEdge == INDEX_NONE)
+	{
+		return false;
+	}
+	OutEdgeIdx = BestEdge;
+	bOutRev = bBestRev;
+	OutDistAlong = BestDistAlong;
+	return true;
+}
+
+bool UBNTrafficSubsystem::ComputeCarPose(const FTrafficCar& Car, FVector& OutLocation, FRotator& OutRotation) const
+{
+	const UWorld* World = GetWorld();
+	const UBNRoadGraphSubsystem* RoadGraph = World ? World->GetSubsystem<UBNRoadGraphSubsystem>() : nullptr;
+	if (!RoadGraph || !RoadGraph->HasGraph())
+	{
+		return false;
+	}
+	const TArray<FBNRoadEdge>& Edges = RoadGraph->GetEdges();
+	if (!Edges.IsValidIndex(Car.EdgeIdx))
+	{
+		return false;
+	}
+	FVector CenterLoc, Tan;
+	if (!RoadGraph->SampleEdgeAtDistance(Car.EdgeIdx, Car.DistanceAlong, Car.bReversed, CenterLoc, Tan))
+	{
+		return false;
+	}
+	const FVector Right2D(-Tan.Y, Tan.X, 0.f);
+	const float LaneOffset = FMath::Clamp(Edges[Car.EdgeIdx].WidthCm * 0.25f, 320.f, 520.f) + Car.LateralPullOffset;
+	OutLocation = CenterLoc + Right2D.GetSafeNormal() * LaneOffset + FVector(0.f, 0.f, 2.f);
+	OutRotation = Tan.Rotation();
+	return true;
+}
+
+void UBNTrafficSubsystem::AdvanceToNextEdge(FTrafficCar& Car) const
+{
+	const UWorld* World = GetWorld();
+	const UBNRoadGraphSubsystem* RoadGraph = World ? World->GetSubsystem<UBNRoadGraphSubsystem>() : nullptr;
+	if (!RoadGraph || !RoadGraph->HasGraph())
+	{
 		return;
 	}
-	const FTrafficRoute& R = Routes[RouteIndex];
-	OutLocation = SamplePolylinePoint(R.Points, R.CumulativeDist, R.TotalLength, R.bClosed, Distance);
-	const float Ahead = R.bClosed ? (Distance + 220.f) : FMath::Min(Distance + 220.f, R.TotalLength);
-	const float Behind = R.bClosed ? (Distance - 120.f) : FMath::Max(Distance - 120.f, 0.f);
-	const FVector Dir = (SamplePolylinePoint(R.Points, R.CumulativeDist, R.TotalLength, R.bClosed, Ahead)
-		- SamplePolylinePoint(R.Points, R.CumulativeDist, R.TotalLength, R.bClosed, Behind)).GetSafeNormal();
-	OutRotation = Dir.IsNearlyZero() ? FRotator::ZeroRotator : Dir.Rotation();
+	const TArray<FBNRoadEdge>& Edges = RoadGraph->GetEdges();
+	if (!Edges.IsValidIndex(Car.EdgeIdx))
+	{
+		return;
+	}
+
+	FVector EndLoc, CurTan;
+	RoadGraph->SampleEdgeAtDistance(Car.EdgeIdx, RoadGraph->GetEdgeLengthCm(Car.EdgeIdx), Car.bReversed, EndLoc, CurTan);
+	const int32 EndNodeIdx = RoadGraph->FindNearestNode(EndLoc);
+	TArray<TPair<int32, bool>> OutEdges;
+	RoadGraph->GetOutgoingEdges(EndNodeIdx, OutEdges);
+
+	int32 BestEdge = Car.EdgeIdx;
+	bool bBestRev = !Car.bReversed;
+	float BestScore = -10.f;
+
+	for (const TPair<int32, bool>& Cand : OutEdges)
+	{
+		if (Cand.Key == Car.EdgeIdx || Edges[Cand.Key].bDirt)
+		{
+			continue;
+		}
+		FVector DummyL, CandTan;
+		if (RoadGraph->SampleEdgeAtDistance(Cand.Key, 200.f, Cand.Value, DummyL, CandTan))
+		{
+			// Favor straight/gentle continuations over sharp turns, with mild randomness for natural variety
+			const float Score = FVector::DotProduct(CurTan.GetSafeNormal2D(), CandTan.GetSafeNormal2D())
+				+ FMath::FRandRange(-0.35f, 0.35f);
+			if (Score > BestScore)
+			{
+				BestScore = Score;
+				BestEdge = Cand.Key;
+				bBestRev = Cand.Value;
+			}
+		}
+	}
+
+	Car.EdgeIdx = BestEdge;
+	Car.bReversed = bBestRev;
+	Car.DistanceAlong = 60.f;
+	const float RoadLimit = Edges[BestEdge].SpeedLimitKmh;
+	Car.CruiseSpeedCmPerSec = FMath::Clamp(RoadLimit * FMath::FRandRange(0.72f, 0.92f), 46.f, 105.f) * KmhToCmPerSec;
 }
 
 void UBNTrafficSubsystem::SpawnAllTraffic()
 {
 	ClearTraffic();
 	UWorld* World = GetWorld();
-	if (!World || Routes.IsEmpty()) { return; }
+	const UBNRoadGraphSubsystem* RoadGraph = World ? World->GetSubsystem<UBNRoadGraphSubsystem>() : nullptr;
+	if (!World || !RoadGraph || !RoadGraph->HasGraph() || VehicleMeshes.IsEmpty())
+	{
+		return;
+	}
 
 	const ABNVehiclePawn* Player = FindPlayerCar();
-	const FVector AvoidLoc = Player ? Player->GetActorLocation() : FVector(-24500.f, -14000.f, RoadTopZ);
+	const FVector PlayerLoc = Player ? Player->GetActorLocation() : FVector(-18000.f, -4000.f, 0.f);
 
-	for (int32 i = 0; i < UE_ARRAY_COUNT(SpawnSpecs); ++i)
+	FActorSpawnParameters Params;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+	Params.ObjectFlags |= RF_Transient;
+
+	for (int32 i = 0; i < TargetTrafficCount; ++i)
 	{
-		const FTrafficSpawnSpec& Spec = SpawnSpecs[i];
-		if (!Routes.IsValidIndex(Spec.RouteIndex) || Routes[Spec.RouteIndex].TotalLength <= 0.f) { continue; }
-
-		float StartDist = Routes[Spec.RouteIndex].TotalLength * Spec.Fraction;
-		FVector SpawnLoc;
-		FRotator SpawnRot;
-		SampleRoute(Spec.RouteIndex, StartDist, SpawnLoc, SpawnRot);
-		if (FVector::Dist2D(SpawnLoc, AvoidLoc) < 2400.f)
+		int32 EdgeIdx = 0;
+		bool bRev = false;
+		float DistAlong = 0.f;
+		// Spread first 12 cars closer (45..320 m) so Merkez feels immediately alive, rest out to 520 m!
+		const float MinD = (i < 12) ? 4500.f : 18000.f;
+		const float MaxD = (i < 12) ? 34000.f : 54000.f;
+		if (!PickEdgeNearPlayer(PlayerLoc, MinD, MaxD, i, EdgeIdx, bRev, DistAlong))
 		{
-			StartDist = FMath::Fmod(StartDist + 4500.f, Routes[Spec.RouteIndex].TotalLength);
-			SampleRoute(Spec.RouteIndex, StartDist, SpawnLoc, SpawnRot);
+			continue;
 		}
 
-		FActorSpawnParameters Params;
-		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-		Params.ObjectFlags |= RF_Transient;
+		FTrafficCar Car;
+		Car.EdgeIdx = EdgeIdx;
+		Car.bReversed = bRev;
+		Car.DistanceAlong = DistAlong;
+		const float BaseLimit = RoadGraph->GetEdges()[EdgeIdx].SpeedLimitKmh;
+		Car.CruiseSpeedCmPerSec = FMath::Clamp(BaseLimit * FMath::FRandRange(0.70f, 0.92f), 46.f, 102.f) * KmhToCmPerSec;
+		Car.CurrentSpeedCmPerSec = Car.CruiseSpeedCmPerSec;
+
+		FVector SpawnLoc;
+		FRotator SpawnRot;
+		if (!ComputeCarPose(Car, SpawnLoc, SpawnRot))
+		{
+			continue;
+		}
+
 		AActor* Actor = World->SpawnActor<AActor>(AActor::StaticClass(), FTransform(SpawnRot, SpawnLoc), Params);
 		if (!Actor) { continue; }
 
@@ -385,63 +410,51 @@ void UBNTrafficSubsystem::SpawnAllTraffic()
 		Root->RegisterComponent();
 		Actor->SetActorLocationAndRotation(SpawnLoc, SpawnRot);
 
-		FTrafficCar Car;
-		Car.Actor = Actor;
-		Car.RouteIndex = Spec.RouteIndex;
-		Car.DistanceAlong = StartDist;
-		Car.CruiseSpeedCmPerSec = Spec.CruiseKmh * KmhToCmPerSec;
-		Car.CurrentSpeedCmPerSec = Car.CruiseSpeedCmPerSec;
+		UStaticMesh* ChosenMesh = VehicleMeshes[i % VehicleMeshes.Num()];
+		UStaticMeshComponent* Body = NewObject<UStaticMeshComponent>(Actor, TEXT("TrafficBody"));
+		Body->SetStaticMesh(ChosenMesh);
+		Body->SetMobility(EComponentMobility::Movable);
+		Body->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Body->SetGenerateOverlapEvents(false);
+		Body->SetCastShadow(true);
+		Body->SetCanEverAffectNavigation(false);
+		Body->SetupAttachment(Root);
 
-		if (UStaticMeshComponent* Body = AttachTrafficMesh(Actor, Root, CarBodyMesh, FVector::ZeroVector, FRotator::ZeroRotator, FVector::OneVector, true))
+		// Align imported UE Offroad SUV mesh if its length runs along Y instead of X
+		const FBox Bounds = ChosenMesh->GetBoundingBox();
+		if (Bounds.IsValid && Bounds.GetSize().Y > Bounds.GetSize().X * 1.15f)
 		{
-			const FLinearColor Paint = CivilianPalette[i % UE_ARRAY_COUNT(CivilianPalette)];
-			for (int32 m = 0; m < Body->GetNumMaterials(); ++m)
+			Body->SetRelativeRotation(FRotator(0.f, -90.f, 0.f));
+			Body->SetRelativeLocation(FVector(0.f, 0.f, -Bounds.Min.Z));
+		}
+		Body->RegisterComponent();
+
+		// Apply civilian paint tint (works for both MI_Traffic_Paint "BaseColor" and Offroad "Paint Tint")
+		const FLinearColor Paint = CivilianPalette[i % UE_ARRAY_COUNT(CivilianPalette)];
+		for (int32 m = 0; m < Body->GetNumMaterials(); ++m)
+		{
+			UMaterialInterface* Mat = Body->GetMaterial(m);
+			if (!Mat) { continue; }
+			const FString MName = Mat->GetName();
+			if (MName.Contains(TEXT("Traffic_Paint")) || MName.Contains(TEXT("OffroadCar_Main")) || MName.Contains(TEXT("SportsCarBody")))
 			{
-				if (UMaterialInterface* Mat = Body->GetMaterial(m); Mat && Mat->GetName().Contains(TEXT("SportsCarBody")))
+				if (UMaterialInstanceDynamic* Mid = Body->CreateDynamicMaterialInstance(m, Mat))
 				{
-					if (UMaterialInstanceDynamic* Mid = Body->CreateDynamicMaterialInstance(m, Mat))
-					{
-						Mid->SetVectorParameterValue(TEXT("Paint Tint"), Paint);
-					}
-					break;
+					Mid->SetVectorParameterValue(TEXT("BaseColor"), Paint);
+					Mid->SetVectorParameterValue(TEXT("Paint Tint"), Paint);
 				}
 			}
-		}
-		AttachTrafficMesh(Actor, Root, CarGlassMesh, FVector::ZeroVector, FRotator::ZeroRotator, FVector::OneVector, false);
-
-		for (int32 w = 0; w < 4; ++w)
-		{
-			const FRotator WheelRot = (w % 2 == 0) ? FRotator(0.f, 180.f, 0.f) : FRotator::ZeroRotator;
-			if (UStaticMeshComponent* Wheel = AttachTrafficMesh(Actor, Root, CarWheelMesh, WheelLocalOffsets[w], WheelRot, FVector::OneVector, false))
+			else if (MName.Contains(TEXT("Traffic_Taillight")))
 			{
-				Car.Wheels.Add(Wheel);
+				Car.TaillightMid = Body->CreateDynamicMaterialInstance(m, Mat);
 			}
 		}
 
-		for (const float Side : { -1.f, 1.f })
-		{
-			auto AddLens = [&](const FVector& Pos, const FVector& Scale, const FLinearColor& Col)
-			{
-				if (UStaticMeshComponent* Lens = AttachTrafficMesh(Actor, Root, CubeMesh, Pos, FRotator::ZeroRotator, Scale, false))
-				{
-					if (LightLensMaterial)
-					{
-						if (UMaterialInstanceDynamic* Mid = Lens->CreateDynamicMaterialInstance(0, LightLensMaterial))
-						{
-							Mid->SetVectorParameterValue(TEXT("Color"), Col);
-						}
-					}
-					Car.LightLenses.Add(Lens);
-				}
-			};
-			AddLens(FVector(236.f, Side * 70.f, 62.f), FVector(0.06f, 0.24f, 0.10f), HeadlightLensColor);
-			AddLens(FVector(-224.f, Side * 68.f, 66.f), FVector(0.05f, 0.30f, 0.08f), TaillightLensColor);
-		}
-
-		USpotLightComponent* Beam = NewObject<USpotLightComponent>(Actor);
+		// Night headlight beam (low draw cost, fades out beyond 110 m)
+		USpotLightComponent* Beam = NewObject<USpotLightComponent>(Actor, TEXT("TrafficHeadlight"));
 		Beam->SetMobility(EComponentMobility::Movable);
 		Beam->SetupAttachment(Root);
-		Beam->SetRelativeLocationAndRotation(FVector(255.f, 0.f, 68.f), FRotator(-6.f, 0.f, 0.f));
+		Beam->SetRelativeLocationAndRotation(FVector(240.f, 0.f, 70.f), FRotator(-6.f, 0.f, 0.f));
 		Beam->SetIntensityUnits(ELightUnits::Candelas);
 		Beam->SetIntensity(HeadlightBeamCandelas);
 		Beam->SetLightColor(HeadlightBeamColor);
@@ -449,11 +462,13 @@ void UBNTrafficSubsystem::SpawnAllTraffic()
 		Beam->SetInnerConeAngle(16.f);
 		Beam->SetOuterConeAngle(36.f);
 		Beam->SetCastShadows(false);
-		Beam->SetMaxDrawDistance(12000.f);
+		Beam->SetMaxDrawDistance(11000.f);
 		Beam->SetMaxDistanceFadeRange(2500.f);
 		Beam->RegisterComponent();
-		Car.HeadlightBeam = Beam;
 
+		Car.Actor = Actor;
+		Car.BodyComp = Body;
+		Car.HeadlightBeam = Beam;
 		ApplyNightLightsToCar(Car, bNightLightsOn);
 		Cars.Add(MoveTemp(Car));
 	}
@@ -461,11 +476,10 @@ void UBNTrafficSubsystem::SpawnAllTraffic()
 
 void UBNTrafficSubsystem::ApplyNightLightsToCar(const FTrafficCar& Car, bool bOn) const
 {
-	for (const TWeakObjectPtr<UStaticMeshComponent>& Lens : Car.LightLenses)
+	if (USpotLightComponent* Beam = Car.HeadlightBeam.Get())
 	{
-		if (UStaticMeshComponent* Comp = Lens.Get()) { Comp->SetVisibility(bOn, true); }
+		Beam->SetVisibility(bOn);
 	}
-	if (USpotLightComponent* Beam = Car.HeadlightBeam.Get()) { Beam->SetVisibility(bOn); }
 }
 
 void UBNTrafficSubsystem::ClearTraffic()
@@ -484,45 +498,24 @@ ABNVehiclePawn* UBNTrafficSubsystem::FindPlayerCar() const
 	return PC ? Cast<ABNVehiclePawn>(PC->GetPawn()) : nullptr;
 }
 
-float UBNTrafficSubsystem::FindSafeRespawnDistance(int32 RouteIndex, const FVector& PlayerLoc, int32 IgnoreCarIndex) const
-{
-	if (!Routes.IsValidIndex(RouteIndex) || Routes[RouteIndex].TotalLength <= 0.f) { return 0.f; }
-	const float TotalLen = Routes[RouteIndex].TotalLength;
-	float BestDist = 0.f, BestScore = -1.f;
-
-	for (int32 c = 0; c < 12; ++c)
-	{
-		const float CandidateDist = TotalLen * (static_cast<float>(c) + 0.5f) / 12.f;
-		FVector Loc;
-		FRotator Rot;
-		SampleRoute(RouteIndex, CandidateDist, Loc, Rot);
-
-		float MinTrafficGap = TotalLen;
-		for (int32 j = 0; j < Cars.Num(); ++j)
-		{
-			if (j == IgnoreCarIndex || Cars[j].RouteIndex != RouteIndex) { continue; }
-			const float RawDiff = FMath::Abs(Cars[j].DistanceAlong - CandidateDist);
-			MinTrafficGap = FMath::Min(MinTrafficGap, Routes[RouteIndex].bClosed ? FMath::Min(RawDiff, TotalLen - RawDiff) : RawDiff);
-		}
-		const float Score = FMath::Min(FVector::Dist2D(Loc, PlayerLoc), MinRespawnPlayerDistCm * 1.4f) + FMath::Min(MinTrafficGap, 6000.f);
-		if (Score > BestScore)
-		{
-			BestScore = Score;
-			BestDist = CandidateDist;
-		}
-	}
-	return BestDist;
-}
-
 void UBNTrafficSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	const float Dt = FMath::Clamp(DeltaTime, 0.f, 0.1f);
 	UWorld* World = GetWorld();
-	if (!bIsKaramaraMap || !bTrafficEnabled || Cars.IsEmpty() || !World || Dt <= 0.f) { return; }
+	const UBNRoadGraphSubsystem* RoadGraph = World ? World->GetSubsystem<UBNRoadGraphSubsystem>() : nullptr;
+	if (!bIsKaramaraMap || !bTrafficEnabled || !World || !RoadGraph || !RoadGraph->HasGraph() || Dt <= 0.f)
+	{
+		return;
+	}
+	if (Cars.IsEmpty())
+	{
+		SpawnAllTraffic();
+		return;
+	}
 
 	ABNVehiclePawn* Player = FindPlayerCar();
-	const FVector PlayerLoc = Player ? Player->GetActorLocation() : FVector(BIG_NUMBER);
+	const FVector PlayerLoc = Player ? Player->GetActorLocation() : FVector(-18000.f, -4000.f, 0.f);
 	const FVector PlayerVel = Player ? Player->GetVelocity() : FVector::ZeroVector;
 	const float PlayerSpeedKmh = Player ? Player->GetSpeedKmh() : 0.f;
 
@@ -545,7 +538,7 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 	{
 		FTrafficCar& Car = Cars[i];
 		AActor* Actor = Car.Actor.Get();
-		if (!Actor || !Routes.IsValidIndex(Car.RouteIndex)) { continue; }
+		if (!Actor) { continue; }
 		Car.NearMissCooldown = FMath::Max(0.f, Car.NearMissCooldown - Dt);
 
 		if (Car.State == ETrafficCarState::Knocked)
@@ -570,28 +563,62 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 			Car.StateTimer -= Dt;
 			if (Car.StateTimer <= 0.f)
 			{
-				Car.DistanceAlong = FindSafeRespawnDistance(Car.RouteIndex, PlayerLoc, i);
+				int32 NewEdge = Car.EdgeIdx;
+				bool bNewRev = Car.bReversed;
+				float NewDist = 0.f;
+				if (PickEdgeNearPlayer(PlayerLoc, RecycleMinDistCm, RecycleSpawnMaxCm, i, NewEdge, bNewRev, NewDist))
+				{
+					Car.EdgeIdx = NewEdge;
+					Car.bReversed = bNewRev;
+					Car.DistanceAlong = NewDist;
+				}
 				Car.CurrentSpeedCmPerSec = Car.CruiseSpeedCmPerSec * 0.5f;
 				Car.LateralPullOffset = 0.f;
 				Car.State = ETrafficCarState::Cruising;
-				FVector RespawnLoc;
-				FRotator RespawnRot;
-				SampleRoute(Car.RouteIndex, Car.DistanceAlong, RespawnLoc, RespawnRot);
-				Actor->SetActorLocationAndRotation(RespawnLoc, RespawnRot);
+				FVector Loc;
+				FRotator Rot;
+				if (ComputeCarPose(Car, Loc, Rot))
+				{
+					Actor->SetActorLocationAndRotation(Loc, Rot);
+				}
 			}
 			continue;
 		}
 
-		// Cruising: yield smoothly for cars ahead, nearby police sirens, and a slow/stopped player in lane.
-		const FTrafficRoute& Route = Routes[Car.RouteIndex];
+		const FVector CurLoc = Actor->GetActorLocation();
+		// Seamlessly recycle traffic cars that have fallen > 580 m behind the player onto edges around the player
+		if (Player && FVector::Dist2D(CurLoc, PlayerLoc) > RecycleMaxDistCm)
+		{
+			int32 NewEdge = Car.EdgeIdx;
+			bool bNewRev = Car.bReversed;
+			float NewDist = 0.f;
+			if (PickEdgeNearPlayer(PlayerLoc, RecycleMinDistCm, RecycleSpawnMaxCm, i, NewEdge, bNewRev, NewDist))
+			{
+				Car.EdgeIdx = NewEdge;
+				Car.bReversed = bNewRev;
+				Car.DistanceAlong = NewDist;
+				Car.LateralPullOffset = 0.f;
+				FVector Loc;
+				FRotator Rot;
+				if (ComputeCarPose(Car, Loc, Rot))
+				{
+					Actor->SetActorLocationAndRotation(Loc, Rot);
+				}
+				continue;
+			}
+		}
+
+		// Yield for traffic cars directly ahead on same edge/direction, sirens, and stopped player
 		float TargetSpeed = Car.CruiseSpeedCmPerSec;
 		float DesiredLateralPull = 0.f;
-
 		for (int32 j = 0; j < Cars.Num(); ++j)
 		{
-			if (j == i || Cars[j].RouteIndex != Car.RouteIndex || Cars[j].State != ETrafficCarState::Cruising) { continue; }
-			float Gap = Cars[j].DistanceAlong - Car.DistanceAlong;
-			if (Route.bClosed && Gap < 0.f) { Gap += Route.TotalLength; }
+			if (j == i || Cars[j].EdgeIdx != Car.EdgeIdx || Cars[j].bReversed != Car.bReversed
+				|| Cars[j].State != ETrafficCarState::Cruising)
+			{
+				continue;
+			}
+			const float Gap = Cars[j].DistanceAlong - Car.DistanceAlong;
 			if (Gap > 0.f && Gap < YieldGapMaxCm)
 			{
 				TargetSpeed = FMath::Min(TargetSpeed, Car.CruiseSpeedCmPerSec
@@ -599,7 +626,6 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 			}
 		}
 
-		const FVector CurLoc = Actor->GetActorLocation();
 		const FVector CurFwd = Actor->GetActorForwardVector().GetSafeNormal2D();
 		if (bPursuitActive)
 		{
@@ -608,7 +634,7 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 				if (FVector::DistSquared2D(CurLoc, SirenPos) <= FMath::Square(SirenYieldRadiusCm))
 				{
 					TargetSpeed = FMath::Min(TargetSpeed, Car.CruiseSpeedCmPerSec * 0.22f);
-					DesiredLateralPull = 95.f;
+					DesiredLateralPull = 110.f;
 					break;
 				}
 			}
@@ -619,43 +645,40 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 			if (ToPlayer.Size2D() < 1550.f && FMath::Abs(ToPlayer.Z) < VerticalInteractionTolCm)
 			{
 				const float Along = FVector::DotProduct(ToPlayer, CurFwd);
-				if (Along > 260.f && FMath::Abs(FVector::CrossProduct(CurFwd, ToPlayer).Z) < 250.f)
+				if (Along > 260.f && FMath::Abs(FVector::CrossProduct(CurFwd, ToPlayer).Z) < 260.f)
 				{
 					TargetSpeed = FMath::Min(TargetSpeed, Car.CruiseSpeedCmPerSec * FMath::Clamp((Along - 520.f) / 1000.f, 0.f, 1.f));
 				}
 			}
 		}
 
-		const float AccelRate = (TargetSpeed < Car.CurrentSpeedCmPerSec) ? 1400.f : 650.f;
+		const bool bBraking = TargetSpeed < Car.CurrentSpeedCmPerSec - 120.f;
+		if (UMaterialInstanceDynamic* TailMid = Car.TaillightMid.Get())
+		{
+			TailMid->SetVectorParameterValue(TEXT("Emissive"),
+				bBraking ? FLinearColor(9.0f, 0.22f, 0.08f, 1.f) : FLinearColor(1.8f, 0.08f, 0.04f, 1.f));
+		}
+
+		const float AccelRate = bBraking ? 1450.f : 680.f;
 		Car.CurrentSpeedCmPerSec = FMath::FInterpConstantTo(Car.CurrentSpeedCmPerSec, TargetSpeed, Dt, AccelRate);
 		Car.LateralPullOffset = FMath::FInterpTo(Car.LateralPullOffset, DesiredLateralPull, Dt, 2.5f);
 		Car.DistanceAlong += Car.CurrentSpeedCmPerSec * Dt;
-		if (Route.TotalLength > KINDA_SMALL_NUMBER)
+
+		const float EdgeLen = RoadGraph->GetEdgeLengthCm(Car.EdgeIdx);
+		if (Car.DistanceAlong >= EdgeLen - 80.f)
 		{
-			if (Route.bClosed) { Car.DistanceAlong = FMath::Fmod(Car.DistanceAlong, Route.TotalLength); }
-			else if (Car.DistanceAlong >= Route.TotalLength) { Car.DistanceAlong = 0.f; }
+			AdvanceToNextEdge(Car);
 		}
 
 		FVector NextLoc;
 		FRotator NextRot;
-		SampleRoute(Car.RouteIndex, Car.DistanceAlong, NextLoc, NextRot);
-		if (Car.LateralPullOffset > 1.f)
+		if (!ComputeCarPose(Car, NextLoc, NextRot))
 		{
-			NextLoc += FRotationMatrix(NextRot).GetUnitAxis(EAxis::Y).GetSafeNormal2D() * Car.LateralPullOffset;
+			continue;
 		}
 		Actor->SetActorLocationAndRotation(NextLoc, NextRot);
 
-		Car.WheelSpinDeg = FMath::Fmod(Car.WheelSpinDeg + FMath::RadiansToDegrees((Car.CurrentSpeedCmPerSec * Dt) / 40.f), 360.f);
-		for (int32 w = 0; w < Car.Wheels.Num(); ++w)
-		{
-			if (UStaticMeshComponent* Wheel = Car.Wheels[w].Get())
-			{
-				Wheel->SetRelativeRotation((w % 2 == 0)
-					? FRotator(Car.WheelSpinDeg, 180.f, 0.f)
-					: FRotator(-Car.WheelSpinDeg, 0.f, 0.f));
-			}
-		}
-
+		// Collision & Near-Miss interaction with player car
 		if (Player && FMath::Abs(NextLoc.Z - PlayerLoc.Z) < VerticalInteractionTolCm)
 		{
 			const float Dist2D = FVector::Dist2D(NextLoc, PlayerLoc);
@@ -681,7 +704,11 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 				}
 				if (Pursuit)
 				{
-					Pursuit->ReportCollateralDamage(TrafficCollateralDollars, TEXT("Sivil Trafik Carpismasi"));
+					Pursuit->ReportCollateralDamage(TrafficCollateralDollars, TEXT("Sivil Trafik Çarpışması"));
+				}
+				if (UBNAudioSubsystem* Audio = World->GetSubsystem<UBNAudioSubsystem>())
+				{
+					Audio->PlaySfxAtLocation(EBNSfxId::CrashHeavy, 0.5f * (NextLoc + PlayerLoc), 0.95f);
 				}
 			}
 			else if (Dist2D <= NearMissRadiusCm && Car.NearMissCooldown <= 0.f
@@ -690,6 +717,10 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 			{
 				Car.NearMissCooldown = 3.0f;
 				Player->GrantNearMissBonus();
+				if (UBNAudioSubsystem* Audio = World->GetSubsystem<UBNAudioSubsystem>())
+				{
+					Audio->PlaySfx2D(EBNSfxId::NearMissWhoosh, 0.85f);
+				}
 			}
 		}
 	}

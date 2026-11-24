@@ -150,11 +150,14 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 - [x] **Özel Kademe** final kovalamacası (`bn.StoryStartFinalChase`): Demir'in **"ONU BANA GETİRİN! ÖLÜ YA DA DİRİ!"** emri ve **2 alternatif kaçış rotası** (`Liman Tünelleri` / `Kuzey Geçidi Servis Yolu`) *(testli)*
 - [x] Selin'in kaçış yardımı ve Epilog storyboard çekirdeği (`C14–C19` — gerçek **Şehir Faturası** ve Tarık kanon replikleri) *(testli)*
 
-## Faz 8 — Sequencer Sinematikleri, Ses & Paketleme
+## Faz 8 — Görsel Yenileme, 2 km Karamara, Akıllı Polis/Trafik, Ses & Paketleme
 
+- [x] **3B Varlık & Görsel Kalite Yenilemesi:** 27 prosedürel glTF 2.0 (`.glb`) 3B mesh (`Tools/bn_meshes.py`), gece/gündüz `MPC_BN_World.NightFactor` pencere ışıkları, makro asfalt su birikintileri, okunabilir Türkçe otoyol/dükkân tabelaları, temiz araç aero kitleri + LED far/fren şeritleri, 10 renk garaj boya seçici, yumuşak alfa duman/alev/kıvılcım/lastik izi VFX ve holografik yarış halkaları
+- [x] **2 km × 2 km 6 Semtli Karamara & 9 Yarış:** Tek kaynaklı `UBNRoadGraphAsset` / `UBNRoadGraphSubsystem` (A\* yol bulma, 6 kanon semt, 6 Cooldown saklanma cebi, +62 m Kuzey Geçidi dağ saç tokaları, Eski Liman Köprüsü, 16 boss'un 9 benzersiz rotaya ve özgün kasa araçlara dağıtılması, dinamik yol grafı radarı & semt afişi)
+- [x] **Akıllı Polis YZ, Serbest Devriyeler & Dinamik Trafik:** A\* yol takipli polis YZ, 3 organik serbest devriye, yola hizalı barikatlar, Heat 5+ Ağır Rhino SUV & Dikenli Şeritler, enkaz saçan 10 Pursuit Breaker, 20 araçlık 5 farklı kasa yol-grafı sivil trafiği
+- [x] **Prosedürel Ses & Adaptif Müzik:** 14 SFX + 3 kesintisiz adaptif müzik döngüsü (`Tools/bn_audio_assets.py` + `UBNAudioSubsystem`), 5 araç sınıfına özgü motor sesi profili (`TurboI4 / SportI6 / MuscleV8 / RallyV6 / ExoticV10`) ve Ayarlar ses mikseri
 - [ ] Tam Sequencer sinematikleri C01–C19 *(metin/storyboard çekirdeği + Epilog kartları Faz 6–7'de eklendi)*
-- [ ] Harici ses/müzik & son cila
-- [ ] Performans ve paketleme (Linux + Windows)
+- [ ] VRAM/FPS derin optimizasyon ve paketleme (Linux + Windows)
 
 ---
 

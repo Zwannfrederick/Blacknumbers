@@ -45,6 +45,7 @@ public:
 	ABNRaceEvent();
 
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void OnConstruction(const FTransform& Transform) override;
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 
 	/** Puts Car on the grid and starts the countdown. */
@@ -53,7 +54,8 @@ public:
 
 	/** Puts Car on the grid for a 1v1 BLACK NUMBERS boss showdown (or Drift boss target score). */
 	void StartBossRace(ABNVehiclePawn* Car, int32 BossRank, float BossSkill,
-		const FBNComputedVehicleStats& BossStats, const FLinearColor& BossTint, int32 DriftTargetScore = 0);
+		const FBNComputedVehicleStats& BossStats, const FLinearColor& BossTint, int32 DriftTargetScore = 0,
+		EBNCarId BossCarId = EBNCarId::KuroganeMSpec);
 
 	UFUNCTION(BlueprintPure, Category = "Race")
 	int32 GetActiveBossRank() const { return ActiveBossRank; }
@@ -102,7 +104,8 @@ public:
 
 private:
 	void BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float BossSkill,
-		const FBNComputedVehicleStats* BossStats, const FLinearColor& BossTint, int32 DriftTargetScore);
+		const FBNComputedVehicleStats* BossStats, const FLinearColor& BossTint, int32 DriftTargetScore,
+		EBNCarId BossCarId);
 	void TickIdle(ABNVehiclePawn& Car);
 	void TickRacing(ABNVehiclePawn& Car, float DeltaSeconds);
 	void ShowGate(int32 Index);
@@ -128,6 +131,9 @@ private:
 	int32 ActiveBossRank = 0;
 	int32 ActiveBossDriftTarget = 0;
 	float ActiveBossSkill = 0.85f;
+	EBNCarId ActiveBossCarId = EBNCarId::KuroganeMSpec;
 	FBNComputedVehicleStats ActiveBossStats;
 	FLinearColor ActiveBossTint = FLinearColor::White;
+	int32 LastCountdownDigit = 0;
+	bool bUsingHoloRaceMeshes = false;
 };

@@ -1,6 +1,7 @@
 #include "Vehicle/BNVehiclePawn.h"
 
 #include "Animation/AnimInstance.h"
+#include "Audio/BNAudioSubsystem.h"
 #include "Camera/CameraComponent.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "Components/PointLightComponent.h"
@@ -58,11 +59,6 @@ namespace
 	const FLinearColor NosFlameColour(0.2f, 0.75f, 1.f);
 
 	constexpr float BaseSocketZ = 150.f;
-	const FVector HoodCameraOffset(65.f, 0.f, 118.f);
-	constexpr float HoodCameraPitchDeg = -2.f;
-	constexpr float SpeedShakeMinKmh = 180.f;
-	constexpr float SpeedShakeFullKmh = 260.f;
-	constexpr float MaxSpeedShakeAmplitude = 0.8f;
 	constexpr float NearMissDistanceCm = 480.f;
 	constexpr float NearMissMinSpeedKmh = 80.f;
 	constexpr double NearMissCooldownSeconds = 2.5;
@@ -301,21 +297,6 @@ bool ABNVehiclePawn::AreLightsOn() const
 	return CarLights.Num() > 0 && CarLights[0]->IsVisible();
 }
 
-void ABNVehiclePawn::CycleChaseDistance()
-{
-	const int32 TotalModes = ChaseDistances.Num() + 1;
-	ChaseDistanceIndex = (ChaseDistanceIndex + 1) % TotalModes;
-}
-
-FString ABNVehiclePawn::GetCameraModeLabel() const
-{
-	if (IsHoodCamera())
-	{
-		return TEXT("KAPUT KAMERA");
-	}
-	return ChaseDistanceIndex == 0 ? TEXT("YAKIN TAKİP") : TEXT("UZAK TAKİP");
-}
-
 UChaosWheeledVehicleMovementComponent* ABNVehiclePawn::GetChaosMovement() const
 {
 	return CastChecked<UChaosWheeledVehicleMovementComponent>(GetVehicleMovementComponent());
@@ -398,7 +379,15 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 	{
 		BoostState.LaunchRevFraction = 0.f;
 	}
+	const bool bWasNosActive = BoostState.bNosActive;
 	BoostState.UpdateNos(RealDt, bNosWanted, bInputLocked, bOnGround, SpeedKmh, bDrifting, Boost);
+	if (!bWasNosActive && BoostState.bNosActive && IsPlayerControlled())
+	{
+		if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
+		{
+			Audio->PlaySfx2D(EBNSfxId::NosIgnite, 0.9f);
+		}
+	}
 
 	if (IsPlayerControlled())
 	{
@@ -468,58 +457,17 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 
 	const float RealTimeSeconds = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.f;
 	UBNVehicleVisualsComponent::UpdateExhaustLights(ExhaustLights, BoostState.bNosActive, IsBackfireActive(), RealTimeSeconds);
+	if (Visuals)
+	{
+		const bool bBraking = (Move->GetBrakeInput() > 0.1f && SpeedKmh > -2.f) || Move->GetHandbrakeInput();
+		Visuals->UpdateLightStrips(AreLightsOn(), bBraking);
+	}
 	if (Effects)
 	{
 		Effects->UpdateEffects(DeltaSeconds, SpeedKmh, GetSlipAngleDegrees(), bDrifting, bOnGround,
 			BoostState.bNosActive, IsBackfireActive());
 	}
 	UpdateCamera(DeltaSeconds, RealDt, SpeedKmh, RealTimeSeconds);
-}
-
-void ABNVehiclePawn::UpdateCamera(float DeltaSeconds, float RealDt, float SpeedKmh, float RealTimeSeconds)
-{
-	if (bShowcaseMode)
-	{
-		UpdateShowcaseCamera(RealDt);
-		return;
-	}
-	const bool bHood = IsHoodCamera();
-	CameraBoom->bEnableCameraRotationLag = !bHood;
-	CameraBoom->bInheritPitch = bHood;
-
-	const FVector TargetBoomLoc = bHood ? HoodCameraOffset : FVector::ZeroVector;
-	CameraBoom->SetRelativeLocation(FMath::VInterpTo(CameraBoom->GetRelativeLocation(), TargetBoomLoc, RealDt, 16.f));
-
-	const FRotator CurRot = CameraBoom->GetRelativeRotation();
-	if (bHood)
-	{
-		CameraBoom->SetRelativeRotation(FMath::RInterpTo(CurRot, FRotator(HoodCameraPitchDeg, 0.f, 0.f), RealDt, 16.f));
-	}
-	else
-	{
-		const float TargetYaw = bDrifting ? GetSlipAngleDegrees() * DriftCameraBlend : 0.f;
-		const float CameraYaw = FMath::FInterpTo(CurRot.Yaw, TargetYaw, DeltaSeconds, DriftCameraInterpSpeed);
-		const float CameraPitch = FMath::FInterpTo(CurRot.Pitch, 0.f, RealDt, 12.f);
-		CameraBoom->SetRelativeRotation(FRotator(CameraPitch, CameraYaw, 0.f));
-	}
-
-	const float SpeedFov = FMath::GetMappedRangeValueClamped(
-		FVector2f(0.f, FovMaxSpeedKmh), FVector2f(BaseFov, MaxFov), FMath::Abs(SpeedKmh));
-	const float NosFovScale = bHood ? 0.55f : 1.f;
-	Camera->SetFieldOfView(SpeedFov + BoostState.NosBlend * Boost.NosFovBonus * NosFovScale - BoostState.SpeedbreakerBlend * 6.f);
-	Camera->PostProcessBlendWeight = BoostState.SpeedbreakerBlend;
-
-	const float BaseDistance = ChaseDistances.IsValidIndex(ChaseDistanceIndex) ? ChaseDistances[ChaseDistanceIndex] : 650.f;
-	const float TargetArm = bHood ? 0.f : (BaseDistance + BoostState.NosBlend * Boost.NosArmPullback + GearShiftKick * 28.f);
-	const float NewArm = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArm, RealDt, bHood ? 16.f : 12.f);
-	CameraBoom->TargetArmLength = (bHood && NewArm < 2.f) ? 0.f : NewArm;
-
-	const float ShakeScale = (BoostState.bSpeedbreakerActive ? 0.f : (bHood ? 0.35f : 1.f))
-		* FMath::GetMappedRangeValueClamped(FVector2f(SpeedShakeMinKmh, SpeedShakeFullKmh), FVector2f(0.f, MaxSpeedShakeAmplitude), FMath::Abs(SpeedKmh));
-	const float ShakeY = ShakeScale * FMath::Sin(RealTimeSeconds * 37.f);
-	const float ShakeZ = ShakeScale * 0.7f * FMath::Sin(RealTimeSeconds * 53.f + 1.1f);
-	CurrentSocketBaseZ = FMath::FInterpTo(CurrentSocketBaseZ, bHood ? 0.f : BaseSocketZ, RealDt, 16.f);
-	CameraBoom->SocketOffset = FVector(0.f, ShakeY, CurrentSocketBaseZ + ShakeZ);
 }
 
 void ABNVehiclePawn::UpdateNearMiss(float SpeedKmh)
@@ -543,6 +491,10 @@ void ABNVehiclePawn::UpdateNearMiss(float SpeedKmh)
 		}
 		NearMissCooldowns.Add(Other, Now + NearMissCooldownSeconds);
 		BoostState.AddNearMissBonus(Boost);
+		if (UBNAudioSubsystem* Audio = GetWorld()->GetSubsystem<UBNAudioSubsystem>())
+		{
+			Audio->PlaySfx2D(EBNSfxId::NearMissWhoosh, 0.85f);
+		}
 	}
 }
 
@@ -557,12 +509,20 @@ void ABNVehiclePawn::OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* Oth
 		}
 	}
 	const float ImpulseMag = NormalImpulse.Size();
-	if (Effects && ImpulseMag > CollisionSparkMinImpulse)
+	if (ImpulseMag > CollisionSparkMinImpulse)
 	{
 		const float Intensity = FMath::Clamp((ImpulseMag - CollisionSparkMinImpulse) / 320000.f, 0.25f, 1.f);
 		const FVector SparkLoc = Hit.ImpactPoint.IsNearlyZero() ? GetActorLocation() : FVector(Hit.ImpactPoint);
 		const FVector SparkNormal = Hit.ImpactNormal.IsNearlyZero() ? FVector::UpVector : FVector(Hit.ImpactNormal);
-		Effects->TriggerCollisionSparks(SparkLoc, SparkNormal, Intensity);
+		if (Effects)
+		{
+			Effects->TriggerCollisionSparks(SparkLoc, SparkNormal, Intensity);
+		}
+		if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
+		{
+			const EBNSfxId CrashId = ImpulseMag > 260000.f ? EBNSfxId::CrashHeavy : EBNSfxId::CrashLight;
+			Audio->PlaySfxAtLocation(CrashId, SparkLoc, FMath::Clamp(0.45f + Intensity * 0.6f, 0.4f, 1.f));
+		}
 	}
 }
 
@@ -750,6 +710,10 @@ void ABNVehiclePawn::ApplyVehicleSpec(EBNCarId CarId, const FBNComputedVehicleSt
 {
 	ActiveCarId = CarId;
 	ApplyPhysicsStats(Stats);
+	if (EngineAudio)
+	{
+		EngineAudio->SetEngineProfileForCar(CarId);
+	}
 	if (Visuals)
 	{
 		Visuals->ApplyCarVisuals(FBNVehicleSpec::ForCar(CarId), Chassis, ChassisGlass, WheelMeshes);

@@ -67,6 +67,7 @@ struct BLACKNUMBERS_API FBNVehicleSpec
 
 	static FBNVehicleSpec ForCar(EBNCarId Id);
 	static const TCHAR* BodyStyleLabel(EBNBodyStyle Style);
+	static const TArray<TPair<FString, FLinearColor>>& GetPaintPalette();
 };
 
 struct BLACKNUMBERS_API FBNUpgradeSpec
@@ -112,9 +113,14 @@ struct BLACKNUMBERS_API FBNPlayerProfile
 	EBNCarId ActiveCar = EBNCarId::KuroganeMSpec;
 	bool OwnedCars[FBNUpgradeSpec::NumCars] = { true, false, false, false, false, false };
 	int32 Upgrades[FBNUpgradeSpec::NumCars][FBNUpgradeSpec::NumSlots] = {};
+	/** -1 = stock factory paint; 0..9 = custom index into FBNVehicleSpec::GetPaintPalette(). */
+	int32 CustomPaintIndices[FBNUpgradeSpec::NumCars] = { -1, -1, -1, -1, -1, -1 };
 
 	int32 GetMaxAllowedUpgradeTier() const { return bTier6Unlocked ? 6 : 5; }
 	int32 GetUpgradeTier(EBNUpgradeSlot Slot) const;
+	int32 GetActivePaintIndex() const;
+	FLinearColor GetActivePaintTint() const;
+	void SetActivePaintIndex(int32 PaletteIndex);
 	bool IsCarOwned(EBNCarId CarId) const;
 	bool CanBuyCar(EBNCarId CarId) const;
 	bool BuyOrSelectCar(EBNCarId CarId);

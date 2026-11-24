@@ -34,6 +34,7 @@ public:
 	float GetBrightness() const { return Brightness; }
 
 	virtual void Tick(float DeltaSeconds) override;
+	virtual void OnConstruction(const FTransform& Transform) override;
 
 	UPROPERTY(VisibleAnywhere, Category = "Lamp")
 	TObjectPtr<UStaticMeshComponent> Pole;

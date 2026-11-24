@@ -27,11 +27,38 @@ namespace
 
 namespace BNEngineSound
 {
+	float FiringsPerRevForProfile(EBNEngineProfile Profile)
+	{
+		switch (Profile)
+		{
+		case EBNEngineProfile::TurboI4:   return 2.0f;
+		case EBNEngineProfile::SportI6:   return 3.0f;
+		case EBNEngineProfile::MuscleV8:  return 4.0f;
+		case EBNEngineProfile::RallyV6:   return 3.0f;
+		case EBNEngineProfile::ExoticV10: return 5.0f;
+		default:                          return FiringsPerRevolution;
+		}
+	}
+
+	EBNEngineProfile ProfileForCar(EBNCarId CarId)
+	{
+		switch (CarId)
+		{
+		case EBNCarId::ValkenRS4:     return EBNEngineProfile::TurboI4;
+		case EBNCarId::Vandal440R:    return EBNEngineProfile::MuscleV8;
+		case EBNCarId::TauronV6Rally: return EBNEngineProfile::RallyV6;
+		case EBNCarId::NocturneBN01:  return EBNEngineProfile::ExoticV10;
+		case EBNCarId::DracoRST:
+		case EBNCarId::KuroganeMSpec:
+		default:                      return EBNEngineProfile::SportI6;
+		}
+	}
+
 	FBNEngineSoundTargets Evaluate(float Rpm, float MaxRpm, float Throttle, float SlipDegrees, float SpeedKmh,
-		bool bOnGround, bool bNosActive, float TimeDilation, bool bBackfire)
+		bool bOnGround, bool bNosActive, float TimeDilation, bool bBackfire, EBNEngineProfile Profile)
 	{
 		FBNEngineSoundTargets Out;
-		Out.FiringHz = FMath::Max(Rpm, 0.f) / 60.f * FiringsPerRevolution;
+		Out.FiringHz = FMath::Max(Rpm, 0.f) / 60.f * FiringsPerRevForProfile(Profile);
 		const float RpmFraction = MaxRpm > 0.f ? FMath::Clamp(Rpm / MaxRpm, 0.f, 1.f) : 0.f;
 		// Load: throttle dominates, revs add a little on top so coasting at high rpm is not silent.
 		Out.EngineGain = FMath::Clamp(FMath::Lerp(IdleGain, 1.f, FMath::Clamp(Throttle, 0.f, 1.f)) * (0.75f + 0.25f * RpmFraction), 0.f, 1.f);
@@ -68,6 +95,17 @@ UBNEngineAudioComponent::UBNEngineAudioComponent(const FObjectInitializer& Objec
 	AttenuationOverrides.FalloffDistance = FalloffDistance;
 }
 
+void UBNEngineAudioComponent::SetEngineProfile(EBNEngineProfile Profile)
+{
+	ActiveProfile = Profile;
+	AtomicProfile.store(static_cast<uint8>(Profile), std::memory_order_relaxed);
+}
+
+void UBNEngineAudioComponent::SetEngineProfileForCar(EBNCarId CarId)
+{
+	SetEngineProfile(BNEngineSound::ProfileForCar(CarId));
+}
+
 void UBNEngineAudioComponent::TickComponent(float DeltaTime, ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
@@ -85,7 +123,7 @@ void UBNEngineAudioComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	const float EffectiveDilation = Car->IsSpeedbreakerActive() ? Car->Boost.SpeedbreakerTimeDilation : 1.f;
 	Targets = BNEngineSound::Evaluate(Rpm, Move->GetEngineMaxRotationSpeed(),
 		Throttle, Car->GetSlipAngleDegrees(), Car->GetSpeedKmh(), Car->IsOnGround(),
-		bNosActive, EffectiveDilation, Car->IsBackfireActive());
+		bNosActive, EffectiveDilation, Car->IsBackfireActive(), ActiveProfile);
 
 	// Track turbo boost spool and trigger subtle BOV flutter chirp on high-RPM throttle lift-off or upshift.
 	const float SafeDt = FMath::Max(DeltaTime, 0.f);
@@ -111,12 +149,17 @@ void UBNEngineAudioComponent::TickComponent(float DeltaTime, ELevelTick TickType
 	PrevThrottle = Throttle;
 	PrevGear = Gear;
 
+	const float TurboWhineScale = (ActiveProfile == EBNEngineProfile::TurboI4) ? 0.16f
+		: (ActiveProfile == EBNEngineProfile::RallyV6) ? 0.12f
+		: (ActiveProfile == EBNEngineProfile::ExoticV10) ? 0.09f
+		: 0.05f;
 	TargetHz.store(Targets.FiringHz, std::memory_order_relaxed);
 	TargetEngineGain.store(Targets.EngineGain * MasterGain, std::memory_order_relaxed);
 	TargetSkidGain.store(Targets.SkidGain * MasterGain, std::memory_order_relaxed);
 	TargetNosGain.store(Targets.NosGain * MasterGain, std::memory_order_relaxed);
 	TargetPitchScale.store(Targets.PitchScale, std::memory_order_relaxed);
 	TargetBackfireGain.store(Targets.BackfireGain * MasterGain, std::memory_order_relaxed);
+	TargetTurboWhine.store(TurboSpool * TurboWhineScale * MasterGain, std::memory_order_relaxed);
 }
 
 bool UBNEngineAudioComponent::Init(int32& SampleRate)
@@ -136,6 +179,8 @@ int32 UBNEngineAudioComponent::OnGenerateAudio(float* OutAudio, int32 NumSamples
 	const float GoalNos = TargetNosGain.load(std::memory_order_relaxed);
 	const float GoalPitchScale = TargetPitchScale.load(std::memory_order_relaxed);
 	const float GoalBackfire = TargetBackfireGain.load(std::memory_order_relaxed);
+	const float GoalTurboWhine = TargetTurboWhine.load(std::memory_order_relaxed);
+	const EBNEngineProfile Profile = static_cast<EBNEngineProfile>(AtomicProfile.load(std::memory_order_relaxed));
 	const uint32 BovSeq = BovTriggerSeq.load(std::memory_order_acquire);
 	if (BovSeq != LastBovTriggerSeq)
 	{
@@ -154,6 +199,7 @@ int32 UBNEngineAudioComponent::OnGenerateAudio(float* OutAudio, int32 NumSamples
 		CurrentNosGain += (GoalNos - CurrentNosGain) * SmoothCoefficient;
 		CurrentPitchScale += (GoalPitchScale - CurrentPitchScale) * SmoothCoefficient;
 		CurrentBackfireGain += (GoalBackfire - CurrentBackfireGain) * SmoothCoefficient;
+		CurrentTurboWhine += (GoalTurboWhine - CurrentTurboWhine) * SmoothCoefficient;
 
 		// Deterministic audio-thread white noise for tire scrub, NOS rush, and exhaust pop.
 		uint32 X = NoiseState;
@@ -163,18 +209,54 @@ int32 UBNEngineAudioComponent::OnGenerateAudio(float* OutAudio, int32 NumSamples
 		NoiseState = X;
 		const float White = (static_cast<float>(X & 0x00FFFFFFu) / 8388608.f) - 1.f;
 
-		// Warm 6-cylinder engine: fundamental + low-order harmonics, subtle saturation, dynamic LPF.
+		// Per-car cylinder/harmonic voice synthesis (Turbo I4, Sport I6, Muscle V8, Rally V6, Exotic V10).
 		Phase = FMath::Frac(Phase + (CurrentHz * CurrentPitchScale) / Fs);
-		const float RawEngine = FMath::Tanh((
-			0.55f * FMath::Sin(UE_TWO_PI * Phase)
-			+ 0.40f * FMath::Sin(UE_TWO_PI * 2.f * Phase)
-			+ 0.22f * FMath::Sin(UE_TWO_PI * 3.f * Phase)
-			+ 0.12f * FMath::Sin(UE_TWO_PI * 4.f * Phase)
-			+ 0.28f * FMath::Sin(UE_PI * Phase)) * 0.85f);
+		const float S1 = FMath::Sin(UE_TWO_PI * Phase);
+		const float S2 = FMath::Sin(UE_TWO_PI * 2.f * Phase);
+		const float S3 = FMath::Sin(UE_TWO_PI * 3.f * Phase);
+		const float S4 = FMath::Sin(UE_TWO_PI * 4.f * Phase);
+		const float Sub = FMath::Sin(UE_PI * Phase);
+		float RawEngine = 0.f;
+		float CutoffLo = 650.f;
+		float CutoffHi = 2400.f;
+		switch (Profile)
+		{
+		case EBNEngineProfile::TurboI4:
+			RawEngine = FMath::Tanh((0.50f * S1 + 0.48f * S2 + 0.30f * S3 + 0.22f * S4 + 0.14f * Sub) * 0.92f);
+			CutoffLo = 750.f;
+			CutoffHi = 2800.f;
+			break;
+		case EBNEngineProfile::MuscleV8:
+			// Deep cross-plane V8 rumble: strong 0.5x & 1.5x lope + warm heavy saturation
+			RawEngine = FMath::Tanh((0.52f * Sub + 0.58f * S1 + 0.36f * FMath::Sin(UE_TWO_PI * 1.5f * Phase) + 0.26f * S2 + 0.14f * S3) * 1.15f);
+			CutoffLo = 420.f;
+			CutoffHi = 1850.f;
+			break;
+		case EBNEngineProfile::RallyV6:
+			// Gritty off-beat rally V6 burble
+			RawEngine = FMath::Tanh((0.46f * S1 + 0.38f * FMath::Sin(UE_TWO_PI * 1.5f * Phase) + 0.32f * S2 + 0.22f * S3 + 0.34f * Sub) * 1.02f);
+			CutoffLo = 560.f;
+			CutoffHi = 2350.f;
+			break;
+		case EBNEngineProfile::ExoticV10:
+			// High-revving exotic V10 scream: crisp upper harmonics & wide open top-end
+			RawEngine = FMath::Tanh((0.48f * S1 + 0.44f * S2 + 0.34f * S3 + 0.24f * S4 + 0.18f * FMath::Sin(UE_TWO_PI * 5.f * Phase) + 0.10f * Sub) * 0.90f);
+			CutoffLo = 880.f;
+			CutoffHi = 3450.f;
+			break;
+		default: // SportI6
+			RawEngine = FMath::Tanh((0.55f * S1 + 0.40f * S2 + 0.22f * S3 + 0.12f * S4 + 0.28f * Sub) * 0.85f);
+			break;
+		}
 		const float CutoffHz = FMath::GetMappedRangeValueClamped(
-			FVector2f(40.f, 340.f), FVector2f(650.f, 2400.f), CurrentHz) * CurrentPitchScale;
-		const float EngineLpAlpha = FMath::Clamp(UE_TWO_PI * CutoffHz / (Fs + UE_TWO_PI * CutoffHz), 0.02f, 0.75f);
+			FVector2f(40.f, 450.f), FVector2f(CutoffLo, CutoffHi), CurrentHz) * CurrentPitchScale;
+		const float EngineLpAlpha = FMath::Clamp(UE_TWO_PI * CutoffHz / (Fs + UE_TWO_PI * CutoffHz), 0.02f, 0.80f);
 		EngineLp += EngineLpAlpha * (RawEngine - EngineLp);
+
+		// Subtle turbocharger spool whine rising with firing Hz
+		const float TurboHz = FMath::Clamp((1550.f + CurrentHz * 4.2f) * CurrentPitchScale, 1200.f, 5400.f);
+		TurboWhinePhase = FMath::Frac(TurboWhinePhase + TurboHz / Fs);
+		const float TurboWhine = FMath::Sin(UE_TWO_PI * TurboWhinePhase) * CurrentTurboWhine;
 
 		// Tire scrub: dual SVF bandpass over asphalt noise (grit 1450 Hz + rubber bite 760 Hz), zero sine squeal.
 		WobblePhase = FMath::Frac(WobblePhase + 4.5f / Fs);
@@ -228,6 +310,7 @@ int32 UBNEngineAudioComponent::OnGenerateAudio(float* OutAudio, int32 NumSamples
 
 		OutAudio[i] = FMath::Clamp(
 			EngineMix * CurrentEngineGain * EngineLp
+			+ 0.14f * TurboWhine
 			+ SkidMix * CurrentSkidGain * TireScrub
 			+ NosMix * CurrentNosGain * NosRush
 			+ BackfireMix * BackfireEnv * BackfireLp

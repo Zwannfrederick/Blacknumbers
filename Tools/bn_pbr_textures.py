@@ -14,6 +14,9 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bn_pbr_extra_textures  # noqa: E402
+
 TEX_SIZE = 1024
 UTIL_SIZE = 64
 UE_TEX_DIR = "/Game/World/Textures"
@@ -70,7 +73,7 @@ TEXTURE_MANIFEST = [
     ("T_Bark_D", "albedo"),
     ("T_Bark_N", "normal"),
     ("T_Bark_R", "roughness"),
-]
+] + bn_pbr_extra_textures.EXTRA_TEXTURE_MANIFEST
 
 
 # ---------------------------------------------------------------------------
@@ -180,16 +183,16 @@ def _generate_all_pngs_impl(force=False):
         0.0, 1.0,
     )
 
-    damp_mask = smoothstep(0.57, 0.74, puddles)
-    stone = 0.085 + 0.055 * med_grain + 0.045 * (fine_grain - 0.5)
-    stone = stone * (0.88 + 0.22 * macro_patch) * (1.0 - 0.18 * patch_rect)
-    stone = stone * (1.0 - 0.38 * damp_mask) * (1.0 - 0.55 * crack_mask)
+    # Subtle aggregate & road wear only; macro-scale puddles are driven by world-space noise in M_BN_Surface
+    # so damp reflections span 20-45 m naturally instead of repeating every 5.5 m.
+    stone = 0.088 + 0.052 * med_grain + 0.042 * (fine_grain - 0.5)
+    stone = stone * (0.91 + 0.16 * macro_patch) * (1.0 - 0.14 * patch_rect)
+    stone = stone * (1.0 - 0.50 * crack_mask)
     asphalt_d = np.stack([stone * 0.96, stone * 0.98, stone * 1.04], axis=-1)
-    asphalt_h = 0.45 * med_grain + 0.35 * fine_grain - 0.55 * crack_mask - 0.08 * patch_rect
-    # Tire track sheen + damp puddle low-roughness variation for subtle SSR streetlamp/sunset reflections
+    asphalt_h = 0.45 * med_grain + 0.35 * fine_grain - 0.55 * crack_mask - 0.06 * patch_rect
     track_band = 0.5 + 0.5 * np.cos((yy / N) * 4.0 * math.pi)
-    asphalt_r = 0.88 - 0.14 * med_grain - 0.10 * track_band - 0.62 * damp_mask - 0.35 * crack_mask
-    asphalt_r = np.clip(asphalt_r, 0.10, 0.98)
+    asphalt_r = 0.88 - 0.12 * med_grain - 0.09 * track_band - 0.25 * crack_mask
+    asphalt_r = np.clip(asphalt_r, 0.52, 0.98)
     save_rgb("T_Asphalt_D", asphalt_d)
     save_normal("T_Asphalt_N", asphalt_h, strength=4.2)
     save_gray("T_Asphalt_R", asphalt_r)
@@ -284,11 +287,10 @@ def _generate_all_pngs_impl(force=False):
                     y_norm = np.linspace(0.0, 1.0, pane_h, dtype=np.float32)[:, None]
                     room_grad = (0.35 + 0.65 * smoothstep(blind_cut, blind_cut + 0.15, y_norm))
                     em_pane = col[None, None, :] * room_grad[:, :, None]
-                    # Keep mullion dark over lit window
+                    # Keep mullion dark over lit window; daytime albedo stays dark reflective glass
+                    # while NightFactor in M_BN_Surface drives EmissiveMap at dusk/night.
                     emissive[gy0:gy1, gx0:gx1] = em_pane
                     emissive[gy0:gy1, mx - 2:mx + 2] = 0.0
-                    # Slight warm tint on lit pane albedo
-                    albedo[gy0:gy1, gx0:gx1] = np.clip(albedo[gy0:gy1, gx0:gx1] + em_pane * 0.25, 0.0, 1.0)
 
         return albedo, height, rough, emissive
 
@@ -490,6 +492,10 @@ def _generate_all_pngs_impl(force=False):
     save_rgb("T_Bark_D", bark_d)
     save_normal("T_Bark_N", bark_h, strength=5.8)
     save_gray("T_Bark_R", np.clip(0.84 + 0.12 * bark_warp - 0.08 * ridges, 0.62, 0.98))
+
+    bn_pbr_extra_textures.generate_extra_pngs(
+        OUT_DIR, save_rgb, save_gray, save_normal, periodic_noise, fbm, smoothstep, force=force
+    )
 
     return len(TEXTURE_MANIFEST)
 

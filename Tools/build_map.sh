@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regenerates PBR textures, vehicle template imports, /Game/World materials,
-# /Game/Maps/TestTrack, and /Game/Maps/KaramaraSlice.
+# Regenerates PBR textures, procedural 3D glTF meshes, SFX/music WAVs, vehicle template imports,
+# /Game/World materials, /Game/Maps/TestTrack, and the 2 km x 2 km /Game/Maps/KaramaraSlice.
 # Refuses to run while an Unreal editor is open (it would hold the map and lose or clash with edits).
 set -uo pipefail
 
@@ -12,13 +12,15 @@ if pgrep -x UnrealEditor > /dev/null; then
   exit 2
 fi
 
-# Generate seamless 1024x1024 PBR PNGs, Most Wanted UI PNGs, and stage UE template vehicle files.
+# Generate seamless PBR PNGs, Most Wanted UI PNGs, 3D glTF meshes, procedural audio WAVs, and stage UE template vehicles.
 python3 "$PROJECT_DIR/Tools/bn_pbr_textures.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/bn_ui_textures.py" --generate-only || exit $?
+python3 "$PROJECT_DIR/Tools/bn_meshes.py" --generate-only || exit $?
+python3 "$PROJECT_DIR/Tools/bn_audio_assets.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/import_ue_vehicles.py" --stage-files || exit $?
 
 status=0
-for script in bn_ui_textures.py import_ue_vehicles.py build_test_map.py build_karamara_map.py; do
+for script in bn_ui_textures.py import_ue_vehicles.py bn_meshes.py bn_audio_assets.py build_test_map.py build_karamara_map.py; do
   "$UE/Engine/Binaries/Linux/UnrealEditor-Cmd" "$PROJECT_DIR/BlackNumbers.uproject" -run=pythonscript \
     -script="$PROJECT_DIR/Tools/$script" -unattended -nullrhi -nosplash -NoSound > /dev/null 2>&1
   s=$?

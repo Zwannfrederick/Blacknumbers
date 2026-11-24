@@ -62,6 +62,8 @@ private:
 		float StartScale = 0.32f;
 		float EndScale = 1.45f;
 		float BaseOpacity = 0.46f;
+		float SpinAngleDeg = 0.f;
+		float SpinRateDeg = 0.f;
 	};
 
 	struct FSkidmarkState
@@ -112,6 +114,15 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInterface> SmokeBaseMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> SkidBaseMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> FlameBaseMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> SparkBaseMaterial;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInterface> UnlitTranslucentMaterial;

@@ -88,11 +88,14 @@ struct BLACKNUMBERS_API FBNPursuitState
 	int32 UnitsDisabled = 0;
 	int32 BreakersTriggered = 0;
 	int32 Bounty = 0;
+	int32 DispatchSerial = 0;
+	bool bInsideCooldownSpot = false;
+	FString ActiveCooldownSpotName;
 	FBNDispatchLine ActiveRadio;
 
 	void StartPursuit(int32 InitialHeat = 1);
 	void SetMaxAllowedHeat(int32 MaxHeat);
-	void Update(float DeltaSeconds, float PlayerSpeedKmh, float NearestActiveUnitDistCm, int32 ActiveUnitCount);
+	void Update(float DeltaSeconds, float PlayerSpeedKmh, float NearestActiveUnitDistCm, int32 ActiveUnitCount, bool bInCooldownSpot = false);
 	void RecordCollateralDamage(int32 Dollars, const TCHAR* ReasonTag = nullptr);
 	void RecordUnitDisabled(int32 BonusDollars = 15000);
 	void RecordPursuitBreaker(int32 CollateralDollars, int32 DisabledCount);

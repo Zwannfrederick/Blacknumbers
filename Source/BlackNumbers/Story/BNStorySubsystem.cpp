@@ -10,6 +10,7 @@
 #include "Police/BNPursuitSubsystem.h"
 #include "Race/BNRaceEvent.h"
 #include "Vehicle/BNVehiclePawn.h"
+#include "World/BNRoadGraph.h"
 
 namespace
 {
@@ -125,13 +126,20 @@ void UBNStorySubsystem::SkipToRank(int32 TargetRank, UWorld* World)
 
 FVector UBNStorySubsystem::GetEscapeRouteLocation(const UWorld* World, int32 RouteIndex)
 {
-	const bool bKaramara = World && World->GetMapName().Contains(TEXT("Karamara"));
-	if (RouteIndex == 1) // Kuzey Gecidi Servis Yolu
+	if (World)
 	{
-		return bKaramara ? FVector(-25000.f, -24000.f, 0.f) : FVector(-16000.f, -17000.f, 0.f);
+		if (const UBNRoadGraphSubsystem* RoadGraph = World->GetSubsystem<UBNRoadGraphSubsystem>(); RoadGraph && RoadGraph->HasGraph())
+		{
+			return RoadGraph->GetEscapeRouteLocation(RouteIndex);
+		}
 	}
-	// Route 0: Liman Tunelleri
-	return bKaramara ? FVector(24500.f, 14000.f, 0.f) : FVector(26500.f, 7500.f, 0.f);
+	const bool bKaramara = World && World->GetMapName().Contains(TEXT("Karamara"));
+	if (RouteIndex == 1) // Kuzey Geçidi Toprak Servis Yolu
+	{
+		return bKaramara ? FVector(-76000.f, -80000.f, 4800.f) : FVector(-16000.f, -17000.f, 0.f);
+	}
+	// Route 0: Eski Liman Tünelleri
+	return bKaramara ? FVector(86000.f, -12000.f, 0.f) : FVector(26500.f, 7500.f, 0.f);
 }
 
 float UBNStorySubsystem::GetDistanceToEscapeRouteCm(const ABNVehiclePawn* PlayerCar, int32 RouteIndex)
@@ -413,7 +421,8 @@ bool UBNStorySubsystem::ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar)
 		return false;
 	}
 
-	ABNRaceEvent* MatchEvent = nullptr;
+	ABNRaceEvent* ExactEvent = nullptr;
+	ABNRaceEvent* DisciplineEvent = nullptr;
 	ABNRaceEvent* FallbackEvent = nullptr;
 	for (TActorIterator<ABNRaceEvent> It(PlayerCar->GetWorld()); It; ++It)
 	{
@@ -423,23 +432,30 @@ bool UBNStorySubsystem::ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar)
 			{
 				FallbackEvent = *It;
 			}
-			if (It->Definition && It->Definition->Discipline == Spec->Discipline)
+			if (It->Definition)
 			{
-				MatchEvent = *It;
-				break;
+				if (!Spec->RaceAssetName.IsEmpty() && It->Definition->GetName().Equals(Spec->RaceAssetName, ESearchCase::IgnoreCase))
+				{
+					ExactEvent = *It;
+					break;
+				}
+				if (!DisciplineEvent && It->Definition->Discipline == Spec->Discipline)
+				{
+					DisciplineEvent = *It;
+				}
 			}
 		}
 	}
 
-	ABNRaceEvent* Chosen = MatchEvent ? MatchEvent : FallbackEvent;
+	ABNRaceEvent* Chosen = ExactEvent ? ExactEvent : (DisciplineEvent ? DisciplineEvent : FallbackEvent);
 	if (!Chosen)
 	{
-		StatusFeedback = TEXT("Bu haritada uygun bos yaris etkinligi bulunamadi.");
+		StatusFeedback = TEXT("Bu haritada uygun boş yarış etkinliği bulunamadı.");
 		return false;
 	}
 
 	CloseDossier(PlayerCar);
-	Chosen->StartBossRace(PlayerCar, Spec->Rank, Spec->RivalSkill, Spec->VehicleStats, Spec->VehicleTint, Spec->DriftTargetScore);
+	Chosen->StartBossRace(PlayerCar, Spec->Rank, Spec->RivalSkill, Spec->VehicleStats, Spec->VehicleTint, Spec->DriftTargetScore, Spec->BaseCar);
 	return true;
 }
 

@@ -40,6 +40,9 @@ public:
 	TArray<int32> FlatUpgrades;
 
 	UPROPERTY()
+	TArray<int32> CustomPaintIndices;
+
+	UPROPERTY()
 	int32 StoryNextBossRank = 16;
 
 	UPROPERTY()
@@ -105,6 +108,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Garage")
 	bool TryBuyUpgrade(EBNUpgradeSlot Slot, ABNVehiclePawn* Car = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "Garage")
+	bool TrySetCustomPaint(int32 PaletteIndex, ABNVehiclePawn* Car = nullptr);
 
 	UFUNCTION(BlueprintCallable, Category = "Garage")
 	void GrantRaceReward(int32 Place, int32 TotalRacers, bool bDrift, int32 DriftPoints);

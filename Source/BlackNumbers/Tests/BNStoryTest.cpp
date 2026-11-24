@@ -126,9 +126,7 @@ namespace
 		{
 			InitChecks,
 			StartBoss8,
-			CrossGate0,
-			CrossGate1,
-			CrossGate2,
+			CrossGates,
 			VerifyPostBoss8AndTier6,
 			DriveTier6,
 			VerifyPerde5Routes
@@ -136,6 +134,7 @@ namespace
 
 		double PhaseStart = 0.0;
 		TWeakObjectPtr<ABNRaceEvent> SprintEvent;
+		int32 PlacedGateIndex = -1;
 	};
 
 	void PlaceCar(ABNVehiclePawn& Car, const FVector& Loc, float Yaw)
@@ -192,6 +191,7 @@ bool FBNStoryTier6AndFinalChasePieTest::RunTest(const FString& Parameters)
 		switch (State->Phase)
 		{
 		case EPhase::InitChecks:
+		{
 			Prog->ResetProfile();
 			Story->ResetStory(false);
 			Prog->AddCash(600000);
@@ -202,9 +202,13 @@ bool FBNStoryTier6AndFinalChasePieTest::RunTest(const FString& Parameters)
 			TestFalse(TEXT("Tier 6 Engine purchase fails before Tarik R6"), Prog->TryBuyUpgrade(EBNUpgradeSlot::Engine, Car));
 			TestEqual(TEXT("Pursuit Heat cap is 5 before #08 R4"), Pursuit->GetState().MaxAllowedHeatLevel, 5);
 
+			const FBNBossSpec* Boss8 = FBNStoryState::FindBossByRank(8);
+			const FString WantedRace = Boss8 ? Boss8->RaceAssetName : FString();
 			for (TActorIterator<ABNRaceEvent> It(World); It; ++It)
 			{
-				if (It->Definition && It->Definition->Discipline == EBNRaceDiscipline::Sprint)
+				if (It->Definition && (!WantedRace.IsEmpty()
+					? It->Definition->GetName() == WantedRace
+					: It->Definition->Discipline == EBNRaceDiscipline::Sprint))
 				{
 					State->SprintEvent = *It;
 					break;
@@ -221,6 +225,7 @@ bool FBNStoryTier6AndFinalChasePieTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("Boss #08 challenge starts Sprint race cleanly"), Story->ChallengeSelectedBoss(Car));
 			Enter(EPhase::StartBoss8);
 			return false;
+		}
 
 		case EPhase::StartBoss8:
 			if (State->SprintEvent->GetState() != EBNRaceState::Racing)
@@ -229,48 +234,37 @@ bool FBNStoryTier6AndFinalChasePieTest::RunTest(const FString& Parameters)
 			}
 			TestEqual(TEXT("Boss #08 spawns 1 rival"), State->SprintEvent->GetNumRivals(), 1);
 			TestEqual(TEXT("Sprint event tracks ActiveBossRank == 8"), State->SprintEvent->GetActiveBossRank(), 8);
-			{
-				const FTransform& Gate = State->SprintEvent->Definition->Checkpoints[0];
-				PlaceCar(*Car, Gate.TransformPosition(FVector(-450.f, 0.f, 60.f)), Gate.Rotator().Yaw);
-			}
+			State->PlacedGateIndex = -1;
 			Car->GetChaosMovement()->SetThrottleInput(1.f);
-			Enter(EPhase::CrossGate0);
+			Enter(EPhase::CrossGates);
 			return false;
 
-		case EPhase::CrossGate0:
-			if (State->SprintEvent->GetProgress().NextCheckpoint() < 1 && InPhase < 5.f)
+		case EPhase::CrossGates:
+		{
+			if (State->SprintEvent->GetState() == EBNRaceState::Finished)
 			{
+				Car->GetChaosMovement()->SetThrottleInput(0.f);
+				TestTrue(TEXT("Winning #08 sets IdentityExposed (R4)"), Story->GetState().bIdentityExposed);
+				TestEqual(TEXT("Heat cap unlocked to 10 after #08 R4"), Pursuit->GetState().MaxAllowedHeatLevel, 10);
+				Enter(EPhase::VerifyPostBoss8AndTier6);
 				return false;
 			}
+			if (InPhase > 25.f)
 			{
-				const FTransform& Gate = State->SprintEvent->Definition->Checkpoints[1];
-				PlaceCar(*Car, Gate.TransformPosition(FVector(-450.f, 0.f, 60.f)), Gate.Rotator().Yaw);
+				Car->GetChaosMovement()->SetThrottleInput(0.f);
+				AddError(TEXT("Timed out crossing Boss #08 Sprint checkpoints"));
+				return true;
 			}
-			Enter(EPhase::CrossGate1);
+			const int32 NextIdx = State->SprintEvent->GetProgress().NextCheckpoint();
+			if (NextIdx != State->PlacedGateIndex && State->SprintEvent->Definition->Checkpoints.IsValidIndex(NextIdx))
+			{
+				State->PlacedGateIndex = NextIdx;
+				const FTransform& Gate = State->SprintEvent->Definition->Checkpoints[NextIdx];
+				PlaceCar(*Car, Gate.TransformPosition(FVector(-450.f, 0.f, 65.f)), Gate.Rotator().Yaw);
+				Car->GetChaosMovement()->SetThrottleInput(1.f);
+			}
 			return false;
-
-		case EPhase::CrossGate1:
-			if (State->SprintEvent->GetProgress().NextCheckpoint() < 2 && InPhase < 5.f)
-			{
-				return false;
-			}
-			{
-				const FTransform& Gate = State->SprintEvent->Definition->Checkpoints[2];
-				PlaceCar(*Car, Gate.TransformPosition(FVector(-450.f, 0.f, 60.f)), Gate.Rotator().Yaw);
-			}
-			Enter(EPhase::CrossGate2);
-			return false;
-
-		case EPhase::CrossGate2:
-			if (State->SprintEvent->GetState() != EBNRaceState::Finished && InPhase < 5.f)
-			{
-				return false;
-			}
-			Car->GetChaosMovement()->SetThrottleInput(0.f);
-			TestTrue(TEXT("Winning #08 sets IdentityExposed (R4)"), Story->GetState().bIdentityExposed);
-			TestEqual(TEXT("Heat cap unlocked to 10 after #08 R4"), Pursuit->GetState().MaxAllowedHeatLevel, 10);
-			Enter(EPhase::VerifyPostBoss8AndTier6);
-			return false;
+		}
 
 		case EPhase::VerifyPostBoss8AndTier6:
 			// Defeat down to #04 (past #05 Kaan R6 reconciliation) and verify Tier 6 unlock + driving stability.
@@ -279,12 +273,12 @@ bool FBNStoryTier6AndFinalChasePieTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("Tier 6 Engine purchase succeeds once reconciled"), Prog->TryBuyUpgrade(EBNUpgradeSlot::Engine, Car));
 			TestEqual(TEXT("Engine tier reaches 6"), Prog->GetProfile().GetUpgradeTier(EBNUpgradeSlot::Engine), 6);
 
-			// Keep civilian traffic clear of the Tier 6 straight-line physics stability check on KaramaraSlice.
+			// Keep civilian traffic clear of the Tier 6 straight-line physics stability check on Merkez Bulvar.
 			if (UBNTrafficSubsystem* Traffic = World->GetSubsystem<UBNTrafficSubsystem>())
 			{
 				Traffic->SetTrafficEnabled(false);
 			}
-			PlaceCar(*Car, FVector(-18000.f, -14000.f, 60.f), 0.f);
+			PlaceCar(*Car, FVector(-26000.f, -4000.f, 70.f), 0.f);
 			Car->GetChaosMovement()->SetThrottleInput(1.f);
 			Enter(EPhase::DriveTier6);
 			return false;
@@ -302,7 +296,9 @@ bool FBNStoryTier6AndFinalChasePieTest::RunTest(const FString& Parameters)
 			Story->SkipToRank(0, World);
 			TestTrue(TEXT("StartFinalChase launches Heat 11 Special Tier"), Story->StartFinalChase(World));
 			TestEqual(TEXT("Special Tier Heat level is 11"), Pursuit->GetState().HeatLevel, 11);
-			TestTrue(TEXT("Special Tier posts Demir dead-or-alive dispatch"), Pursuit->GetState().ActiveRadio.Message.Contains(TEXT("OLU YA DA DIRI")));
+			TestTrue(TEXT("Special Tier posts Demir dead-or-alive dispatch"),
+				Pursuit->GetState().ActiveRadio.Message.Contains(TEXT("ÖLÜ YA DA DİRİ"))
+				|| Pursuit->GetState().ActiveRadio.Message.Contains(TEXT("OLU YA DA DIRI")));
 
 			Pursuit->ReportCollateralDamage(125000, TEXT("Liman Bariyeri"));
 			PlaceCar(*Car, UBNStorySubsystem::GetEscapeRouteLocation(World, 0) + FVector(0.f, 0.f, 60.f), 0.f);

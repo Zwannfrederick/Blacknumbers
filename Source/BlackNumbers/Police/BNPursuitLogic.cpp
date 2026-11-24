@@ -14,6 +14,7 @@ namespace
 	constexpr float EvadeFillSeconds = 3.5f;
 	constexpr float HidingSpeedKmh = 30.f;
 	constexpr float HidingCooldownMultiplier = 1.6f;
+	constexpr float CooldownSpotMultiplier = 3.5f;
 
 	constexpr int32 BountyPerSecondPerHeat = 120;
 	constexpr int32 BountyPerDisabledPerHeat = 5000;
@@ -134,15 +135,15 @@ void FBNPursuitState::StartPursuit(int32 InitialHeat)
 
 	if (HeatLevel >= 11)
 	{
-		PostDispatch(TEXT("BASKOMISER DEMIR"), TEXT("ONU BANA GETIRIN! OLU YA DA DIRI! Tum birimler Kuzey Viyadugu ve Liman'i kapatsin!"), 8.0f);
+		PostDispatch(TEXT("BAŞKOMİSER DEMİR"), TEXT("ONU BANA GETİRİN! ÖLÜ YA DA DİRİ! Tüm birimler Kuzey Viyadüğü ve Liman'ı kapatsın!"), 8.0f);
 	}
 	else if (HeatLevel >= 6)
 	{
-		PostDispatch(TEXT("BASKOMISER DEMIR"), TEXT("Kerem Yalcin tespit edildi! Canli yakalayin, tum birimler yakinsin!"));
+		PostDispatch(TEXT("BAŞKOMİSER DEMİR"), TEXT("Kerem Yalçın tespit edildi! Canlı yakalayın, tüm birimler yakınsın!"));
 	}
 	else
 	{
-		PostDispatch(TEXT("MERKEZ"), TEXT("Kayitsiz spor arac K. Vance tespit edildi, takip basliyor."));
+		PostDispatch(TEXT("MERKEZ"), TEXT("Kayıtsız spor araç K. Vance tespit edildi, takip başlıyor."));
 	}
 }
 
@@ -165,6 +166,7 @@ void FBNPursuitState::PostDispatch(const FString& Speaker, const FString& Messag
 	ActiveRadio.Speaker = Speaker;
 	ActiveRadio.Message = Message;
 	ActiveRadio.RemainingSeconds = FMath::Max(Duration, 0.f);
+	++DispatchSerial;
 }
 
 void FBNPursuitState::EndPursuitImmediate()
@@ -173,6 +175,8 @@ void FBNPursuitState::EndPursuitImmediate()
 	PhaseProgress = 0.f;
 	BustMeter = 0.f;
 	EvadeMeter = 0.f;
+	bInsideCooldownSpot = false;
+	ActiveCooldownSpotName.Reset();
 	ActiveRadio = FBNDispatchLine();
 }
 
@@ -249,9 +253,10 @@ void FBNPursuitState::RecordPursuitBreaker(int32 CollateralDollars, int32 Disabl
 		TEXT("Supheli kamu yapisini yikti! Sehir hasari artiyor, destek ekip sevk edin!"), 4.5f);
 }
 
-void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float NearestActiveUnitDistCm, int32 ActiveUnitCount)
+void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float NearestActiveUnitDistCm, int32 ActiveUnitCount, bool bInCooldownSpot)
 {
 	const float Dt = FMath::Max(DeltaSeconds, 0.f);
+	bInsideCooldownSpot = bInCooldownSpot && Phase == EBNPursuitPhase::Cooldown;
 	if (ActiveRadio.RemainingSeconds > 0.f)
 	{
 		ActiveRadio.RemainingSeconds = FMath::Max(0.f, ActiveRadio.RemainingSeconds - Dt);
@@ -337,14 +342,17 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 		}
 		else
 		{
-			const float HideFactor = FMath::Abs(PlayerSpeedKmh) < HidingSpeedKmh ? HidingCooldownMultiplier : 1.0f;
+			const bool bSlowOrStopped = FMath::Abs(PlayerSpeedKmh) < HidingSpeedKmh;
+			const float HideFactor = (bInCooldownSpot && bSlowOrStopped)
+				? CooldownSpotMultiplier
+				: (bSlowOrStopped ? HidingCooldownMultiplier : 1.0f);
 			PhaseProgress = FMath::Min(1.f, PhaseProgress + (Dt * HideFactor) / FMath::Max(Spec.CooldownSeconds, 1.f));
 			if (PhaseProgress >= 1.f)
 			{
 				Phase = EBNPursuitPhase::Escaped;
 				PhaseProgress = ResultBannerSeconds;
 				PostDispatch(TEXT("MERKEZ"),
-					TEXT("Supheli izini kaybettirdi. Sehir hasar tutanagi merkeze aktarildi."), ResultBannerSeconds);
+					TEXT("Şüpheli izini kaybettirdi. Şehir hasar tutanağı merkeze aktarıldı."), ResultBannerSeconds);
 			}
 		}
 		break;

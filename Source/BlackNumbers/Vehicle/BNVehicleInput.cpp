@@ -273,39 +273,6 @@ void ABNVehiclePawn::TogglePauseMenu()
 	}
 }
 
-void ABNVehiclePawn::SetShowcaseMode(bool bActive, float LateralOffsetCm)
-{
-	if (bActive && !bShowcaseMode)
-	{
-		ShowcaseYawDeg = 148.f;
-	}
-	bShowcaseMode = bActive;
-	ShowcaseLateralOffsetCm = LateralOffsetCm;
-	if (!bActive && CameraBoom)
-	{
-		CameraBoom->SetRelativeRotation(FRotator::ZeroRotator);
-	}
-}
-
-void ABNVehiclePawn::UpdateShowcaseCamera(float RealDt)
-{
-	if (!CameraBoom || !Camera)
-	{
-		return;
-	}
-	ShowcaseYawDeg = FMath::Fmod(ShowcaseYawDeg + RealDt * 12.5f, 360.f);
-	CameraBoom->bEnableCameraRotationLag = false;
-	CameraBoom->bInheritPitch = false;
-	CameraBoom->SetRelativeLocation(FMath::VInterpTo(CameraBoom->GetRelativeLocation(), FVector(0.f, 0.f, 18.f), RealDt, 10.f));
-	CameraBoom->SetRelativeRotation(FMath::RInterpTo(CameraBoom->GetRelativeRotation(), FRotator(-9.f, ShowcaseYawDeg, 0.f), RealDt, 8.f));
-	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, 510.f, RealDt, 8.f);
-	CurrentSocketBaseZ = FMath::FInterpTo(CurrentSocketBaseZ, 68.f, RealDt, 8.f);
-	const FVector TargetSocket(0.f, ShowcaseLateralOffsetCm, CurrentSocketBaseZ);
-	CameraBoom->SocketOffset = FMath::VInterpTo(CameraBoom->SocketOffset, TargetSocket, RealDt, 8.f);
-	Camera->SetFieldOfView(FMath::FInterpTo(Camera->FieldOfView, 64.f, RealDt, 8.f));
-	Camera->PostProcessBlendWeight = 0.f;
-}
-
 void ABNVehiclePawn::AbandonRace()
 {
 	for (TActorIterator<ABNRaceEvent> It(GetWorld()); It; ++It)

@@ -5,6 +5,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "EngineUtils.h"
+#include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
 #include "World/BNDayNightCycle.h"
 
@@ -44,10 +45,10 @@ ABNStreetLamp::ABNStreetLamp()
 	PrimaryActorTick.bStartWithTickEnabled = false; // ticks only while warming up or cooling down
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 
-	// Basic shapes are 100 cm with a centred pivot.
+	// Basic shapes are 100 cm with a centred pivot; OnConstruction upgrades to SM_BN_StreetLamp when available.
 	Pole = MakePart(*this, RootComponent, TEXT("Pole"), Cylinder.Object,
 		FVector(0.f, 0.f, PoleHeight * 0.5f), FVector(0.15f, 0.15f, PoleHeight / 100.f));
-	Pole->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName); // cars can hit it
+	Pole->SetCollisionProfileName(UCollisionProfile::BlockAll_ProfileName);
 	Arm = MakePart(*this, RootComponent, TEXT("Arm"), Cube.Object,
 		FVector(ArmReach * 0.5f, 0.f, PoleHeight - 10.f), FVector(ArmReach / 100.f + 0.2f, 0.12f, 0.12f));
 	Glow = MakePart(*this, RootComponent, TEXT("Glow"), Cube.Object,
@@ -68,6 +69,37 @@ ABNStreetLamp::ABNStreetLamp()
 	Light->SetOuterConeAngle(70.f);
 	Light->SetCastShadows(false); // ponytail: ~26 lamps per street; enable on hero lamps if night shadows are wanted
 	Light->SetVisibility(false);
+}
+
+void ABNStreetLamp::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	if (HasAnyFlags(RF_ClassDefaultObject) || !Pole)
+	{
+		return;
+	}
+	if (FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_StreetLamp")))
+	{
+		if (UStaticMesh* LampMesh = LoadObject<UStaticMesh>(nullptr, TEXT("/Game/World/Meshes/SM_BN_StreetLamp.SM_BN_StreetLamp")))
+		{
+			Pole->SetStaticMesh(LampMesh);
+			Pole->SetRelativeLocation(FVector::ZeroVector);
+			Pole->SetRelativeScale3D(FVector::OneVector);
+			if (Arm)
+			{
+				Arm->SetVisibility(false);
+			}
+			if (Glow)
+			{
+				Glow->SetRelativeLocation(FVector(186.f, 0.f, 793.f));
+				Glow->SetRelativeScale3D(FVector(0.56f, 0.24f, 0.04f));
+			}
+			if (Light)
+			{
+				Light->SetRelativeLocation(FVector(186.f, 0.f, PoleHeight - 25.f));
+			}
+		}
+	}
 }
 
 void ABNStreetLamp::BeginPlay()

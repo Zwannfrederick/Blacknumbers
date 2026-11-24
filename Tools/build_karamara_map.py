@@ -1,13 +1,8 @@
-"""Builds /Game/Maps/KaramaraSlice (vertical slice of Karamara coastal-industrial city):
-- 2x2 city street grid (Merkez Bulvar, Dogu Sanayi Cd., Bati Bulvari, Liman Cd.) + central industrial shortcut
-- Raised segmented sidewalks, highway guardrails, elevated Kuzey Viyadugu (3.99 deg ramps, Z=700 cm) + overhead gantries
-- Multi-story architectural buildings (podium + setbacks + roof parapets/HVAC + lit night-window facades)
-- Eski Liman harbor water basin + 3 steel port cranes + stacked colorful corrugated shipping containers
-- Tunnel portals framing Perde 5 Route A (24500, 14000) and Route B (-25000, -24000) escape corridors
-- Instanced autumn trees/bushes via HierarchicalInstancedStaticMeshComponent (3 draw calls total)
-- 8 SphereReflectionCapture actors + sodium street lamps + day/night cycle + Selin's Garage + 6 Breakers + 36 Breakables + 3 Races.
+"""Rebuilds /Game/Maps/KaramaraSlice — BLACK NUMBERS' full ~2.0 km x 2.0 km open-world city
+spanning all 6 canon Karamara districts, backed by single-source-of-truth /Game/World/DA_KaramaraRoadGraph
+and 9 unique race routes under /Game/Races/.
 
-Run headless via Tools/build_map.sh or:
+Run headless via Tools/build_map.sh or directly:
   UnrealEditor-Cmd BlackNumbers.uproject -run=pythonscript -script=Tools/build_karamara_map.py -unattended -nullrhi
 """
 import math
@@ -19,29 +14,28 @@ import unreal
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bn_materials  # noqa: E402
+import bn_meshes  # noqa: E402
+import karamara_network as knet  # noqa: E402
+import karamara_scenery as kscene  # noqa: E402
 
 MAP_PATH = "/Game/Maps/KaramaraSlice"
 RACE_DIR = "/Game/Races"
+GRAPH_DIR = "/Game/World"
+GRAPH_NAME = "DA_KaramaraRoadGraph"
+
 CUBE = unreal.load_asset("/Engine/BasicShapes/Cube.Cube")
 CYLINDER = unreal.load_asset("/Engine/BasicShapes/Cylinder.Cylinder")
-SPHERE = unreal.load_asset("/Engine/BasicShapes/Sphere.Sphere")
-
-ROAD_TOP = 2.0
-SIDEWALK_TOP = 16.0
-ROAD_W = 1600.0
-ALLEY_W = 1200.0
-VIADUCT_Y = -24000.0
-VIADUCT_Z = 700.0
 
 levels = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 MI, PM = bn_materials.build()
+MESHES = bn_meshes.ensure_ue_meshes()
 counters = {}
 
 
-def spawn(cls, label, location=(0, 0, 0), yaw=0.0, pitch=0.0, folder=None):
+def spawn(cls, label, location=(0.0, 0.0, 0.0), yaw=0.0, pitch=0.0, roll=0.0, folder=None):
     actor = actors.spawn_actor_from_class(
-        cls, unreal.Vector(*location), unreal.Rotator(roll=0.0, pitch=pitch, yaw=yaw)
+        cls, unreal.Vector(*location), unreal.Rotator(roll=roll, pitch=pitch, yaw=yaw)
     )
     counters[label] = counters.get(label, 0) + 1
     actor.set_actor_label("%s_%d" % (label, counters[label]) if counters[label] > 1 else label)
@@ -51,599 +45,379 @@ def spawn(cls, label, location=(0, 0, 0), yaw=0.0, pitch=0.0, folder=None):
 
 
 def block(label, centre, size_m, material, physical=None, collision=True, yaw=0.0, pitch=0.0,
-          mesh=CUBE, folder=None, cast_shadow=True):
-    actor = spawn(unreal.StaticMeshActor, label, centre, yaw, pitch, folder)
+          mesh=CUBE, folder=None):
+    actor = spawn(unreal.StaticMeshActor, label, centre, yaw=yaw, pitch=pitch, folder=folder)
     comp = actor.static_mesh_component
     comp.set_static_mesh(mesh)
     comp.set_material(0, MI[material])
     if physical:
         comp.set_phys_material_override(PM[physical])
     if not collision:
+        comp.set_collision_profile_name("NoCollision")
         comp.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
-        comp.set_editor_property("cast_shadow", False)
-    elif not cast_shadow:
         comp.set_editor_property("cast_shadow", False)
     actor.set_actor_scale3d(unreal.Vector(*size_m))
     return actor
 
 
-def road_segment(label, x0, y0, x1, y1, width=ROAD_W, top=ROAD_TOP, folder="Karamara/Roads"):
-    length = math.hypot(x1 - x0, y1 - y0)
-    yaw = math.degrees(math.atan2(y1 - y0, x1 - x0))
-    cx, cy = (x0 + x1) * 0.5, (y0 + y1) * 0.5
-    block(label, (cx, cy, top - 2.0), (length / 100.0, width / 100.0, 0.04), "MI_Asphalt", "PM_Asphalt", yaw=yaw, folder=folder)
-
-    nx, ny = -math.sin(math.radians(yaw)), math.cos(math.radians(yaw))
-    for side in (-1.0, 1.0):
-        off = side * (width * 0.5 - 45.0)
-        block("EdgeLine", (cx + nx * off, cy + ny * off, top + 0.4), (length / 100.0, 0.14, 0.01),
-              "MI_LineWhite", collision=False, yaw=yaw, folder="Karamara/Markings")
-
-    steps = max(1, int(length // 900.0))
-    for i in range(steps):
-        t = (i + 0.5) / steps
-        block("CentreDash", (x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, top + 0.7), (3.0, 0.12, 0.01),
-              "MI_LineYellow", collision=False, yaw=yaw, folder="Karamara/Markings")
-
-
-def sidewalk_strip(label, x0, y0, x1, y1, width=420.0):
-    length = math.hypot(x1 - x0, y1 - y0)
-    if length < 100.0:
-        return
-    yaw = math.degrees(math.atan2(y1 - y0, x1 - x0))
-    cx, cy = (x0 + x1) * 0.5, (y0 + y1) * 0.5
-    block(label, (cx, cy, SIDEWALK_TOP * 0.5), (length / 100.0, width / 100.0, SIDEWALK_TOP / 100.0),
-          "MI_Sidewalk", "PM_Concrete", yaw=yaw, folder="Karamara/Sidewalks")
+def place_mesh(label, mesh_name, location, yaw=0.0, pitch=0.0, scale=(1.0, 1.0, 1.0),
+               collision=True, folder=None):
+    actor = spawn(unreal.StaticMeshActor, label, location, yaw=yaw, pitch=pitch, folder=folder)
+    comp = actor.static_mesh_component
+    comp.set_static_mesh(MESHES[mesh_name])
+    if not collision:
+        comp.set_collision_profile_name("NoCollision")
+        comp.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+    actor.set_actor_scale3d(unreal.Vector(*scale))
+    return actor
 
 
 def reset_level():
     if unreal.EditorAssetLibrary.does_asset_exist(MAP_PATH):
-        if not levels.load_level(MAP_PATH):
-            raise RuntimeError("Could not load " + MAP_PATH)
-        old = [a for a in actors.get_all_level_actors() if not isinstance(a, unreal.WorldSettings)]
-        if old and not actors.destroy_actors(old):
-            raise RuntimeError("Could not clear " + MAP_PATH)
-    elif not levels.new_level(MAP_PATH, False):
-        raise RuntimeError("Could not create " + MAP_PATH)
+        levels.load_level(MAP_PATH)
+    else:
+        levels.new_level(MAP_PATH)
+    for actor in list(actors.get_all_level_actors()):
+        if not isinstance(actor, (unreal.WorldSettings, unreal.Brush)):
+            actors.destroy_actor(actor)
+    counters.clear()
 
 
-def build_roads_and_viaduct():
-    # City ground slabs cut cleanly around Eski Liman recessed harbor basin (X 25500..46000, Y -19000..12500)
-    block("Ground_Main", (-8250, -4000, -50), (675.0, 720.0, 1.0), "MI_Concrete", "PM_Concrete", folder="Karamara/Ground")
-    block("Ground_NE", (34750, -29500, -50), (185.0, 210.0, 1.0), "MI_Concrete", "PM_Concrete", folder="Karamara/Ground")
-    block("Ground_SE", (34750, 22250, -50), (185.0, 195.0, 1.0), "MI_Concrete", "PM_Concrete", folder="Karamara/Ground")
+def build_road_geometry(nodes, edges):
+    """Constructs continuous smooth curved & sloped drivable asphalt/cobblestone/dirt roads,
+    sidewalks, viaduct support piers, embankment retaining slopes, and intersection pads."""
+    road_f = "RoadNetwork/Surface"
+    mark_f = "RoadNetwork/Markings"
+    struct_f = "RoadNetwork/Structures"
 
-    # 2x2 Karamara city street grid + central industrial shortcut (0.3 cm vertical offset avoids Z-fighting at crossings)
-    road_segment("MerkezBulvar", -26000, -14000, 26000, -14000, ROAD_W, ROAD_TOP)
-    road_segment("DoguSanayiCd", -26000, 14000, 26000, 14000, ROAD_W, ROAD_TOP)
-    road_segment("BatiBulvari", -20000, -26000, -20000, 20000, ROAD_W, ROAD_TOP + 0.3)
-    road_segment("LimanCaddesi", 20000, -26000, 20000, 20000, ROAD_W, ROAD_TOP + 0.3)
-    road_segment("SanayiAraSokak", 0, -14000, 0, 14000, ALLEY_W, ROAD_TOP + 0.3)
+    # Track widest incident edge per node for clean circular junction pads
+    node_width = {nid: 1400.0 for nid in nodes}
+    node_mat = {nid: ("MI_Asphalt", "PM_Asphalt") for nid in nodes}
 
-    # Dogu Sanayi container drift courtyard
-    block("DriftCourtyard", (10500, 6750, ROAD_TOP - 2.0), (140.0, 95.0, 0.04),
-          "MI_Asphalt", "PM_Asphalt", folder="Karamara/Roads")
+    for e in edges:
+        pts = e["points"]
+        w = e["width"]
+        is_dirt = e["dirt"]
+        is_carsi = (e["node_a"] in (8, 9, 10, 11) and e["node_b"] in (8, 9, 10, 11) and abs(pts[0][1] - 16000.0) < 200.0)
+        mat = "MI_Dirt" if is_dirt else ("MI_Cobblestone" if is_carsi else "MI_Asphalt")
+        phys = "PM_Dirt" if is_dirt else "PM_Asphalt"
 
-    # Segmented raised sidewalks along avenues (broken cleanly at intersections, Garage & Drift yard driveways)
-    sw_off = ROAD_W * 0.5 + 210.0
-    ew_spans = [(-25800, -20900), (-19100, -700), (700, 19100), (20900, 24800)]
-    for x0, x1 in ew_spans:
-        sidewalk_strip("Sidewalk_MerkezN", x0, -14000 - sw_off, x1, -14000 - sw_off)
-        sidewalk_strip("Sidewalk_MerkezS", x0, -14000 + sw_off, x1, -14000 + sw_off)
-        sidewalk_strip("Sidewalk_SanayiS", x0, 14000 + sw_off, x1, 14000 + sw_off)
+        node_width[e["node_a"]] = max(node_width[e["node_a"]], w)
+        node_width[e["node_b"]] = max(node_width[e["node_b"]], w)
+        if is_dirt:
+            node_mat[e["node_a"]] = ("MI_Dirt", "PM_Dirt")
+            node_mat[e["node_b"]] = ("MI_Dirt", "PM_Dirt")
 
-    sanayi_n_spans = [
-        (-25800, -20900), (-19100, -16100), (-12900, -700),
-        (700, 4200), (6600, 14400), (16800, 19100), (20900, 24600),
+        pier_accum = 2200.0
+        for i in range(len(pts) - 1):
+            a, b = pts[i], pts[i + 1]
+            dx, dy, dz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
+            dxy = math.hypot(dx, dy)
+            seg3d = math.sqrt(dxy * dxy + dz * dz)
+            if seg3d < 10.0:
+                continue
+            yaw = math.degrees(math.atan2(dy, dx))
+            pitch = math.degrees(math.atan2(dz, dxy))
+            mx, my, mz = 0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1]), 0.5 * (a[2] + b[2])
+
+            # 45 cm thick drivable road slab overlapped 18% lengthwise so curves & grade crests stay butter-smooth
+            slab_len_m = (seg3d * 1.18) / 100.0
+            slab_w_m = w / 100.0
+            thick_cm = 46.0
+            block("RoadSeg", (mx, my, mz - thick_cm * 0.5), (slab_len_m, slab_w_m, thick_cm / 100.0),
+                  mat, phys, yaw=yaw, pitch=pitch, folder=road_f)
+
+            # Lane markings (center yellow dashes + white edges on paved roads)
+            if not is_dirt:
+                block("CenterLine", (mx, my, mz + 1.8), (slab_len_m * 0.52, 0.16, 0.02),
+                      "MI_LineYellow", collision=False, yaw=yaw, pitch=pitch, folder=mark_f)
+                nx, ny = -dy / dxy, dx / dxy
+                for side in (-1.0, 1.0):
+                    eo = (w * 0.5 - 55.0) * side
+                    block("EdgeLine", (mx + nx * eo, my + ny * eo, mz + 1.5), (slab_len_m, 0.14, 0.02),
+                          "MI_LineWhite", collision=False, yaw=yaw, pitch=pitch, folder=mark_f)
+
+                # Raised urban sidewalks along flat Merkez / Sanayi / Liman / Yamac streets
+                if not e["highway"] and e["district"] in (knet.DIST_MERKEZ, knet.DIST_SANAYI, knet.DIST_YAMAC):
+                    sw_w = 300.0
+                    for side in (-1.0, 1.0):
+                        so = (w * 0.5 + sw_w * 0.5) * side
+                        block("Sidewalk", (mx + nx * so, my + ny * so, mz - 12.0),
+                              (slab_len_m, sw_w / 100.0, 0.52), "MI_Sidewalk", "PM_Concrete",
+                              yaw=yaw, pitch=pitch, folder=road_f)
+
+            # Structural support under elevated segments (Z > 120 cm)
+            if mz > 120.0:
+                is_bridge_span = (e["node_a"], e["node_b"]) in ((20, 21), (21, 20))
+                if e["highway"] and not is_bridge_span:
+                    # Viaduct box-girder underside + piers down to Z = -200 cm every ~45 m
+                    block("ViaductGirder", (mx, my, mz - 95.0), (slab_len_m, slab_w_m * 0.86, 1.3),
+                          "MI_Concrete", "PM_Concrete", yaw=yaw, pitch=pitch, folder=struct_f)
+                    pier_accum += seg3d
+                    if pier_accum >= 4500.0:
+                        pier_accum = 0.0
+                        pier_h = mz + 120.0
+                        block("ViaductPier", (mx, my, (mz - 100.0) * 0.5 - 60.0),
+                              (2.6, 2.6, pier_h / 100.0), "MI_Concrete", "PM_Concrete",
+                              mesh=CYLINDER, folder=struct_f)
+                elif not is_bridge_span:
+                    # Mountain / hillside solid rock-concrete retaining embankment down to terrain!
+                    emb_h = mz + 240.0
+                    block("Embankment", (mx, my, mz - 42.0 - emb_h * 0.5),
+                          (slab_len_m * 1.04, slab_w_m * 1.24, emb_h / 100.0),
+                          "MI_MountainRock" if e["district"] == knet.DIST_GECIT else "MI_Concrete",
+                          "PM_Concrete", yaw=yaw, pitch=0.0, folder=struct_f)
+
+    # Circular intersection blend pads at every road node (eliminates T/4-way seam gaps)
+    for nid, n in nodes.items():
+        x, y, z = n["pos"]
+        dia_m = (node_width[nid] * 1.18) / 100.0
+        nmat, nphys = node_mat[nid]
+        block("JunctionPad", (x, y, z - 22.5), (dia_m, dia_m, 0.45),
+              nmat, nphys, mesh=CYLINDER, folder=road_f)
+
+
+def export_road_graph_asset(nodes, edges):
+    """Populates and saves /Game/World/DA_KaramaraRoadGraph (UBNRoadGraphAsset)."""
+    path = "%s/%s" % (GRAPH_DIR, GRAPH_NAME)
+    if unreal.EditorAssetLibrary.does_asset_exist(path):
+        asset = unreal.load_asset(path)
+    else:
+        factory = unreal.DataAssetFactory()
+        factory.set_editor_property("data_asset_class", unreal.BNRoadGraphAsset)
+        asset = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            GRAPH_NAME, GRAPH_DIR, unreal.BNRoadGraphAsset, factory
+        )
+        if asset is None:
+            raise RuntimeError("Could not create " + path)
+
+    dist_enums = [
+        unreal.BNDistrict.MERKEZ_BULVAR,
+        unreal.BNDistrict.DOGU_SANAYI,
+        unreal.BNDistrict.ESKI_LIMAN,
+        unreal.BNDistrict.KUZEY_VIYADUGU,
+        unreal.BNDistrict.YAMAC_MAHALLESI,
+        unreal.BNDistrict.KUZEY_GECIDI,
     ]
-    for x0, x1 in sanayi_n_spans:
-        sidewalk_strip("Sidewalk_SanayiN", x0, 14000 - sw_off, x1, 14000 - sw_off)
 
-    ns_spans = [(-22800, -14900), (-13100, 13100), (14900, 19800)]
-    for y0, y1 in ns_spans:
-        sidewalk_strip("Sidewalk_BatiW", -20000 - sw_off, y0, -20000 - sw_off, y1)
-        sidewalk_strip("Sidewalk_BatiE", -20000 + sw_off, y0, -20000 + sw_off, y1)
-        sidewalk_strip("Sidewalk_LimanE", 20000 + sw_off, y0, 20000 + sw_off, y1)
-    for y0, y1 in [(-22800, -14900), (-13100, 5200), (8200, 13100), (14900, 19800)]:
-        sidewalk_strip("Sidewalk_LimanW", 20000 - sw_off, y0, 20000 - sw_off, y1)
+    ue_nodes = []
+    for nid in sorted(nodes.keys()):
+        n = nodes[nid]
+        rn = unreal.BNRoadNode()
+        rn.set_editor_property("id", int(nid))
+        rn.set_editor_property("position", unreal.Vector(*n["pos"]))
+        rn.set_editor_property("district", dist_enums[n["district"]])
+        rn.set_editor_property("signalized", bool(n["signalized"]))
+        ue_nodes.append(rn)
 
-    # Elevated Kuzey Viyadugu (Y = -24000): flat aprons, smooth 3.99 deg ramps, Z = 700 cm deck
-    road_segment("ViaductApproachW", -27000, VIADUCT_Y, -22000, VIADUCT_Y, ROAD_W)
-    road_segment("ViaductApproachE", 22000, VIADUCT_Y, 27000, VIADUCT_Y, ROAD_W)
+    ue_edges = []
+    for e in edges:
+        re = unreal.BNRoadEdge()
+        re.set_editor_property("node_a", int(e["node_a"]))
+        re.set_editor_property("node_b", int(e["node_b"]))
+        re.set_editor_property("sampled_points", [unreal.Vector(*p) for p in e["points"]])
+        re.set_editor_property("width_cm", float(e["width"]))
+        re.set_editor_property("speed_limit_kmh", float(e["speed"]))
+        re.set_editor_property("district", dist_enums[e["district"]])
+        re.set_editor_property("highway", bool(e["highway"]))
+        re.set_editor_property("one_way", bool(e["one_way"]))
+        re.set_editor_property("dirt", bool(e["dirt"]))
+        ue_edges.append(re)
 
-    deck_thick = 40.0
-    block("ViaductDeck", (0, VIADUCT_Y, VIADUCT_Z - deck_thick * 0.5),
-          (240.0, ROAD_W / 100.0, deck_thick / 100.0), "MI_Asphalt", "PM_Asphalt", folder="Karamara/Viaduct")
-    for side in (-1.0, 1.0):
-        ry = VIADUCT_Y + side * (ROAD_W * 0.5 - 30.0)
-        block("ViaductRail", (0, ry, VIADUCT_Z + 45.0), (240.0, 0.5, 0.9), "MI_Concrete", "PM_Concrete", folder="Karamara/Viaduct")
-        block("ViaductGuardCap", (0, ry, VIADUCT_Z + 96.0), (240.0, 0.24, 0.16), "MI_Guardrail", folder="Karamara/Viaduct")
+    ue_spots = []
+    for s in knet.COOLDOWN_SPOTS:
+        cs = unreal.BNCooldownSpot()
+        cs.set_editor_property("location", unreal.Vector(*s["loc"]))
+        cs.set_editor_property("radius_cm", float(s["radius"]))
+        cs.set_editor_property("display_name", s["name"])
+        cs.set_editor_property("district", dist_enums[s["district"]])
+        ue_spots.append(cs)
 
-    for x in range(-10000, 10001, 5000):
-        for side in (-500.0, 500.0):
-            block("ViaductPier", (x, VIADUCT_Y + side, (VIADUCT_Z - deck_thick) * 0.5),
-                  (1.6, 1.6, (VIADUCT_Z - deck_thick) / 100.0), "MI_Concrete", "PM_Concrete", folder="Karamara/Viaduct")
-        block("ViaductCrossbeam", (x, VIADUCT_Y, VIADUCT_Z - deck_thick - 35.0),
-              (1.9, 13.5, 0.7), "MI_Concrete", "PM_Concrete", folder="Karamara/Viaduct")
+    ue_dists = []
+    for d in knet.DISTRICT_BOUNDS:
+        db = unreal.BNDistrictBounds()
+        db.set_editor_property("district", dist_enums[d["district"]])
+        db.set_editor_property("center_cm", unreal.Vector2D(*d["center"]))
+        db.set_editor_property("half_extent_cm", unreal.Vector2D(*d["half"]))
+        db.set_editor_property("display_name", d["name"])
+        db.set_editor_property("subtitle", d["subtitle"])
+        ue_dists.append(db)
 
-    span_x = 10000.0
-    rise_z = VIADUCT_Z - ROAD_TOP
-    slope_len = math.hypot(span_x, rise_z)
-    theta = math.atan2(rise_z, span_x)
-    pitch_deg = math.degrees(theta)
-    half_h = deck_thick * 0.5
+    asset.set_editor_property("nodes", ue_nodes)
+    asset.set_editor_property("edges", ue_edges)
+    asset.set_editor_property("cooldown_spots", ue_spots)
+    asset.set_editor_property("districts", ue_dists)
+    asset.set_editor_property("escape_route_a_location", unreal.Vector(*knet.ESCAPE_ROUTE_A))
+    asset.set_editor_property("escape_route_b_location", unreal.Vector(*knet.ESCAPE_ROUTE_B))
 
-    # Shift center down along ramp normal so top plane meets Z=2 and Z=700 seamlessly.
-    z_mid = (ROAD_TOP + VIADUCT_Z) * 0.5 - half_h * math.cos(theta)
-    dx_norm = half_h * math.sin(theta)
-    block("ViaductRampW", (-17000.0 + dx_norm, VIADUCT_Y, z_mid),
-          (slope_len / 100.0, ROAD_W / 100.0, deck_thick / 100.0), "MI_Asphalt", "PM_Asphalt",
-          pitch=pitch_deg, folder="Karamara/Viaduct")
-    block("ViaductRampE", (17000.0 - dx_norm, VIADUCT_Y, z_mid),
-          (slope_len / 100.0, ROAD_W / 100.0, deck_thick / 100.0), "MI_Asphalt", "PM_Asphalt",
-          pitch=-pitch_deg, folder="Karamara/Viaduct")
-
-    # Sloped steel guardrails along ramp edges (flush on ramp surface, outside drivable width)
-    rail_z = (ROAD_TOP + VIADUCT_Z) * 0.5 + 39.0 * math.cos(theta)
-    for side in (-1.0, 1.0):
-        ry = VIADUCT_Y + side * (ROAD_W * 0.5 - 22.0)
-        block("RampGuardW", (-17000.0 - 39.0 * math.sin(theta), ry, rail_z),
-              (slope_len / 100.0, 0.30, 0.78), "MI_Guardrail", "PM_Concrete", pitch=pitch_deg, folder="Karamara/Viaduct")
-        block("RampGuardE", (17000.0 + 39.0 * math.sin(theta), ry, rail_z),
-              (slope_len / 100.0, 0.30, 0.78), "MI_Guardrail", "PM_Concrete", pitch=-pitch_deg, folder="Karamara/Viaduct")
-
-    # Overhead green/amber highway gantries along Kuzey Viyadugu (full vertical clearance >= 620 cm above road)
-    for gx, deck_z in ((-22200.0, ROAD_TOP), (-8000.0, VIADUCT_Z), (0.0, VIADUCT_Z), (8000.0, VIADUCT_Z)):
-        clr_z = deck_z + 640.0
-        for side in (-1.0, 1.0):
-            block("GantryPillar", (gx, VIADUCT_Y + side * 1020.0, deck_z + 350.0),
-                  (0.55, 0.55, 7.0), "MI_Metal_Dark", folder="Karamara/Gantries")
-        block("GantryTruss", (gx, VIADUCT_Y, clr_z + 45.0), (0.55, 21.2, 0.75), "MI_Metal_Dark", folder="Karamara/Gantries")
-        block("GantrySign", (gx, VIADUCT_Y - 220.0, clr_z + 45.0), (0.72, 6.2, 1.85), "MI_HighwaySign", collision=False, folder="Karamara/Gantries")
-        block("GantrySignSub", (gx, VIADUCT_Y + 340.0, clr_z + 45.0), (0.72, 3.8, 1.55), "MI_HighwaySign", collision=False, folder="Karamara/Gantries")
-        for s in (-560.0, 560.0):
-            block("GantryBeacon", (gx, VIADUCT_Y + s, clr_z + 145.0), (0.5, 0.5, 0.25), "MI_HazardYellow", collision=False, folder="Karamara/Gantries")
+    if not unreal.EditorAssetLibrary.save_loaded_asset(asset, only_if_is_dirty=False):
+        raise RuntimeError("Could not save " + path)
+    unreal.log("BN: built %s (%d nodes, %d edges, %d cooldown spots)" % (path, len(ue_nodes), len(ue_edges), len(ue_spots)))
+    return asset
 
 
-def build_harbor_and_tunnels():
-    # --- Eski Liman Harbor Water Basin + Concrete Seawall + 3 Steel Port Cranes + Stacked Containers ---
-    block("HarborSeabed", (35750, -3250, -390), (205.0, 315.0, 0.5), "MI_Concrete", folder="Karamara/Harbor")
-    block("HarborWater", (35750, -3250, -165), (205.0, 315.0, 0.12), "MI_WaterHarbor", collision=False, folder="Karamara/Harbor")
-
-    # Concrete seawall quay walls & coping
-    block("QuayWallW", (25420, -3250, -100), (1.8, 315.0, 2.25), "MI_Concrete", "PM_Concrete", folder="Karamara/Harbor")
-    block("QuayWallN", (35750, -18950, -100), (205.0, 1.8, 2.25), "MI_Concrete", "PM_Concrete", folder="Karamara/Harbor")
-    block("QuayWallS", (35750, 12450, -100), (205.0, 1.8, 2.25), "MI_Concrete", "PM_Concrete", folder="Karamara/Harbor")
-    block("QuayGuardrail", (25260, -3250, 52), (0.35, 306.0, 0.95), "MI_Guardrail", "PM_Concrete", folder="Karamara/Harbor")
-
-    # Harbor safety bollards along pier edge
-    for by in range(-11000, 11001, 2200):
-        block("QuayBollard", (25020, by, 45), (0.55, 0.55, 0.9), "MI_HazardYellow", mesh=CYLINDER, folder="Karamara/Harbor")
-
-    # 3 towering Steel Port Gantry Cranes overhanging the harbor water
-    for cy in (-9000.0, -1200.0, 6800.0):
-        for lx in (22500.0, 24800.0):
-            for ly_off in (-520.0, 520.0):
-                block("CraneLeg", (lx, cy + ly_off, 1050.0), (0.95, 0.95, 21.0), "MI_Container_Amber", "PM_Concrete", folder="Karamara/Harbor")
-            block("CranePortalBeam", (lx, cy, 2080.0), (1.1, 11.4, 1.1), "MI_Metal_Dark", folder="Karamara/Harbor")
-        # Horizontal boom extending out over the harbor water (X 21600..29400)
-        block("CraneBoom", (25500.0, cy, 2160.0), (78.0, 2.2, 1.4), "MI_Container_Amber", folder="Karamara/Harbor")
-        block("CraneBackstay", (23650.0, cy, 2550.0), (24.0, 1.4, 0.9), "MI_Metal_Dark", folder="Karamara/Harbor")
-        block("CraneCab", (24500.0, cy - 220.0, 1880.0), (2.8, 2.2, 2.4), "MI_Building_Glass", folder="Karamara/Harbor")
-        block("CraneHazard", (25500.0, cy, 2040.0), (18.0, 2.4, 0.45), "MI_HazardYellow", collision=False, folder="Karamara/Harbor")
-        block("CraneTipLight", (29200.0, cy, 2260.0), (0.6, 0.6, 0.4), "MI_LampGlow", collision=False, folder="Karamara/Harbor")
-
-    # Stacked colorful corrugated shipping containers along Eski Liman quay
-    cont_mats = ["MI_Container_Blue", "MI_Container_Red", "MI_Container_Amber"]
-    quay_stacks = [
-        (22300, -11200, 3), (23500, -11200, 2),
-        (22300, -5400, 2), (23500, -5400, 3),
-        (22300, 2800, 3), (23500, 2800, 2),
-        (22300, 9800, 2), (23500, 9800, 2),
-    ]
-    for idx, (cx, cy, layers) in enumerate(quay_stacks):
-        for layer in range(layers):
-            mat = cont_mats[(idx + layer) % len(cont_mats)]
-            block("HarborContainer", (cx, cy, 155.0 + layer * 315.0), (2.9, 12.2, 3.1), mat, "PM_Concrete", folder="Karamara/Containers")
-
-    # --- Perde 5 Escape Corridor Tunnel Portals ---
-    # Route A: Liman Tunelleri (escape target at (24500, 14000); portal mouth starts east at X = 25800)
-    def tunnel_portal(name, mouth_x, center_y, direction):
-        # direction = +1 extends east (+X), -1 extends west (-X)
-        barrel_len = 2400.0
-        bx = mouth_x + direction * (barrel_len * 0.5)
-        for side in (-1.0, 1.0):
-            # Massive concrete portal walls strictly outside drivable width (clear opening = 1900 cm)
-            block(name + "_Wall", (bx, center_y + side * 1120.0, 440.0),
-                  (barrel_len / 100.0, 3.4, 8.8), "MI_Concrete", "PM_Concrete", folder="Karamara/Tunnels")
-            block(name + "_Wing", (mouth_x - direction * 120.0, center_y + side * 1220.0, 460.0),
-                  (2.2, 4.4, 9.2), "MI_Concrete", "PM_Concrete", folder="Karamara/Tunnels")
-            block(name + "_Hazard", (mouth_x - direction * 235.0, center_y + side * 1015.0, 220.0),
-                  (0.25, 0.6, 3.6), "MI_HazardYellow", collision=False, folder="Karamara/Tunnels")
-        # Concrete roof slab & portal arch lintel (clear overhead height = 660 cm)
-        block(name + "_Roof", (bx, center_y, 820.0), (barrel_len / 100.0, 26.0, 3.0), "MI_Concrete", "PM_Concrete", folder="Karamara/Tunnels")
-        block(name + "_Facade", (mouth_x - direction * 120.0, center_y, 840.0), (2.4, 28.0, 3.4), "MI_Concrete", "PM_Concrete", folder="Karamara/Tunnels")
-        block(name + "_Sign", (mouth_x - direction * 245.0, center_y, 830.0), (0.35, 9.5, 1.8), "MI_HighwaySign", collision=False, folder="Karamara/Tunnels")
-        # Dark recessed interior tunnel end & warm sodium ceiling light strips
-        block(name + "_Back", (mouth_x + direction * (barrel_len - 40.0), center_y, 380.0),
-              (0.8, 22.0, 7.6), "MI_Metal_Dark", folder="Karamara/Tunnels")
-        for i in range(3):
-            lx = mouth_x + direction * (350.0 + i * 750.0)
-            block(name + "_Light", (lx, center_y, 662.0), (2.6, 0.9, 0.14), "MI_LampGlow", collision=False, folder="Karamara/Tunnels")
-
-    tunnel_portal("Tunnel_RouteA_Liman", 25800.0, 14000.0, +1.0)
-    tunnel_portal("Tunnel_RouteB_Kuzey", -26500.0, VIADUCT_Y, -1.0)
-
-
-def architectural_building(rng, cx, cy, w, d, h, facade_mat):
-    """Multi-story Karamara building: podium + main shaft + setback penthouse + parapet + rooftop HVAC."""
-    podium_h = min(460.0, h * 0.28)
-    podium_mat = "MI_Concrete" if facade_mat in ("MI_Building_Brick", "MI_Building_Plaster") else "MI_Metal_Dark"
-    block("BldgPodium", (cx, cy, podium_h * 0.5), ((w + 160.0) / 100.0, (d + 160.0) / 100.0, podium_h / 100.0),
-          podium_mat, "PM_Concrete", folder="Karamara/Buildings")
-
-    shaft_h = h - podium_h
-    block("BldgShaft", (cx, cy, podium_h + shaft_h * 0.5), (w / 100.0, d / 100.0, shaft_h / 100.0),
-          facade_mat, "PM_Concrete", folder="Karamara/Buildings")
-
-    top_z = h
-    top_w, top_d = w, d
-    # Taller towers get an architectural upper setback tier
-    if h >= 2100.0:
-        setback_h = rng.uniform(450.0, 950.0)
-        top_w = w * 0.72
-        top_d = d * 0.72
-        setback_mat = "MI_Building_Glass" if facade_mat != "MI_Building_Glass" else "MI_Building_Steel"
-        block("BldgSetback", (cx, cy, h + setback_h * 0.5), (top_w / 100.0, top_d / 100.0, setback_h / 100.0),
-              setback_mat, "PM_Concrete", folder="Karamara/Buildings")
-        top_z = h + setback_h
-
-    # Rooftop parapet trim + mechanical HVAC housing
-    block("BldgParapet", (cx, cy, top_z + 55.0), ((top_w + 80.0) / 100.0, (top_d + 80.0) / 100.0, 1.1),
-          "MI_Metal_Dark", folder="Karamara/Buildings")
-    hvac_w = min(top_w * 0.34, 620.0)
-    hvac_d = min(top_d * 0.30, 520.0)
-    block("BldgHVAC", (cx + rng.uniform(-0.18, 0.18) * top_w, cy + rng.uniform(-0.18, 0.18) * top_d, top_z + 195.0),
-          (hvac_w / 100.0, hvac_d / 100.0, 2.2), "MI_Concrete", folder="Karamara/Buildings")
-
-
-def build_buildings_and_lamps():
-    rng = random.Random(2026)
-    finishes = ["MI_Building_Brick", "MI_Building_Plaster", "MI_Building_Glass", "MI_Building_Steel"]
-    waterfront_finishes = ["MI_Building_Glass", "MI_Building_Steel", "MI_Building_Plaster"]
-
-    # Architectural city blocks (strictly clear of roads, sidewalks, Garage (-14500,9500),
-    # Race_KaramaraCircuit (-16500,-11800), DriftCourtyard (3500..17500,2000..11500), and Harbor!)
-    zones = [
-        ((-17600, -2400, -10200, 5200), finishes, 1300.0, 3600.0),
-        ((-17600, -2400, -21200, -16400), finishes, 1500.0, 3400.0),
-        ((2400, 17600, -21200, -16400), waterfront_finishes, 1800.0, 4200.0),
-        ((2400, 17600, -11200, -1600), waterfront_finishes, 1400.0, 3800.0),
-        ((-11400, -2400, 7400, 11400), finishes, 1100.0, 2400.0),
-        ((-29200, -22800, -11000, 11000), finishes, 1400.0, 3400.0),
-        ((-17600, 17600, 16600, 21200), finishes, 1200.0, 2800.0),
-    ]
-    for (x0, x1, y0, y1), palette, hmin, hmax in zones:
-        x = x0 + 500.0
-        while x + 2200.0 < x1:
-            w = rng.uniform(1900.0, 3100.0)
-            d = rng.uniform(1800.0, min(3300.0, y1 - y0 - 700.0))
-            h = rng.uniform(hmin, hmax)
-            y = rng.uniform(y0 + d * 0.5 + 250.0, y1 - d * 0.5 - 250.0)
-            architectural_building(rng, x + w * 0.5, y, w, d, h, rng.choice(palette))
-            x += w + rng.uniform(900.0, 1550.0)
-
-    # Selin's Garage architectural workshop hangar framing (-14500, 9500) from behind (Y = 6600, trigger untouched)
-    block("GarageHangarBack", (-14500, 6200, 420), (34.0, 3.0, 8.4), "MI_Building_Brick", "PM_Concrete", folder="Karamara/Garage")
-    block("GarageHangarSideW", (-16350, 7700, 420), (3.0, 33.0, 8.4), "MI_Building_Brick", "PM_Concrete", folder="Karamara/Garage")
-    block("GarageHangarSideE", (-12650, 7700, 420), (3.0, 33.0, 8.4), "MI_Building_Brick", "PM_Concrete", folder="Karamara/Garage")
-    block("GarageHangarRoof", (-14500, 7700, 875), (40.0, 34.0, 0.9), "MI_Metal_Dark", "PM_Concrete", folder="Karamara/Garage")
-    block("GarageHangarSign", (-14500, 9380, 780), (14.0, 0.4, 1.4), "MI_GarageBeacon", collision=False, folder="Karamara/Garage")
-
-    # Stacked colorful corrugated shipping containers framing Dogu Sanayi Drift courtyard
-    cont_palette = ["MI_Container_Red", "MI_Container_Blue", "MI_Container_Amber"]
-    for i in range(6):
-        cx = 4500 + i * 2200
-        mat_n = cont_palette[i % 3]
-        mat_s = cont_palette[(i + 1) % 3]
-        block("ContainerN", (cx, 12100, 160), (14.0, 3.0, 3.2), mat_n, "PM_Concrete", folder="Karamara/Containers")
-        block("ContainerS", (cx, 1300, 160), (14.0, 3.0, 3.2), mat_s, "PM_Concrete", folder="Karamara/Containers")
-        if i % 2 == 0:
-            block("ContainerN_Top", (cx, 12100, 480), (14.0, 3.0, 3.2), cont_palette[(i + 2) % 3], "PM_Concrete", folder="Karamara/Containers")
-        if i % 2 == 1:
-            block("ContainerS_Top", (cx, 1300, 480), (14.0, 3.0, 3.2), cont_palette[(i + 2) % 3], "PM_Concrete", folder="Karamara/Containers")
-
-    # Sodium street lamps along Merkez Bulvar, Dogu Sanayi Cd., and Elevated Viaduct
-    for x in range(-22000, 22001, 4000):
-        spawn(unreal.BNStreetLamp, "Lamp_Merkez", (x, -14000 + ROAD_W * 0.5 + 90.0, SIDEWALK_TOP), yaw=-90.0, folder="Karamara/Lamps")
-        spawn(unreal.BNStreetLamp, "Lamp_Sanayi", (x, 14000 - ROAD_W * 0.5 - 90.0, SIDEWALK_TOP), yaw=90.0, folder="Karamara/Lamps")
-    for x in range(-10000, 10001, 4000):
-        spawn(unreal.BNStreetLamp, "Lamp_Viaduct", (x, VIADUCT_Y + ROAD_W * 0.5 + 60.0, VIADUCT_Z), yaw=-90.0, folder="Karamara/Lamps")
-
-
-def _add_hism(actor, name, mesh, material, collision=False, cast_shadow=True):
-    sds = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
-    actor_handle = None
-    root_handle = None
-    for h in sds.k2_gather_subobject_data_for_instance(actor):
-        data = unreal.SubobjectDataBlueprintFunctionLibrary.get_data(h)
-        if unreal.SubobjectDataBlueprintFunctionLibrary.is_root_component(data):
-            root_handle = h
-        elif unreal.SubobjectDataBlueprintFunctionLibrary.is_actor(data):
-            actor_handle = h
-    if not root_handle:
-        root_handle, err = sds.add_new_subobject(unreal.AddNewSubobjectParams(
-            parent_handle=actor_handle,
-            new_class=unreal.SceneComponent.static_class(),
-            blueprint_context=None,
-        ))
-        if not err.is_empty():
-            raise RuntimeError(str(err))
-        sds.rename_subobject(handle=root_handle, new_name=unreal.Text("FoliageRoot"))
-
-    comp_handle, err = sds.add_new_subobject(unreal.AddNewSubobjectParams(
-        parent_handle=root_handle,
-        new_class=unreal.HierarchicalInstancedStaticMeshComponent.static_class(),
-        blueprint_context=None,
-    ))
-    if not err.is_empty():
-        raise RuntimeError(str(err))
-    sds.rename_subobject(handle=comp_handle, new_name=unreal.Text(name))
-    comp_data = unreal.SubobjectDataBlueprintFunctionLibrary.get_data(comp_handle)
-    comp = unreal.SubobjectDataBlueprintFunctionLibrary.get_associated_object(comp_data)
-    comp.set_static_mesh(mesh)
-    comp.set_material(0, material)
-    comp.set_editor_property("cast_shadow", cast_shadow)
-    if not collision:
-        comp.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
-    return comp
-
-
-def build_foliage_hism():
-    """Instanced autumn trees and boulevard bushes (3 HISM components = 3 draw calls total)."""
-    rng = random.Random(2027)
-    foliage_actor = spawn(unreal.Actor, "Karamara_AutumnFoliage", (0, 0, 0), folder="Karamara/Foliage")
-    trunks = _add_hism(foliage_actor, "TrunksHISM", CYLINDER, MI["MI_TreeTrunk"], collision=False, cast_shadow=True)
-    canopies = _add_hism(foliage_actor, "AutumnCanopyHISM", SPHERE, MI["MI_FoliageAutumn"], collision=False, cast_shadow=True)
-    bushes = _add_hism(foliage_actor, "BushesHISM", SPHERE, MI["MI_FoliageAutumn"], collision=False, cast_shadow=False)
-
-    tree_spots = []
-    # Trees along Merkez Bulvar outer/inner verges (avoiding lamps at multiples of 4000 & intersections)
-    for x in range(-24000, 24001, 2000):
-        if abs(x + 20000) < 1600 or abs(x) < 1500 or abs(x - 20000) < 1600:
-            continue
-        if abs(x + 16500) < 1400:
-            continue  # keep Race_KaramaraCircuit beacon clear
-        tree_spots.append((x, -14000 - ROAD_W * 0.5 - 320.0))
-        if x % 4000 != 0:
-            tree_spots.append((x, -14000 + ROAD_W * 0.5 + 320.0))
-
-    # Trees along Bati Bulvari and Liman Caddesi boulevards
-    for y in range(-11500, 12000, 2600):
-        tree_spots.append((-20000 - ROAD_W * 0.5 - 320.0, y))
-        tree_spots.append((-20000 + ROAD_W * 0.5 + 320.0, y))
-        if not (4800 <= y <= 8800):
-            tree_spots.append((20000 - ROAD_W * 0.5 - 320.0, y))
-
-    # Trees along Dogu Sanayi outer south sidewalk
-    for x in range(-18000, 18001, 2600):
-        if abs(x) < 1500:
-            continue
-        tree_spots.append((x, 14000 + ROAD_W * 0.5 + 320.0))
-
-    trunk_xforms = []
-    canopy_xforms = []
-    bush_xforms = []
-
-    for tx, ty in tree_spots:
-        h_m = rng.uniform(3.4, 5.2)
-        r_m = rng.uniform(0.24, 0.34)
-        yaw = rng.uniform(0.0, 360.0)
-        trunk_xforms.append(unreal.Transform(
-            location=unreal.Vector(tx, ty, SIDEWALK_TOP + h_m * 50.0),
-            rotation=unreal.Rotator(0.0, 0.0, yaw),
-            scale=unreal.Vector(r_m, r_m, h_m),
-        ))
-        # Multi-lobe sculpted autumn crown (3 slightly offset flattened spheres per tree)
-        crown_z = SIDEWALK_TOP + h_m * 100.0
-        for dx, dy, dz, sx, sy, sz in (
-            (0.0, 0.0, 40.0, 2.7, 2.6, 2.1),
-            (65.0, 45.0, -25.0, 2.1, 2.0, 1.6),
-            (-60.0, -40.0, -15.0, 2.0, 2.1, 1.7),
-        ):
-            sc = rng.uniform(0.86, 1.16)
-            canopy_xforms.append(unreal.Transform(
-                location=unreal.Vector(tx + dx, ty + dy, crown_z + dz),
-                rotation=unreal.Rotator(rng.uniform(-6, 6), rng.uniform(-6, 6), rng.uniform(0, 360)),
-                scale=unreal.Vector(sx * sc, sy * sc, sz * sc),
-            ))
-        # Companion low planter bush offset from trunk
-        if rng.random() < 0.72:
-            bx = tx + rng.choice((-420.0, 420.0)) * (1.0 if abs(ty) > 12500 else 0.0)
-            by = ty + (0.0 if abs(ty) > 12500 else rng.choice((-420.0, 420.0)))
-            bs = rng.uniform(0.95, 1.45)
-            bush_xforms.append(unreal.Transform(
-                location=unreal.Vector(bx, by, SIDEWALK_TOP + bs * 32.0),
-                rotation=unreal.Rotator(0.0, 0.0, rng.uniform(0.0, 360.0)),
-                scale=unreal.Vector(bs * 1.25, bs * 1.1, bs * 0.75),
-            ))
-
-    trunks.add_instances(trunk_xforms, False, True)
-    canopies.add_instances(canopy_xforms, False, True)
-    bushes.add_instances(bush_xforms, False, True)
-
-
-def build_gameplay_props():
-    garage = spawn(unreal.BNGarageZone, "Garage_Selin_Karamara", (-14500, 9500, 0), yaw=90.0, folder="Karamara/Garage")
-    garage.set_editor_property("garage_name", "Selin'in Garaji (Yamac)")
+def build_gameplay_actors(edges):
+    """Spawns Selin's Garage, 10 Pursuit Breakers across all 6 districts, and 72 breakable street props."""
+    gx, gy, gz, gyaw = knet.SELIN_GARAGE_POS
+    garage = spawn(unreal.BNGarageZone, "Garage_Selin", (gx, gy, gz), yaw=gyaw, folder="Gameplay/Garage")
     garage.get_editor_property("pillar_l").set_material(0, MI["MI_Metal_Dark"])
     garage.get_editor_property("pillar_r").set_material(0, MI["MI_Metal_Dark"])
-    garage.get_editor_property("beacon_beam").set_material(0, MI["MI_GarageBeacon"])
+    garage.get_editor_property("beacon_beam").set_material(0, MI["MI_RaceHolo_Garage"])
 
-    breakers = [
-        ("KaramaraBreaker_MerkezW", (-10000, -14000, 0), 0.0, "Merkez Bulvar Kemeri", 30000),
-        ("KaramaraBreaker_MerkezE", (10000, -14000, 0), 0.0, "Carsibasi Tabelasi", 32000),
-        ("KaramaraBreaker_SanayiW", (-10000, 14000, 0), 0.0, "Sanayi Iskele Taki", 28000),
-        ("KaramaraBreaker_SanayiE", (10000, 14000, 0), 0.0, "Dogu Depo Vinci", 35000),
-        ("KaramaraBreaker_AraSokak", (0, 0, 0), 90.0, "Ara Sokak Viyaduk Taki", 26000),
-        ("KaramaraBreaker_Liman", (20000, 0, 0), 90.0, "Liman Konteyner Vinci", 45000),
-    ]
-    for label, loc, yaw, title, cost in breakers:
-        b = spawn(unreal.BNPursuitBreaker, label, loc, yaw=yaw, folder="Karamara/Breakers")
+    # 10 Pursuit Breakers spanning all 6 districts
+    for label, x, y, z, yaw, title, cost, style in knet.PURSUIT_BREAKERS:
+        b = spawn(unreal.BNPursuitBreaker, label, (x, y, z), yaw=yaw, folder="Gameplay/Breakers")
         b.set_editor_property("structure_name", title)
         b.set_editor_property("collateral_cost_dollars", cost)
+        b.set_editor_property("visual_style", int(style))
         b.get_editor_property("pillar_l").set_material(0, MI["MI_Metal_Dark"])
         b.get_editor_property("pillar_r").set_material(0, MI["MI_Metal_Dark"])
-        b.get_editor_property("overhead_beam").set_material(0, MI["MI_HazardYellow"])
+        beam_mat = "MI_HazardYellow" if style == 0 else ("MI_Container_Amber" if style == 1 else "MI_Building_Steel")
+        b.get_editor_property("overhead_beam").set_material(0, MI[beam_mat])
 
-    # Breakable street props placed atop raised kerb edges, shortcut alley, and container lot edges
-    prop_idx = 0
-    for x in range(-16000, 16001, 4000):
-        for y_side, kind, mat, z in [
-            (-14000 + ROAD_W * 0.5 + 140.0, unreal.BNBreakableKind.BARRIER, "MI_Barrier_Red", 42.5 + SIDEWALK_TOP),
-            (14000 - ROAD_W * 0.5 - 140.0, unreal.BNBreakableKind.BIN, "MI_Metal_Dark", 47.5 + SIDEWALK_TOP),
-        ]:
-            prop_idx += 1
-            p = spawn(unreal.BNBreakableProp, "Prop_%d" % prop_idx, (x, y_side, z), folder="Karamara/Breakables")
+    # 72 Breakable street props (barriers, metal bins, wooden crates) distributed across city shoulders & drift yard
+    rng = random.Random(303)
+    kinds = [
+        (unreal.BNBreakableKind.BARRIER, "MI_Barrier_Red", 45.0),
+        (unreal.BNBreakableKind.BIN,     "MI_Metal_Dark",  48.0),
+        (unreal.BNBreakableKind.CRATE,   "MI_CrateWood",   52.0),
+    ]
+    prop_count = 0
+    for e in edges:
+        if e["highway"] or len(e["points"]) < 3:
+            continue
+        mid = e["points"][len(e["points"]) // 2]
+        nxt = e["points"][min(len(e["points"]) - 1, len(e["points"]) // 2 + 1)]
+        dx, dy = nxt[0] - mid[0], nxt[1] - mid[1]
+        l = max(math.hypot(dx, dy), 1.0)
+        nx, ny = -dy / l, dx / l
+        off = e["width"] * 0.5 + 150.0
+        for side in (-1.0, 1.0):
+            if prop_count >= 72:
+                break
+            kind, mat, zoff = kinds[prop_count % len(kinds)]
+            prop_count += 1
+            p = spawn(
+                unreal.BNBreakableProp, "Prop_%d" % prop_count,
+                (mid[0] + nx * off * side, mid[1] + ny * off * side, mid[2] + zoff),
+                yaw=rng.uniform(0.0, 360.0), folder="Gameplay/Breakables",
+            )
             p.set_editor_property("prop_kind", kind)
             p.get_editor_property("prop_mesh").set_material(0, MI[mat])
 
-    for y in range(-10000, 10001, 2500):
-        for side in (-1.0, 1.0):
-            prop_idx += 1
-            p = spawn(unreal.BNBreakableProp, "AlleyCrate_%d" % prop_idx, (side * 420.0, y, 50.0), folder="Karamara/Breakables")
-            p.set_editor_property("prop_kind", unreal.BNBreakableKind.CRATE)
-            p.get_editor_property("prop_mesh").set_material(0, MI["MI_CrateWood"])
+
+def build_races(nodes, edges, lookup):
+    """Builds all 9 unique Karamara race DataAssets & places holographic start beacons in the world."""
+    disc_map = {
+        "CIRCUIT": unreal.BNRaceDiscipline.CIRCUIT,
+        "SPRINT":  unreal.BNRaceDiscipline.SPRINT,
+        "DRIFT":   unreal.BNRaceDiscipline.DRIFT,
+    }
+    specs = knet.build_race_specs(nodes, edges, lookup)
+
+    for r in specs:
+        path = "%s/%s" % (RACE_DIR, r["name"])
+        if unreal.EditorAssetLibrary.does_asset_exist(path):
+            race = unreal.load_asset(path)
+        else:
+            factory = unreal.DataAssetFactory()
+            factory.set_editor_property("data_asset_class", unreal.BNRaceDefinition)
+            race = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+                r["name"], RACE_DIR, unreal.BNRaceDefinition, factory
+            )
+            if race is None:
+                raise RuntimeError("Could not create " + path)
+
+        gx, gy, gz, gyaw = r["grid"]
+        grid_xf = unreal.Transform(
+            location=unreal.Vector(gx, gy, gz),
+            rotation=unreal.Rotator(roll=0.0, pitch=0.0, yaw=gyaw),
+        )
+        gates = [
+            unreal.Transform(location=unreal.Vector(x, y, z), rotation=unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
+            for x, y, z, yaw in r["checkpoints"]
+        ]
+        race.set_editor_property("display_name", r["title"])
+        race.set_editor_property("discipline", disc_map[r["discipline"]])
+        race.set_editor_property("laps", int(r["laps"]))
+        race.set_editor_property("time_limit_seconds", float(r["time_limit"]))
+        race.set_editor_property("grid", grid_xf)
+        race.set_editor_property("checkpoints", gates)
+        race.set_editor_property("gate_width", float(r["gate_width"]))
+        race.set_editor_property("racing_line", [unreal.Vector(*p) for p in r["racing_line"]])
+        race.set_editor_property("rival_skills", list(r["rivals"]))
+        if not unreal.EditorAssetLibrary.save_loaded_asset(race, only_if_is_dirty=False):
+            raise RuntimeError("Could not save " + path)
+
+        ev = spawn(unreal.BNRaceEvent, "Race_" + r["name"].replace("RACE_", ""), r["beacon"], folder="Gameplay/Races")
+        ev.set_editor_property("definition", race)
+        ev.set_editor_property("start_radius", 520.0)
+        ev.get_editor_property("beacon").set_material(0, MI["MI_RaceHolo_Start"])
+        for post in ev.get_editor_property("gate_posts"):
+            post.set_material(0, MI["MI_RaceHolo_Gate"])
 
 
 def build_lighting():
     def movable_light(label, cast_shadows):
-        light = spawn(unreal.DirectionalLight, label, (0, 0, 1200), folder="Karamara/Lighting")
+        light = spawn(unreal.DirectionalLight, label, (0.0, 0.0, 2000.0), folder="Lighting")
         light.root_component.set_mobility(unreal.ComponentMobility.MOVABLE)
         light.root_component.set_editor_property("cast_shadows", cast_shadows)
         return light
 
     sun = movable_light("Sun", True)
     moon = movable_light("Moon", False)
-    spawn(unreal.SkyAtmosphere, "SkyAtmosphere", folder="Karamara/Lighting")
-    sky_light = spawn(unreal.SkyLight, "SkyLight", folder="Karamara/Lighting")
+    spawn(unreal.SkyAtmosphere, "SkyAtmosphere", folder="Lighting")
+    sky_light = spawn(unreal.SkyLight, "SkyLight", folder="Lighting")
     sky_light.light_component.set_mobility(unreal.ComponentMobility.MOVABLE)
-    fog = spawn(unreal.ExponentialHeightFog, "HeightFog", folder="Karamara/Lighting")
-    post = spawn(unreal.PostProcessVolume, "GlobalGrade", folder="Karamara/Lighting")
+    fog = spawn(unreal.ExponentialHeightFog, "HeightFog", folder="Lighting")
+    post = spawn(unreal.PostProcessVolume, "GlobalGrade", folder="Lighting")
     post.set_editor_property("unbound", True)
 
-    cycle = spawn(unreal.BNDayNightCycle, "DayNightCycle", folder="Karamara/Lighting")
-    cycle.set_editor_property("time_of_day", 17.5)
+    cycle = spawn(unreal.BNDayNightCycle, "DayNightCycle", folder="Lighting")
+    cycle.set_editor_property("time_of_day", 17.4)  # Iconic golden-amber late afternoon over Karamara
     for prop, actor in (("sun", sun), ("moon", moon), ("sky_light", sky_light), ("fog", fog), ("post_process", post)):
         cycle.set_editor_property(prop, actor)
 
-    # 8 SphereReflectionCapture actors over intersections, drift yard, harbor water, and elevated viaduct
+    # Reflection captures spread across all 6 districts & Eski Liman Koprusu
     captures = [
-        ("Refl_MerkezWest", (-20000, -14000, 450), 9500.0, 1.1),
-        ("Refl_MerkezCenter", (0, -14000, 450), 9500.0, 1.1),
-        ("Refl_MerkezEast", (20000, -14000, 450), 9500.0, 1.1),
-        ("Refl_SanayiWest", (-20000, 14000, 450), 9500.0, 1.1),
-        ("Refl_SanayiEast", (20000, 14000, 450), 9500.0, 1.1),
-        ("Refl_DriftCourtyard", (10500, 6750, 500), 9000.0, 1.05),
-        ("Refl_HarborWater", (26500, -1500, 650), 15000.0, 1.2),
-        ("Refl_ViaductDeck", (0, VIADUCT_Y, VIADUCT_Z + 420.0), 14000.0, 1.15),
+        ("Refl_MerkezWest",  (-18000.0,  -4000.0,  550.0), 26000.0, 1.10),
+        ("Refl_MerkezEast",  ( 16000.0,  -4000.0,  550.0), 26000.0, 1.10),
+        ("Refl_SanayiDrift", ( 44000.0,  52000.0,  600.0), 28000.0, 1.05),
+        ("Refl_EskiLiman",   ( 68000.0, -10000.0, 1800.0), 34000.0, 1.20),
+        ("Refl_Viyaduk",     (  2000.0, -54000.0, 1700.0), 32000.0, 1.12),
+        ("Refl_Yamac",       (-54000.0,  36000.0, 2100.0), 28000.0, 1.10),
+        ("Refl_KuzeyGecidi", (-44000.0, -82000.0, 5600.0), 34000.0, 1.15),
     ]
     for label, loc, radius, brightness in captures:
-        rc = spawn(unreal.SphereReflectionCapture, label, loc, folder="Karamara/Reflections")
+        rc = spawn(unreal.SphereReflectionCapture, label, loc, folder="Lighting/Reflections")
         comp = rc.get_editor_property("capture_component")
         comp.set_editor_property("influence_radius", radius)
         comp.set_editor_property("brightness", brightness)
 
 
-def gate(x, y, yaw, z=0.0):
-    return unreal.Transform(location=unreal.Vector(x, y, z), rotation=unreal.Rotator(roll=0.0, pitch=0.0, yaw=yaw))
-
-
-def race_asset(name, title, discipline, grid, checkpoints=(), laps=1, time_limit=60.0, gate_width=2000.0,
-               racing_line=(), rivals=()):
-    path = "%s/%s" % (RACE_DIR, name)
-    if unreal.EditorAssetLibrary.does_asset_exist(path):
-        race = unreal.load_asset(path)
-    else:
-        factory = unreal.DataAssetFactory()
-        factory.set_editor_property("data_asset_class", unreal.BNRaceDefinition)
-        race = unreal.AssetToolsHelpers.get_asset_tools().create_asset(name, RACE_DIR, unreal.BNRaceDefinition, factory)
-        if race is None:
-            raise RuntimeError("Could not create " + path)
-    race.set_editor_property("display_name", title)
-    race.set_editor_property("discipline", discipline)
-    race.set_editor_property("laps", laps)
-    race.set_editor_property("time_limit_seconds", time_limit)
-    race.set_editor_property("grid", grid)
-    race.set_editor_property("checkpoints", list(checkpoints))
-    race.set_editor_property("gate_width", gate_width)
-    race.set_editor_property("racing_line", [unreal.Vector(x, y, z) for x, y, z in racing_line])
-    race.set_editor_property("rival_skills", list(rivals))
-    if not unreal.EditorAssetLibrary.save_loaded_asset(race, only_if_is_dirty=False):
-        raise RuntimeError("Could not save " + path)
-    return race
-
-
-def race_event(label, race, location):
-    event = spawn(unreal.BNRaceEvent, label, location, folder="Karamara/Races")
-    event.set_editor_property("definition", race)
-    event.set_editor_property("start_radius", 450.0)
-    event.get_editor_property("beacon").set_material(0, MI["MI_RaceBeacon"])
-    for post in event.get_editor_property("gate_posts"):
-        post.set_material(0, MI["MI_RaceGate"])
-
-
-def build_races():
-    circuit_line = [
-        (-15000, -14000, 0), (0, -14000, 0), (16500, -14000, 0),
-        (19200, -12500, 0), (20000, -10000, 0), (20000, 0, 0),
-        (20000, 10000, 0), (19200, 12500, 0), (16500, 14000, 0),
-        (0, 14000, 0), (-16500, 14000, 0), (-19200, 12500, 0),
-        (-20000, 10000, 0), (-20000, 0, 0), (-20000, -10000, 0),
-        (-19200, -12500, 0), (-16500, -14000, 0),
-    ]
-    circuit = race_asset(
-        "RACE_KaramaraCircuit", "Karamara Merkez Circuit", unreal.BNRaceDiscipline.CIRCUIT,
-        unreal.Transform(location=unreal.Vector(-15000, -14000, 60)),
-        [gate(0, -14000, 0), gate(20000, 0, 90), gate(0, 14000, 180), gate(-20000, 0, -90)],
-        laps=2, gate_width=2200.0, racing_line=circuit_line, rivals=(0.72, 0.85, 0.96),
-    )
-
-    viaduct_sprint = race_asset(
-        "RACE_KuzeyViyadukSprint", "Kuzey Viyaduk Sprint", unreal.BNRaceDiscipline.SPRINT,
-        unreal.Transform(location=unreal.Vector(-25000, VIADUCT_Y, 60)),
-        [gate(-15000, VIADUCT_Y, 0, 490.0), gate(0, VIADUCT_Y, 0, VIADUCT_Z), gate(24500, VIADUCT_Y, 0, 0.0)],
-        gate_width=2000.0,
-        racing_line=[(-25000, VIADUCT_Y, 0), (28500, VIADUCT_Y, 0)],
-        rivals=(0.75, 0.88, 1.0),
-    )
-
-    sanayi_drift = race_asset(
-        "RACE_SanayiDrift", "Dogu Sanayi Drift", unreal.BNRaceDiscipline.DRIFT,
-        unreal.Transform(location=unreal.Vector(10500, 3500, 60), rotation=unreal.Rotator(0, 0, 90)),
-        time_limit=60.0,
-    )
-
-    race_event("Race_KaramaraCircuit", circuit, (-16500, -11800, 0))
-    race_event("Race_KuzeyViyadukSprint", viaduct_sprint, (-25000, VIADUCT_Y + 2800.0, 0))
-    race_event("Race_SanayiDrift", sanayi_drift, (5000, 3500, 0))
-
-
+# ---------------------------------------------------------------------------
+# Main Build Execution
+# ---------------------------------------------------------------------------
 reset_level()
-build_roads_and_viaduct()
-build_harbor_and_tunnels()
-build_buildings_and_lamps()
-build_foliage_hism()
-build_gameplay_props()
-build_lighting()
-build_races()
-spawn(unreal.PlayerStart, "PlayerStart", (-24500, -14000, 100))
+nodes, edges, lookup = knet.build_network()
+clearance = kscene.build_road_clearance_checker(edges)
+ctx = dict(spawn=spawn, block=block, place_mesh=place_mesh, MI=MI, PM=PM, meshes=MESHES)
 
-for lamp in [a for a in actors.get_all_level_actors() if isinstance(a, unreal.BNStreetLamp)]:
-    lamp.get_editor_property("glow").set_material(0, MI["MI_LampGlow"])
-    for part in ("pole", "arm"):
-        lamp.get_editor_property(part).set_material(0, MI["MI_Metal_Dark"])
+kscene.build_terrain_and_sea(ctx)
+build_road_geometry(nodes, edges)
+kscene.build_landmarks(ctx)
+kscene.build_buildings_and_storefronts(ctx, clearance)
+kscene.build_street_furniture_and_foliage(ctx, nodes, edges, clearance)
+export_road_graph_asset(nodes, edges)
+build_gameplay_actors(edges)
+build_races(nodes, edges, lookup)
+build_lighting()
+
+px, py, pz, pyaw = knet.PLAYER_START
+spawn(unreal.PlayerStart, "PlayerStart", (px, py, pz), yaw=pyaw, folder="Gameplay")
 
 if not levels.save_current_level():
     raise RuntimeError("Could not save " + MAP_PATH)
-unreal.log("BN: built %s with %d actors" % (MAP_PATH, len(actors.get_all_level_actors())))
+unreal.log("BN: built %s (2 km x 2 km, 6 districts, 9 races) with %d actors" % (
+    MAP_PATH, len(actors.get_all_level_actors())
+))

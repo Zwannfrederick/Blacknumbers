@@ -103,8 +103,8 @@ bool FBNTrafficDormantOnTestTrackTest::RunTest(const FString& Parameters)
 
 namespace
 {
-	// Spacious Dogu Sanayi Drift Courtyard in KaramaraSlice: clear of traffic loops and buildings.
-	const FVector CourtyardStart(10500.f, 3500.f, 60.f);
+	// Spacious Dogu Sanayi Drift Courtyard in 2 km KaramaraSlice (X: +330..+550 m, Y: +450..+640 m).
+	const FVector CourtyardStart(36500.f, 50000.f, 65.f);
 	constexpr float CourtyardYaw = 90.f;
 	constexpr float TrafficSampleSeconds = 1.2f;
 	constexpr float PhaseTimeoutSeconds = 15.f;

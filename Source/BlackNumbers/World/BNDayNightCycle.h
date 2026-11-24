@@ -9,6 +9,7 @@ class ADirectionalLight;
 class ASkyLight;
 class AExponentialHeightFog;
 class APostProcessVolume;
+class UMaterialParameterCollection;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FBNNightChangedSignature, bool, bIsNight);
 
@@ -37,6 +38,9 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Time")
 	bool IsNight() const { return BNTimeOfDay::IsNight(TimeOfDay); }
+
+	UFUNCTION(BlueprintPure, Category = "Time")
+	float GetNightFactor() const { return LastNightFactor; }
 
 	UPROPERTY(BlueprintAssignable, Category = "Time")
 	FBNNightChangedSignature OnNightChanged;
@@ -97,6 +101,10 @@ private:
 	void ApplyLook();
 
 	float LastCaptureHour = -100.f;
+	float LastNightFactor = 0.f;
 	/** Last broadcast state, only for change detection: not saved, so PIE copies start false. Read IsNight() instead. */
 	bool bIsNight = false;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialParameterCollection> WorldMPC;
 };

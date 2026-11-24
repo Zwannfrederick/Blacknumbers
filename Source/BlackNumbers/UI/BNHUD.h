@@ -122,4 +122,8 @@ private:
 	bool bTrackedPursuitActive = false;
 	int32 TrackedPursuitPreRep = 0;
 	bool bAppliedAudioGainToCar = false;
+	int32 LastDistrictId = -1;
+	FString DistrictBannerName;
+	FString DistrictBannerSubtitle;
+	double DistrictBannerUntil = 0.0;
 };

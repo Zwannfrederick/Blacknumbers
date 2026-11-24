@@ -63,6 +63,7 @@ def block(label, centre, size_m, material, physical=None, collision=True, yaw=0.
     if physical:
         comp.set_phys_material_override(PM[physical])
     if not collision:
+        comp.set_collision_profile_name("NoCollision")
         comp.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
         comp.set_editor_property("cast_shadow", False)
     actor.set_actor_scale3d(unreal.Vector(*size_m))

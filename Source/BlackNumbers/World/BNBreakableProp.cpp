@@ -1,5 +1,6 @@
 #include "World/BNBreakableProp.h"
 
+#include "Audio/BNAudioSubsystem.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
@@ -90,11 +91,17 @@ void ABNBreakableProp::BreakProp(const FVector& ImpactVelocity, bool bByPlayer)
 	PropMesh->SetPhysicsLinearVelocity(ImpactVelocity * 1.35f + FVector(0.f, 0.f, 420.f));
 	PropMesh->SetPhysicsAngularVelocityInDegrees(FVector(240.f, 190.f, 360.f));
 
+	if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
+	{
+		const EBNSfxId Sfx = (PropKind == EBNBreakableKind::Crate) ? EBNSfxId::BreakWood : EBNSfxId::BreakMetal;
+		Audio->PlaySfxAtLocation(Sfx, GetActorLocation(), 0.85f);
+	}
+
 	if (bByPlayer)
 	{
 		if (UBNPursuitSubsystem* Pursuit = GetWorld() ? GetWorld()->GetSubsystem<UBNPursuitSubsystem>() : nullptr)
 		{
-			Pursuit->ReportCollateralDamage(CollateralCostDollars, TEXT("Sehir Dekoru"));
+			Pursuit->ReportCollateralDamage(CollateralCostDollars, TEXT("Şehir Dekoru"));
 		}
 	}
 }

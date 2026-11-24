@@ -130,6 +130,23 @@ const TCHAR* FBNVehicleSpec::BodyStyleLabel(EBNBodyStyle Style)
 	}
 }
 
+const TArray<TPair<FString, FLinearColor>>& FBNVehicleSpec::GetPaintPalette()
+{
+	static const TArray<TPair<FString, FLinearColor>> Palette = {
+		{ TEXT("KARAMARA GRAFİT"),   FLinearColor(0.14f, 0.16f, 0.19f, 1.f) },
+		{ TEXT("GECE KOBALT"),       FLinearColor(0.05f, 0.16f, 0.46f, 1.f) },
+		{ TEXT("PASLI KEHRİBAR"),    FLinearColor(0.76f, 0.34f, 0.04f, 1.f) },
+		{ TEXT("KAN KIRMIZI"),       FLinearColor(0.56f, 0.05f, 0.04f, 1.f) },
+		{ TEXT("LİMAN TURKUAZ"),     FLinearColor(0.04f, 0.36f, 0.38f, 1.f) },
+		{ TEXT("ALTIN SARI"),        FLinearColor(0.84f, 0.62f, 0.06f, 1.f) },
+		{ TEXT("MAT SİYAH"),         FLinearColor(0.03f, 0.03f, 0.035f, 1.f) },
+		{ TEXT("İNCİ BEYAZ"),        FLinearColor(0.86f, 0.87f, 0.89f, 1.f) },
+		{ TEXT("ZÜMRÜT YEŞİL"),      FLinearColor(0.05f, 0.34f, 0.14f, 1.f) },
+		{ TEXT("GECE MORU"),         FLinearColor(0.24f, 0.06f, 0.38f, 1.f) },
+	};
+	return Palette;
+}
+
 int32 FBNUpgradeSpec::CostForTier(int32 TargetTier)
 {
 	switch (TargetTier)
@@ -149,9 +166,9 @@ const TCHAR* FBNUpgradeSpec::SlotLabel(EBNUpgradeSlot Slot)
 	switch (Slot)
 	{
 	case EBNUpgradeSlot::Engine: return TEXT("MOTOR");
-	case EBNUpgradeSlot::Transmission: return TEXT("SANZIMAN");
-	case EBNUpgradeSlot::Tires: return TEXT("LASTIK");
-	case EBNUpgradeSlot::Chassis: return TEXT("SASI");
+	case EBNUpgradeSlot::Transmission: return TEXT("ŞANZIMAN");
+	case EBNUpgradeSlot::Tires: return TEXT("LASTİK");
+	case EBNUpgradeSlot::Chassis: return TEXT("ŞASİ");
 	case EBNUpgradeSlot::Nitro: return TEXT("NOS");
 	default: return TEXT("?");
 	}
@@ -192,6 +209,30 @@ int32 FBNPlayerProfile::GetUpgradeTier(EBNUpgradeSlot Slot) const
 	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
 	const int32 SlotIdx = FMath::Clamp(static_cast<int32>(Slot), 0, FBNUpgradeSpec::NumSlots - 1);
 	return Upgrades[CarIdx][SlotIdx];
+}
+
+int32 FBNPlayerProfile::GetActivePaintIndex() const
+{
+	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
+	return CustomPaintIndices[CarIdx];
+}
+
+FLinearColor FBNPlayerProfile::GetActivePaintTint() const
+{
+	const int32 PaintIdx = GetActivePaintIndex();
+	const TArray<TPair<FString, FLinearColor>>& Palette = FBNVehicleSpec::GetPaintPalette();
+	if (Palette.IsValidIndex(PaintIdx))
+	{
+		return Palette[PaintIdx].Value;
+	}
+	return FBNVehicleSpec::ForCar(ActiveCar).PaintTint;
+}
+
+void FBNPlayerProfile::SetActivePaintIndex(int32 PaletteIndex)
+{
+	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
+	const int32 MaxIdx = FBNVehicleSpec::GetPaintPalette().Num() - 1;
+	CustomPaintIndices[CarIdx] = (PaletteIndex < 0) ? -1 : FMath::Clamp(PaletteIndex, 0, MaxIdx);
 }
 
 bool FBNPlayerProfile::IsCarOwned(EBNCarId CarId) const

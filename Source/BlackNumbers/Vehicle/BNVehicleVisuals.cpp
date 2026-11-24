@@ -19,6 +19,8 @@ namespace
 	const TCHAR* const BasicCubePath = TEXT("/Engine/BasicShapes/Cube.Cube");
 	const TCHAR* const BasicCylinderPath = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
 	const TCHAR* const BasicShapeMatPath = TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+	const TCHAR* const HeadlightMatPath = TEXT("/Game/World/Materials/MI_Vehicle_HeadlightEmissive.MI_Vehicle_HeadlightEmissive");
+	const TCHAR* const BrakeLightMatPath = TEXT("/Game/World/Materials/MI_Vehicle_BrakeLightEmissive.MI_Vehicle_BrakeLightEmissive");
 
 	constexpr float TargetCarLengthCm = 468.f;
 	constexpr float TargetCarCenterXCm = 12.f;
@@ -351,6 +353,38 @@ void UBNVehicleVisualsComponent::EnsureAeroAssets(const FBNVehicleSpec& Spec)
 		SetVectorIfPresent(ExhaustChromeMID, TEXT("Color"), FLinearColor(0.38f, 0.40f, 0.44f, 1.f));
 		SetScalarIfPresent(ExhaustChromeMID, TEXT("Roughness"), 0.20f);
 	}
+	if (!HeadlightStripMID && FPackageName::DoesPackageExist(TEXT("/Game/World/Materials/MI_Vehicle_HeadlightEmissive")))
+	{
+		if (UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, HeadlightMatPath))
+		{
+			HeadlightStripMID = UMaterialInstanceDynamic::Create(Mat, this);
+		}
+	}
+	if (!BrakeLightStripMID && FPackageName::DoesPackageExist(TEXT("/Game/World/Materials/MI_Vehicle_BrakeLightEmissive")))
+	{
+		if (UMaterialInterface* Mat = LoadObject<UMaterialInterface>(nullptr, BrakeLightMatPath))
+		{
+			BrakeLightStripMID = UMaterialInstanceDynamic::Create(Mat, this);
+		}
+	}
+}
+
+void UBNVehicleVisualsComponent::UpdateLightStrips(bool bHeadlightsOn, bool bBraking)
+{
+	if (HeadlightStripMID)
+	{
+		const FLinearColor HeadEm = bHeadlightsOn
+			? FLinearColor(8.5f, 7.8f, 6.2f, 1.f)
+			: FLinearColor(0.7f, 0.68f, 0.62f, 1.f);
+		SetVectorIfPresent(HeadlightStripMID, TEXT("Emissive"), HeadEm);
+	}
+	if (BrakeLightStripMID)
+	{
+		const FLinearColor BrakeEm = bBraking
+			? FLinearColor(11.0f, 0.25f, 0.08f, 1.f)
+			: (bHeadlightsOn ? FLinearColor(2.4f, 0.06f, 0.03f, 1.f) : FLinearColor(0.22f, 0.01f, 0.01f, 1.f));
+		SetVectorIfPresent(BrakeLightStripMID, TEXT("Emissive"), BrakeEm);
+	}
 }
 
 void UBNVehicleVisualsComponent::ClearAeroParts()
@@ -402,104 +436,109 @@ void UBNVehicleVisualsComponent::RebuildAeroKit(const FBNVehicleSpec& Spec, floa
 		return;
 	}
 
-	auto AddExhaustPair = [&](float X, float HalfSpanY, float Z, float RadiusScale)
-	{
-		for (const float Side : { -1.f, 1.f })
-		{
-			AddAeroPart(TEXT("AeroExhaust"), CylinderMesh, FVector(X, Side * HalfSpanY, Z),
-				FRotator(90.f, 0.f, 0.f), FVector(RadiusScale, RadiusScale, 0.25f), ExhaustChromeMID, false);
-		}
-	};
-
 	auto AddDiffuserFins = [&](float X, float Z, const std::initializer_list<float>& OffsetsY)
 	{
 		AddAeroPart(TEXT("AeroDiffuserTray"), CubeMesh, FVector(X + 6.f, 0.f, Z - 2.f),
-			FRotator::ZeroRotator, FVector(0.24f, 1.18f, 0.035f), AeroCarbonMID, false);
+			FRotator::ZeroRotator, FVector(0.20f, 1.06f, 0.028f), AeroCarbonMID, false);
 		for (const float Y : OffsetsY)
 		{
 			AddAeroPart(TEXT("AeroDiffuserFin"), CubeMesh, FVector(X, Y, Z),
-				FRotator::ZeroRotator, FVector(0.26f, 0.032f, 0.14f), AeroCarbonMID, false);
+				FRotator::ZeroRotator, FVector(0.22f, 0.026f, 0.11f), AeroCarbonMID, false);
 		}
 	};
+
+	// Recessed LED headlamp DRL & tail/brake light bars tucked flush inside StreetCoupe housings
+	if (Spec.BodyStyle == EBNBodyStyle::StreetCoupe && (HeadlightStripMID || BrakeLightStripMID))
+	{
+		for (const float Side : { -1.f, 1.f })
+		{
+			if (HeadlightStripMID)
+			{
+				AddAeroPart(TEXT("LedHeadStrip"), CubeMesh, FVector(207.f, Side * 67.f, 61.f),
+					FRotator(6.f, Side * 28.f, 0.f), FVector(0.03f, 0.24f, 0.022f), HeadlightStripMID, false);
+			}
+			if (BrakeLightStripMID)
+			{
+				AddAeroPart(TEXT("LedTailStrip"), CubeMesh, FVector(-206.f, Side * 58.f, 77.f),
+					FRotator(0.f, -Side * 10.f, 0.f), FVector(0.03f, 0.34f, 0.032f), BrakeLightStripMID, false);
+			}
+		}
+	}
 
 	switch (Spec.AeroKit)
 	{
 	case EBNAeroKit::StreetLip:
-		AddAeroPart(TEXT("StreetFrontLip"), CubeMesh, FVector(242.f, 0.f, 24.f), FRotator::ZeroRotator, FVector(0.24f, 1.88f, 0.045f), AeroCarbonMID);
-		AddAeroPart(TEXT("StreetDucktail"), CubeMesh, FVector(-208.f, 0.f, 92.f), FRotator(16.f, 0.f, 0.f), FVector(0.20f, 1.54f, 0.055f), AeroCarbonMID);
-		AddExhaustPair(-226.f, 44.f, 34.f, 0.11f);
+		// Tucked carbon under-chin lip + subtle rocker skirts + low rear diffuser (no double ducktail or exhaust plugs).
+		AddAeroPart(TEXT("StreetFrontLip"), CubeMesh, FVector(222.f, 0.f, 19.f), FRotator::ZeroRotator, FVector(0.18f, 1.56f, 0.026f), AeroCarbonMID, false);
+		for (const float Side : { -1.f, 1.f })
+		{
+			AddAeroPart(TEXT("StreetSkirt"), CubeMesh, FVector(6.f, Side * 92.f, 20.f), FRotator::ZeroRotator, FVector(1.94f, 0.055f, 0.032f), AeroCarbonMID, false);
+		}
+		AddDiffuserFins(-210.f, 23.f, { -32.f, 0.f, 32.f });
 		break;
 
 	case EBNAeroKit::RallyWing:
-		AddAeroPart(TEXT("RallySplitter"), CubeMesh, FVector(244.f, 0.f, 23.f), FRotator::ZeroRotator, FVector(0.28f, 1.94f, 0.05f), AeroCarbonMID);
+		AddAeroPart(TEXT("RallySplitter"), CubeMesh, FVector(226.f, 0.f, 19.f), FRotator::ZeroRotator, FVector(0.22f, 1.66f, 0.032f), AeroCarbonMID);
 		for (const float Side : { -1.f, 1.f })
 		{
-			AddAeroPart(TEXT("RallyPylon"), CubeMesh, FVector(-198.f, Side * 56.f, 108.f), FRotator::ZeroRotator, FVector(0.14f, 0.04f, 0.36f), AeroCarbonMID);
-			AddAeroPart(TEXT("RallyEndplate"), CubeMesh, FVector(-202.f, Side * 91.f, 127.f), FRotator::ZeroRotator, FVector(0.34f, 0.03f, 0.22f), AeroAccentMID);
+			AddAeroPart(TEXT("RallyPylon"), CubeMesh, FVector(-196.f, Side * 54.f, 108.f), FRotator::ZeroRotator, FVector(0.12f, 0.032f, 0.32f), AeroCarbonMID);
+			AddAeroPart(TEXT("RallyEndplate"), CubeMesh, FVector(-200.f, Side * 88.f, 125.f), FRotator::ZeroRotator, FVector(0.30f, 0.025f, 0.20f), AeroAccentMID);
 		}
-		AddAeroPart(TEXT("RallyWingBlade"), CubeMesh, FVector(-202.f, 0.f, 127.f), FRotator(-4.f, 0.f, 0.f), FVector(0.28f, 1.82f, 0.045f), AeroAccentMID);
-		AddDiffuserFins(-222.f, 25.f, { -36.f, 0.f, 36.f });
-		AddExhaustPair(-226.f, 52.f, 33.f, 0.12f);
+		AddAeroPart(TEXT("RallyWingBlade"), CubeMesh, FVector(-200.f, 0.f, 125.f), FRotator(-4.f, 0.f, 0.f), FVector(0.24f, 1.76f, 0.036f), AeroAccentMID);
+		AddDiffuserFins(-212.f, 23.f, { -36.f, 0.f, 36.f });
 		break;
 
 	case EBNAeroKit::MuscleBlower:
-		AddAeroPart(TEXT("BlowerBlock"), CubeMesh, FVector(120.f, 0.f, 96.f), FRotator::ZeroRotator, FVector(0.60f, 0.42f, 0.18f), ExhaustChromeMID);
-		AddAeroPart(TEXT("BlowerScoop"), CubeMesh, FVector(126.f, 0.f, 109.f), FRotator::ZeroRotator, FVector(0.46f, 0.34f, 0.10f), AeroAccentMID);
-		AddAeroPart(TEXT("MuscleChin"), CubeMesh, FVector(240.f, 0.f, 24.f), FRotator::ZeroRotator, FVector(0.24f, 1.90f, 0.075f), AeroCarbonMID);
-		AddAeroPart(TEXT("MuscleDucktail"), CubeMesh, FVector(-210.f, 0.f, 94.f), FRotator(20.f, 0.f, 0.f), FVector(0.26f, 1.66f, 0.065f), AeroAccentMID);
+		AddAeroPart(TEXT("BlowerBlock"), CubeMesh, FVector(114.f, 0.f, 94.f), FRotator::ZeroRotator, FVector(0.56f, 0.38f, 0.16f), ExhaustChromeMID);
+		AddAeroPart(TEXT("BlowerScoop"), CubeMesh, FVector(120.f, 0.f, 106.f), FRotator::ZeroRotator, FVector(0.42f, 0.30f, 0.09f), AeroAccentMID);
+		AddAeroPart(TEXT("MuscleChin"), CubeMesh, FVector(224.f, 0.f, 20.f), FRotator::ZeroRotator, FVector(0.20f, 1.66f, 0.048f), AeroCarbonMID);
 		for (const float Side : { -1.f, 1.f })
 		{
-			AddAeroPart(TEXT("MuscleSkirt"), CubeMesh, FVector(10.f, Side * 98.f, 25.f), FRotator::ZeroRotator, FVector(2.20f, 0.08f, 0.075f), AeroCarbonMID, false);
+			AddAeroPart(TEXT("MuscleSkirt"), CubeMesh, FVector(8.f, Side * 94.f, 21.f), FRotator::ZeroRotator, FVector(2.04f, 0.065f, 0.052f), AeroCarbonMID, false);
 		}
-		AddExhaustPair(-227.f, 44.f, 33.f, 0.105f);
-		AddExhaustPair(-227.f, 58.f, 33.f, 0.105f);
+		AddDiffuserFins(-212.f, 23.f, { -38.f, 0.f, 38.f });
 		break;
 
 	case EBNAeroKit::OffroadRack:
 	{
 		const float RackZ = BodyTopZ + 5.f;
-		AddAeroPart(TEXT("BullbarMain"), CubeMesh, FVector(248.f, 0.f, 48.f), FRotator::ZeroRotator, FVector(0.10f, 1.48f, 0.10f), AeroAccentMID);
-		AddAeroPart(TEXT("SkidPlate"), CubeMesh, FVector(236.f, 0.f, 26.f), FRotator(-28.f, 0.f, 0.f), FVector(0.32f, 1.10f, 0.04f), ExhaustChromeMID);
+		AddAeroPart(TEXT("BullbarMain"), CubeMesh, FVector(240.f, 0.f, 48.f), FRotator::ZeroRotator, FVector(0.09f, 1.40f, 0.09f), AeroAccentMID);
+		AddAeroPart(TEXT("SkidPlate"), CubeMesh, FVector(230.f, 0.f, 26.f), FRotator(-28.f, 0.f, 0.f), FVector(0.28f, 1.06f, 0.036f), ExhaustChromeMID);
 		for (const float Side : { -1.f, 1.f })
 		{
-			AddAeroPart(TEXT("BullbarPost"), CubeMesh, FVector(244.f, Side * 52.f, 42.f), FRotator::ZeroRotator, FVector(0.10f, 0.08f, 0.28f), AeroAccentMID);
-			AddAeroPart(TEXT("RoofRail"), CubeMesh, FVector(-20.f, Side * 54.f, RackZ), FRotator::ZeroRotator, FVector(1.36f, 0.06f, 0.06f), AeroAccentMID);
+			AddAeroPart(TEXT("BullbarPost"), CubeMesh, FVector(236.f, Side * 48.f, 42.f), FRotator::ZeroRotator, FVector(0.09f, 0.07f, 0.26f), AeroAccentMID);
+			AddAeroPart(TEXT("RoofRail"), CubeMesh, FVector(-20.f, Side * 54.f, RackZ), FRotator::ZeroRotator, FVector(1.34f, 0.055f, 0.055f), AeroAccentMID);
 		}
-		AddAeroPart(TEXT("RoofCrossF"), CubeMesh, FVector(38.f, 0.f, RackZ + 2.f), FRotator::ZeroRotator, FVector(0.10f, 1.14f, 0.07f), AeroCarbonMID);
-		AddAeroPart(TEXT("RoofCrossR"), CubeMesh, FVector(-76.f, 0.f, RackZ + 2.f), FRotator::ZeroRotator, FVector(0.10f, 1.14f, 0.07f), AeroCarbonMID);
-		AddExhaustPair(-226.f, 54.f, 40.f, 0.125f);
+		AddAeroPart(TEXT("RoofCrossF"), CubeMesh, FVector(38.f, 0.f, RackZ + 2.f), FRotator::ZeroRotator, FVector(0.09f, 1.12f, 0.06f), AeroCarbonMID);
+		AddAeroPart(TEXT("RoofCrossR"), CubeMesh, FVector(-76.f, 0.f, RackZ + 2.f), FRotator::ZeroRotator, FVector(0.09f, 1.12f, 0.06f), AeroCarbonMID);
 		break;
 	}
 
 	case EBNAeroKit::WidebodyGT:
-		AddAeroPart(TEXT("GtSplitter"), CubeMesh, FVector(248.f, 0.f, 22.f), FRotator::ZeroRotator, FVector(0.36f, 2.04f, 0.05f), AeroCarbonMID);
+		AddAeroPart(TEXT("GtSplitter"), CubeMesh, FVector(228.f, 0.f, 18.f), FRotator::ZeroRotator, FVector(0.26f, 1.80f, 0.035f), AeroCarbonMID);
 		for (const float Side : { -1.f, 1.f })
 		{
-			AddAeroPart(TEXT("GtSkirt"), CubeMesh, FVector(12.f, Side * 104.f, 23.f), FRotator::ZeroRotator, FVector(2.40f, 0.14f, 0.065f), AeroCarbonMID);
-			AddAeroPart(TEXT("GtPylon"), CubeMesh, FVector(-198.f, Side * 46.f, 114.f), FRotator::ZeroRotator, FVector(0.18f, 0.04f, 0.48f), AeroCarbonMID);
-			AddAeroPart(TEXT("GtEndplate"), CubeMesh, FVector(-205.f, Side * 101.f, 138.f), FRotator::ZeroRotator, FVector(0.42f, 0.035f, 0.28f), AeroAccentMID);
+			AddAeroPart(TEXT("GtSkirt"), CubeMesh, FVector(10.f, Side * 98.f, 20.f), FRotator::ZeroRotator, FVector(2.24f, 0.10f, 0.048f), AeroCarbonMID);
+			AddAeroPart(TEXT("GtPylon"), CubeMesh, FVector(-196.f, Side * 46.f, 114.f), FRotator::ZeroRotator, FVector(0.14f, 0.032f, 0.44f), AeroCarbonMID);
+			AddAeroPart(TEXT("GtEndplate"), CubeMesh, FVector(-202.f, Side * 96.f, 136.f), FRotator::ZeroRotator, FVector(0.36f, 0.028f, 0.24f), AeroAccentMID);
 		}
-		AddAeroPart(TEXT("GtWingBlade"), CubeMesh, FVector(-205.f, 0.f, 138.f), FRotator(-6.f, 0.f, 0.f), FVector(0.34f, 2.02f, 0.045f), AeroCarbonMID);
-		AddDiffuserFins(-222.f, 24.f, { -48.f, -16.f, 16.f, 48.f });
-		AddExhaustPair(-228.f, 42.f, 33.f, 0.11f);
-		AddExhaustPair(-228.f, 56.f, 33.f, 0.11f);
+		AddAeroPart(TEXT("GtWingBlade"), CubeMesh, FVector(-202.f, 0.f, 136.f), FRotator(-6.f, 0.f, 0.f), FVector(0.28f, 1.92f, 0.038f), AeroCarbonMID);
+		AddDiffuserFins(-212.f, 22.f, { -44.f, -15.f, 15.f, 44.f });
 		break;
 
 	case EBNAeroKit::HyperCarbon:
 	{
 		const float WingZ = FMath::Max(118.f, BodyTopZ - 6.f);
-		AddAeroPart(TEXT("HyperSplitter"), CubeMesh, FVector(248.f, 0.f, 20.f), FRotator::ZeroRotator, FVector(0.34f, 2.00f, 0.04f), AeroCarbonMID);
-		AddAeroPart(TEXT("HyperSplitterEdge"), CubeMesh, FVector(262.f, 0.f, 21.f), FRotator::ZeroRotator, FVector(0.05f, 1.92f, 0.025f), AeroAccentMID, false);
-		AddAeroPart(TEXT("HyperSharkFin"), CubeMesh, FVector(-118.f, 0.f, BodyTopZ - 6.f), FRotator::ZeroRotator, FVector(1.05f, 0.03f, 0.22f), AeroCarbonMID);
+		AddAeroPart(TEXT("HyperSplitter"), CubeMesh, FVector(230.f, 0.f, 18.f), FRotator::ZeroRotator, FVector(0.26f, 1.82f, 0.032f), AeroCarbonMID);
+		AddAeroPart(TEXT("HyperSplitterEdge"), CubeMesh, FVector(241.f, 0.f, 19.f), FRotator::ZeroRotator, FVector(0.04f, 1.76f, 0.02f), AeroAccentMID, false);
+		AddAeroPart(TEXT("HyperSharkFin"), CubeMesh, FVector(-118.f, 0.f, BodyTopZ - 6.f), FRotator::ZeroRotator, FVector(0.96f, 0.026f, 0.20f), AeroCarbonMID);
 		for (const float Side : { -1.f, 1.f })
 		{
-			AddAeroPart(TEXT("HyperPylon"), CubeMesh, FVector(-202.f, Side * 44.f, WingZ - 14.f), FRotator::ZeroRotator, FVector(0.16f, 0.035f, 0.30f), AeroCarbonMID);
-			AddAeroPart(TEXT("HyperEndplate"), CubeMesh, FVector(-208.f, Side * 96.f, WingZ), FRotator::ZeroRotator, FVector(0.38f, 0.03f, 0.22f), AeroAccentMID);
+			AddAeroPart(TEXT("HyperPylon"), CubeMesh, FVector(-200.f, Side * 44.f, WingZ - 14.f), FRotator::ZeroRotator, FVector(0.14f, 0.03f, 0.28f), AeroCarbonMID);
+			AddAeroPart(TEXT("HyperEndplate"), CubeMesh, FVector(-205.f, Side * 92.f, WingZ), FRotator::ZeroRotator, FVector(0.34f, 0.026f, 0.20f), AeroAccentMID);
 		}
-		AddAeroPart(TEXT("HyperWing"), CubeMesh, FVector(-208.f, 0.f, WingZ), FRotator(-5.f, 0.f, 0.f), FVector(0.30f, 1.92f, 0.04f), AeroCarbonMID);
-		AddDiffuserFins(-222.f, 23.f, { -48.f, -16.f, 16.f, 48.f });
-		AddExhaustPair(-228.f, 10.f, 38.f, 0.095f);
-		AddExhaustPair(-228.f, 24.f, 38.f, 0.095f);
+		AddAeroPart(TEXT("HyperWing"), CubeMesh, FVector(-205.f, 0.f, WingZ), FRotator(-5.f, 0.f, 0.f), FVector(0.26f, 1.84f, 0.035f), AeroCarbonMID);
+		AddDiffuserFins(-214.f, 21.f, { -44.f, -15.f, 15.f, 44.f });
 		break;
 	}
 	}

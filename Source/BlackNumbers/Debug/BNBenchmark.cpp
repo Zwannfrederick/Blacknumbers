@@ -21,8 +21,10 @@
 #include "Misc/Paths.h"
 #include "RenderTimer.h"
 #include "RHIGlobals.h"
+#include "Police/BNPursuitSubsystem.h"
 #include "Race/BNRaceDefinition.h"
 #include "Race/BNRaceEvent.h"
+#include "UI/BNHUD.h"
 #include "Vehicle/BNVehiclePawn.h"
 #include "World/BNDayNightCycle.h"
 #if WITH_EDITOR
@@ -60,6 +62,26 @@ namespace
 		{ TEXT("inspect_front_night"), FVector(-9000.f, -12500.f, 60.f), 0.f, 22.f, false, FVector(900.f, 150.f, 150.f) },
 		{ TEXT("circuit_race_dusk"), FVector(-9000.f, -12500.f, 60.f), 0.f, 18.5f, false, FVector::ZeroVector, true },
 	};
+
+	const FScenario KaramaraScenarios[] = {
+		{ TEXT("merkez_dusk"), FVector(-18000.f, -4000.f, 70.f), 0.f, 17.4f, false },
+		{ TEXT("merkez_day"), FVector(-18000.f, -4000.f, 70.f), 0.f, 13.0f, false },
+		{ TEXT("eski_liman_bridge"), FVector(66000.f, -14000.f, 1670.f), 0.f, 17.5f, false },
+		{ TEXT("kuzey_gecidi_pass"), FVector(-59000.f, -86000.f, 6270.f), 45.f, 17.2f, false },
+		{ TEXT("street_night"), FVector(-12000.f, -4000.f, 70.f), 0.f, 22.2f, false },
+		{ TEXT("inspect_front_dusk"), FVector(-18000.f, -4000.f, 70.f), 0.f, 17.4f, false, FVector(520.f, 220.f, 140.f) },
+	};
+
+	const FScenario* ActiveScenarios(const UWorld* World, int32& OutCount)
+	{
+		if (World && World->GetMapName().Contains(TEXT("Karamara")))
+		{
+			OutCount = UE_ARRAY_COUNT(KaramaraScenarios);
+			return KaramaraScenarios;
+		}
+		OutCount = UE_ARRAY_COUNT(Scenarios);
+		return Scenarios;
+	}
 
 	constexpr double WarmupSeconds = 3.0;
 	constexpr double MeasureSeconds = 10.0;
@@ -180,7 +202,9 @@ namespace
 		const double Now = FPlatformTime::Seconds();
 		const double InStep = Now - Run.StepStart;
 		auto Next = [&](FRun::EStep S) { Run.Step = S; Run.StepStart = Now; };
-		const FScenario& Scenario = Scenarios[Run.Index];
+		int32 ScenarioCount = 0;
+		const FScenario* List = ActiveScenarios(World, ScenarioCount);
+		const FScenario& Scenario = List[FMath::Clamp(Run.Index, 0, ScenarioCount - 1)];
 
 		switch (Run.Step)
 		{
@@ -227,7 +251,7 @@ namespace
 		case FRun::EStep::Screenshot:
 			if (InStep >= ScreenshotDelaySeconds)
 			{
-				const bool bMore = ++Run.Index < UE_ARRAY_COUNT(Scenarios);
+				const bool bMore = ++Run.Index < ScenarioCount;
 				Next(bMore ? FRun::EStep::Place : FRun::EStep::Done);
 			}
 			break;
@@ -250,6 +274,216 @@ namespace
 		}
 		return true;
 	}
+
+	FAutoConsoleCommandWithWorldAndArgs GBNSnapCamCommand(
+		TEXT("bn.SnapCam"),
+		TEXT("bn.SnapCam <X> <Y> <Z> <Pitch> <Yaw> [Hour] [DismissTitle=1]  Places a debug camera cleanly for visual verification."),
+		FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& Args, UWorld* World)
+		{
+			if (!World || Args.Num() < 5)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Usage: bn.SnapCam X Y Z Pitch Yaw [Hour] [DismissTitle]"));
+				return;
+			}
+			APlayerController* PC = World->GetFirstPlayerController();
+			if (!PC)
+			{
+				return;
+			}
+			const bool bDismiss = Args.Num() < 7 || FCString::Atoi(*Args[6]) != 0;
+			if (bDismiss)
+			{
+				if (ABNHUD* HUD = PC->GetHUD<ABNHUD>(); HUD && HUD->IsTitleScreenOpen())
+				{
+					HUD->DismissTitleScreen(true);
+				}
+			}
+			if (Args.Num() >= 6)
+			{
+				const float Hour = FCString::Atof(*Args[5]);
+				for (TActorIterator<ABNDayNightCycle> It(World); It; ++It)
+				{
+					It->bPaused = true;
+					It->SetTimeOfDay(Hour);
+				}
+			}
+			const FVector Loc(FCString::Atof(*Args[0]), FCString::Atof(*Args[1]), FCString::Atof(*Args[2]));
+			const FRotator Rot(FCString::Atof(*Args[3]), FCString::Atof(*Args[4]), 0.f);
+			ACameraActor* Cam = World->SpawnActor<ACameraActor>(Loc, Rot);
+			if (Cam)
+			{
+				PC->SetViewTarget(Cam);
+			}
+		}));
+
+	FAutoConsoleCommandWithWorld GBNVisualShotsCommand(
+		TEXT("bn.VisualShots"),
+		TEXT("Captures 5 verification screenshots across KaramaraSlice (Title, Merkez Day, Bridge, Mountains, Night Pursuit) and exits."),
+		FConsoleCommandWithWorldDelegate::CreateLambda([](UWorld* World)
+		{
+			struct FShotState
+			{
+				int32 Stage = 0;
+				double StageTime = 0.0;
+				TWeakObjectPtr<ACameraActor> Cam;
+			};
+			TSharedRef<FShotState> St = MakeShared<FShotState>();
+			St->StageTime = FPlatformTime::Seconds();
+			TWeakObjectPtr<UWorld> WeakWorld(World);
+
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateLambda([WeakWorld, St](float DeltaSeconds)
+			{
+				UWorld* W = WeakWorld.Get();
+				APlayerController* PC = W ? W->GetFirstPlayerController() : nullptr;
+				ABNVehiclePawn* Car = PC ? Cast<ABNVehiclePawn>(PC->GetPawn()) : nullptr;
+				if (!W || !PC || !Car) { return false; }
+
+				const double Now = FPlatformTime::Seconds();
+				const double Elapsed = Now - St->StageTime;
+				auto SetHour = [&](float H)
+				{
+					for (TActorIterator<ABNDayNightCycle> It(W); It; ++It)
+					{
+						It->bPaused = true;
+						It->SetTimeOfDay(H);
+					}
+				};
+				auto Advance = [&](int32 Next) { St->Stage = Next; St->StageTime = Now; };
+
+				switch (St->Stage)
+				{
+				case 0: // Wait for shaders + settle Title Screen showcase
+					if (Elapsed >= 5.0 && RemainingShaderJobs() == 0)
+					{
+						SetHour(17.4f);
+						Advance(1);
+					}
+					break;
+				case 1: // Shot 0: Title Screen & 3/4 car showcase in Merkez Bulvar
+					if (Elapsed >= 1.5)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(2);
+					}
+					break;
+				case 2: // Setup Shot 1: Merkez Bulvar Midday (13:00) behind player car + HUD + RoadGraph radar
+					if (Elapsed >= 1.5)
+					{
+						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>(); HUD && HUD->IsTitleScreenOpen())
+						{
+							HUD->DismissTitleScreen(true);
+						}
+						SetHour(13.0f);
+						Car->SetActorLocationAndRotation(FVector(-18000.f, -4000.f, 95.f), FRotator(0.f, 0.f, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+						Car->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+						PC->SetViewTarget(Car);
+						Advance(3);
+					}
+					break;
+				case 3:
+					if (Elapsed >= 2.2)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(4);
+					}
+					break;
+				case 4: // Setup Shot 2: Eski Liman & Eski Liman Koprusu golden dusk
+					if (Elapsed >= 1.5)
+					{
+						SetHour(17.5f);
+						if (!St->Cam.IsValid()) { St->Cam = W->SpawnActor<ACameraActor>(); }
+						if (St->Cam.IsValid())
+						{
+							St->Cam->SetActorLocationAndRotation(FVector(55000.f, -24500.f, 2650.f), FRotator(-10.f, 24.f, 0.f));
+							PC->SetViewTarget(St->Cam.Get());
+						}
+						Advance(5);
+					}
+					break;
+				case 5:
+					if (Elapsed >= 2.0)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(6);
+					}
+					break;
+				case 6: // Setup Shot 3: Kuzey Gecidi mountain switchbacks (+54 m) framing hairpins, pines & Karamara skyline
+					if (Elapsed >= 1.5)
+					{
+						SetHour(17.2f);
+						if (St->Cam.IsValid())
+						{
+							St->Cam->SetActorLocationAndRotation(FVector(-32000.f, -85000.f, 5750.f), FRotator(-18.f, 44.f, 0.f));
+							PC->SetViewTarget(St->Cam.Get());
+						}
+						Advance(7);
+					}
+					break;
+				case 7:
+					if (Elapsed >= 2.0)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(8);
+					}
+					break;
+				case 8: // Setup Shot 4: Night (22:20) Merkez Bulvar + Heat 5 Police Pursuit (Rhino SUV + lightbars + night windows!)
+					if (Elapsed >= 1.5)
+					{
+						SetHour(22.2f);
+						Car->SetActorLocationAndRotation(FVector(-12000.f, -4000.f, 95.f), FRotator(0.f, 0.f, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+						Car->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+						PC->SetViewTarget(Car);
+						if (UBNPursuitSubsystem* Pursuit = W->GetSubsystem<UBNPursuitSubsystem>())
+						{
+							Pursuit->StartPursuit(5);
+						}
+						Advance(9);
+					}
+					break;
+				case 9:
+					if (Elapsed >= 4.2)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(10);
+					}
+					break;
+				case 10: // Setup Shot 5: Selin's Garage with 10-color Paint Picker & live 3D car showcase
+					if (Elapsed >= 1.5)
+					{
+						if (UBNPursuitSubsystem* Pursuit = W->GetSubsystem<UBNPursuitSubsystem>())
+						{
+							Pursuit->StopPursuit();
+						}
+						SetHour(17.4f);
+						Car->SetActorLocationAndRotation(FVector(-18000.f, -4000.f, 95.f), FRotator(0.f, 0.f, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+						Car->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+						PC->SetViewTarget(Car);
+						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>())
+						{
+							HUD->OpenMenu(EBNMenuTab::Garage);
+						}
+						Advance(11);
+					}
+					break;
+				case 11:
+					if (Elapsed >= 2.0)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(12);
+					}
+					break;
+				case 12:
+					if (Elapsed >= 1.5)
+					{
+						UE_LOG(LogTemp, Display, TEXT("bn.VisualShots: captured all 6 Karamara verification screenshots."));
+						FPlatformMisc::RequestExit(false);
+						return false;
+					}
+					break;
+				}
+				return true;
+			}));
+		}));
 
 	FAutoConsoleCommandWithWorld GBNBenchmarkCommand(
 		TEXT("bn.Benchmark"),

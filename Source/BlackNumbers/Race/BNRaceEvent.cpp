@@ -1,5 +1,6 @@
 #include "Race/BNRaceEvent.h"
 
+#include "Audio/BNAudioSubsystem.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
 #include "Components/SplineComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -7,6 +8,8 @@
 #include "Engine/GameInstance.h"
 #include "GameFramework/PlayerController.h"
 #include "Garage/BNGarageSubsystem.h"
+#include "Materials/MaterialInterface.h"
+#include "Misc/PackageName.h"
 #include "Police/BNPursuitSubsystem.h"
 #include "Race/BNRaceDefinition.h"
 #include "Race/BNRivalController.h"
@@ -55,14 +58,49 @@ ABNRaceEvent::ABNRaceEvent()
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	RacingLine = CreateDefaultSubobject<USplineComponent>(TEXT("RacingLine"));
 	RacingLine->SetupAttachment(RootComponent);
+
 	Beacon = MakePillar(*this, TEXT("Beacon"), Cylinder.Object, 150.f, BeaconHeight);
 	Beacon->SetRelativeLocation(FVector(0.f, 0.f, BeaconHeight * 0.5f));
 	for (const TCHAR* Name : { TEXT("GatePostL"), TEXT("GatePostR") })
 	{
 		UStaticMeshComponent* Post = MakePillar(*this, Name, Cylinder.Object, 40.f, PostHeight);
 		Post->SetUsingAbsoluteLocation(true);
+		Post->SetUsingAbsoluteRotation(true);
 		Post->SetVisibility(false);
 		GatePosts.Add(Post);
+	}
+}
+
+void ABNRaceEvent::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+	if (HasAnyFlags(RF_ClassDefaultObject))
+	{
+		return;
+	}
+	UStaticMesh* RingMesh = FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_RaceRing"))
+		? LoadObject<UStaticMesh>(nullptr, TEXT("/Game/World/Meshes/SM_BN_RaceRing.SM_BN_RaceRing"))
+		: nullptr;
+	UStaticMesh* ChevronMesh = FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_CheckpointChevron"))
+		? LoadObject<UStaticMesh>(nullptr, TEXT("/Game/World/Meshes/SM_BN_CheckpointChevron.SM_BN_CheckpointChevron"))
+		: nullptr;
+	bUsingHoloRaceMeshes = (RingMesh != nullptr && ChevronMesh != nullptr);
+	if (bUsingHoloRaceMeshes)
+	{
+		if (Beacon)
+		{
+			Beacon->SetStaticMesh(RingMesh);
+			Beacon->SetRelativeLocation(FVector::ZeroVector);
+			Beacon->SetRelativeScale3D(FVector::OneVector);
+		}
+		for (UStaticMeshComponent* Post : GatePosts)
+		{
+			if (Post)
+			{
+				Post->SetStaticMesh(ChevronMesh);
+				Post->SetRelativeScale3D(FVector::OneVector);
+			}
+		}
 	}
 }
 
@@ -103,6 +141,11 @@ void ABNRaceEvent::Tick(float DeltaSeconds)
 		{
 			State = EBNRaceState::Racing;
 			StateStart = GetWorld()->GetTimeSeconds();
+			LastCountdownDigit = 0;
+			if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
+			{
+				Audio->PlaySfx2D(EBNSfxId::CountdownGo, 0.95f);
+			}
 			Player.LastLocation = Car->GetActorLocation();
 			Car->SetInputLocked(false);
 			for (FBNRacer& Rival : Rivals)
@@ -111,6 +154,18 @@ void ABNRaceEvent::Tick(float DeltaSeconds)
 				{
 					Rival.LastLocation = RivalCar->GetActorLocation();
 					RivalCar->SetInputLocked(false);
+				}
+			}
+		}
+		else
+		{
+			const int32 Digit = FMath::CeilToInt(CountdownSeconds - static_cast<float>(Elapsed));
+			if (Digit < LastCountdownDigit && Digit >= 1)
+			{
+				LastCountdownDigit = Digit;
+				if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
+				{
+					Audio->PlaySfx2D(EBNSfxId::CountdownBeep, 0.85f);
 				}
 			}
 		}
@@ -138,17 +193,19 @@ void ABNRaceEvent::TickIdle(ABNVehiclePawn& Car)
 
 void ABNRaceEvent::StartRace(ABNVehiclePawn* Car)
 {
-	BeginRaceInternal(Car, 0, 0.f, nullptr, FLinearColor::White, 0);
+	BeginRaceInternal(Car, 0, 0.f, nullptr, FLinearColor::White, 0, EBNCarId::KuroganeMSpec);
 }
 
 void ABNRaceEvent::StartBossRace(ABNVehiclePawn* Car, int32 BossRank, float BossSkill,
-	const FBNComputedVehicleStats& BossStats, const FLinearColor& BossTint, int32 DriftTargetScore)
+	const FBNComputedVehicleStats& BossStats, const FLinearColor& BossTint, int32 DriftTargetScore,
+	EBNCarId BossCarId)
 {
-	BeginRaceInternal(Car, BossRank, BossSkill, &BossStats, BossTint, DriftTargetScore);
+	BeginRaceInternal(Car, BossRank, BossSkill, &BossStats, BossTint, DriftTargetScore, BossCarId);
 }
 
 void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float BossSkill,
-	const FBNComputedVehicleStats* BossStats, const FLinearColor& BossTint, int32 DriftTargetScore)
+	const FBNComputedVehicleStats* BossStats, const FLinearColor& BossTint, int32 DriftTargetScore,
+	EBNCarId BossCarId)
 {
 	if (!Car || !Definition || State == EBNRaceState::Countdown || State == EBNRaceState::Racing)
 	{
@@ -157,6 +214,7 @@ void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float 
 	ActiveBossRank = BossRank;
 	ActiveBossDriftTarget = DriftTargetScore;
 	ActiveBossSkill = BossSkill;
+	ActiveBossCarId = BossCarId;
 	ActiveBossStats = BossStats ? *BossStats : FBNComputedVehicleStats();
 	ActiveBossTint = BossTint;
 
@@ -195,6 +253,7 @@ void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float 
 
 	State = EBNRaceState::Countdown;
 	StateStart = GetWorld()->GetTimeSeconds();
+	LastCountdownDigit = 4;
 }
 
 void ABNRaceEvent::TickRacing(ABNVehiclePawn& Car, float DeltaSeconds)
@@ -322,7 +381,16 @@ void ABNRaceEvent::SpawnRivals()
 		}
 		if (ActiveBossRank > 0)
 		{
-			Car->ApplyVehicleBuild(ActiveBossStats, ActiveBossTint);
+			Car->ApplyVehicleSpec(ActiveBossCarId, ActiveBossStats);
+			Car->ApplyPaintTint(ActiveBossTint);
+		}
+		else
+		{
+			// Give free-roam race rivals varied street body styles/paints & engine voices while keeping calibrated racing physics
+			static const EBNCarId RivalCars[] = { EBNCarId::ValkenRS4, EBNCarId::Vandal440R, EBNCarId::DracoRST };
+			const EBNCarId RivalId = RivalCars[i % UE_ARRAY_COUNT(RivalCars)];
+			const int32 StockTiers[FBNUpgradeSpec::NumSlots] = {};
+			Car->ApplyVehicleSpec(RivalId, FBNComputedVehicleStats::Compute(EBNCarId::KuroganeMSpec, StockTiers));
 		}
 		Car->AIControllerClass = ABNRivalController::StaticClass();
 		Car->SpawnDefaultController();
@@ -373,7 +441,13 @@ void ABNRaceEvent::ShowGate(int32 Index)
 		if (bShow)
 		{
 			const float Y = (Side == 0 ? -0.5f : 0.5f) * Definition->GateWidth;
-			GatePosts[Side]->SetWorldLocation(Definition->Checkpoints[Index].TransformPosition(FVector(0.f, Y, PostHeight * 0.5f)));
+			const float ZOff = bUsingHoloRaceMeshes ? 0.f : PostHeight * 0.5f;
+			const FTransform& Cp = Definition->Checkpoints[Index];
+			GatePosts[Side]->SetWorldLocation(Cp.TransformPosition(FVector(0.f, Y, ZOff)));
+			if (bUsingHoloRaceMeshes)
+			{
+				GatePosts[Side]->SetWorldRotation(Cp.GetRotation());
+			}
 		}
 	}
 }

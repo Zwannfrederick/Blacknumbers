@@ -1,12 +1,17 @@
 #include "Vehicle/BNVehicleEffects.h"
 
+#include "Camera/PlayerCameraManager.h"
+#include "CollisionQueryParams.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/HitResult.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
+#include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Misc/PackageName.h"
 #include "UObject/ConstructorHelpers.h"
 
 namespace
@@ -58,6 +63,9 @@ UBNVehicleEffectsComponent::UBNVehicleEffectsComponent()
 	UMaterialInterface* DefaultFallback = FallbackMat.Object.Get();
 	UnlitTranslucentMaterial = UnlitTransMat.Object ? UnlitTransMat.Object.Get() : DefaultFallback;
 	SmokeBaseMaterial = LitTransMat.Object ? LitTransMat.Object.Get() : UnlitTranslucentMaterial.Get();
+	SkidBaseMaterial = UnlitTranslucentMaterial;
+	FlameBaseMaterial = UnlitTranslucentMaterial;
+	SparkBaseMaterial = UnlitTranslucentMaterial;
 
 	SmokeStates.SetNum(SmokePoolSize);
 	SkidStates.SetNum(SkidPoolSize);
@@ -67,6 +75,35 @@ UBNVehicleEffectsComponent::UBNVehicleEffectsComponent()
 void UBNVehicleEffectsComponent::BeginPlay()
 {
 	Super::BeginPlay();
+	// Load project VFX materials at runtime (never inside CDO constructor so Editor rebuilds can edit them).
+	if (FPackageName::DoesPackageExist(TEXT("/Game/World/Materials/MI_VFX_Smoke")))
+	{
+		if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/World/Materials/MI_VFX_Smoke.MI_VFX_Smoke")))
+		{
+			SmokeBaseMaterial = M;
+		}
+	}
+	if (FPackageName::DoesPackageExist(TEXT("/Game/World/Materials/MI_VFX_Skid")))
+	{
+		if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/World/Materials/MI_VFX_Skid.MI_VFX_Skid")))
+		{
+			SkidBaseMaterial = M;
+		}
+	}
+	if (FPackageName::DoesPackageExist(TEXT("/Game/World/Materials/MI_VFX_Flame")))
+	{
+		if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/World/Materials/MI_VFX_Flame.MI_VFX_Flame")))
+		{
+			FlameBaseMaterial = M;
+		}
+	}
+	if (FPackageName::DoesPackageExist(TEXT("/Game/World/Materials/MI_VFX_Spark")))
+	{
+		if (UMaterialInterface* M = LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/World/Materials/MI_VFX_Spark.MI_VFX_Spark")))
+		{
+			SparkBaseMaterial = M;
+		}
+	}
 	if (AActor* Owner = GetOwner())
 	{
 		CachedOwnerSkelMesh = Owner->FindComponentByClass<USkeletalMeshComponent>();
@@ -135,30 +172,32 @@ UStaticMeshComponent* UBNVehicleEffectsComponent::CreatePooledVisual(UStaticMesh
 
 void UBNVehicleEffectsComponent::EnsureFlameVisuals()
 {
-	if (bFlameVisualsInitialized || !CanCreateVisuals() || !ConeMesh)
+	if (bFlameVisualsInitialized || !CanCreateVisuals() || !PlaneMesh)
 	{
 		return;
 	}
 	bFlameVisualsInitialized = true;
-	FlameMeshes.SetNum(2);
-	FlameMids.SetNum(2);
-	for (int32 i = 0; i < 2; ++i)
+	// 2 orthogonal crossed soft-alpha flame planes per exhaust tip (4 total) -> volumetric from all angles.
+	FlameMeshes.SetNum(4);
+	FlameMids.SetNum(4);
+	for (int32 i = 0; i < 4; ++i)
 	{
 		UMaterialInstanceDynamic* Mid = nullptr;
-		UStaticMeshComponent* Cone = CreatePooledVisual(ConeMesh, UnlitTranslucentMaterial, false, Mid);
-		if (Cone)
+		UStaticMeshComponent* Card = CreatePooledVisual(PlaneMesh, FlameBaseMaterial, false, Mid);
+		if (Card)
 		{
-			// Cone tip points along +Z; Pitch +90 aims +Z straight backward (-X) from the exhaust tip.
-			Cone->SetRelativeRotation(FRotator(90.f, 0.f, 0.f));
+			// Plane sits in XY with UV V running along Y; Yaw=90 maps nozzle base (V=1) toward +X and tip toward -X.
+			const float Roll = (i % 2 == 0) ? 0.f : 90.f;
+			Card->SetRelativeRotation(FRotator(0.f, 90.f, Roll));
 		}
-		FlameMeshes[i] = Cone;
+		FlameMeshes[i] = Card;
 		FlameMids[i] = Mid;
 	}
 }
 
 void UBNVehicleEffectsComponent::EnsureSmokePoolVisuals()
 {
-	if (bSmokeVisualsInitialized || !CanCreateVisuals() || !SphereMesh)
+	if (bSmokeVisualsInitialized || !CanCreateVisuals() || !PlaneMesh)
 	{
 		return;
 	}
@@ -168,7 +207,7 @@ void UBNVehicleEffectsComponent::EnsureSmokePoolVisuals()
 	for (int32 i = 0; i < SmokePoolSize; ++i)
 	{
 		UMaterialInstanceDynamic* Mid = nullptr;
-		SmokeMeshes[i] = CreatePooledVisual(SphereMesh, SmokeBaseMaterial, true, Mid);
+		SmokeMeshes[i] = CreatePooledVisual(PlaneMesh, SmokeBaseMaterial, true, Mid);
 		SmokeMids[i] = Mid;
 	}
 }
@@ -185,14 +224,14 @@ void UBNVehicleEffectsComponent::EnsureSkidPoolVisuals()
 	for (int32 i = 0; i < SkidPoolSize; ++i)
 	{
 		UMaterialInstanceDynamic* Mid = nullptr;
-		SkidMeshes[i] = CreatePooledVisual(PlaneMesh, UnlitTranslucentMaterial, true, Mid);
+		SkidMeshes[i] = CreatePooledVisual(PlaneMesh, SkidBaseMaterial, true, Mid);
 		SkidMids[i] = Mid;
 	}
 }
 
 void UBNVehicleEffectsComponent::EnsureSparkPoolVisuals()
 {
-	if (bSparkVisualsInitialized || !CanCreateVisuals() || !CubeMesh)
+	if (bSparkVisualsInitialized || !CanCreateVisuals() || !PlaneMesh)
 	{
 		return;
 	}
@@ -202,7 +241,7 @@ void UBNVehicleEffectsComponent::EnsureSparkPoolVisuals()
 	for (int32 i = 0; i < SparkPoolSize; ++i)
 	{
 		UMaterialInstanceDynamic* Mid = nullptr;
-		SparkMeshes[i] = CreatePooledVisual(CubeMesh, UnlitTranslucentMaterial, true, Mid);
+		SparkMeshes[i] = CreatePooledVisual(PlaneMesh, SparkBaseMaterial, true, Mid);
 		SparkMids[i] = Mid;
 	}
 }
@@ -363,14 +402,16 @@ void UBNVehicleEffectsComponent::SpawnSmokePuff(const FVector& SpawnLoc, const F
 	State.Location = SpawnLoc + FVector(FMath::FRandRange(-12.f, 12.f), FMath::FRandRange(-12.f, 12.f), 8.f);
 	State.Velocity = InheritedVel + FVector(FMath::FRandRange(-55.f, 55.f), FMath::FRandRange(-55.f, 55.f),
 		FMath::FRandRange(95.f, 145.f));
-	State.StartScale = FMath::FRandRange(0.28f, 0.38f);
-	State.EndScale = FMath::FRandRange(1.25f, 1.65f) * (0.85f + 0.25f * SlipIntensity);
-	State.BaseOpacity = FMath::Lerp(0.36f, 0.54f, SlipIntensity);
+	State.StartScale = FMath::FRandRange(0.45f, 0.62f);
+	State.EndScale = FMath::FRandRange(1.75f, 2.35f) * (0.85f + 0.25f * SlipIntensity);
+	State.BaseOpacity = FMath::Lerp(0.32f, 0.50f, SlipIntensity);
+	State.SpinAngleDeg = FMath::FRandRange(0.f, 360.f);
+	State.SpinRateDeg = FMath::FRandRange(-75.f, 75.f);
 
 	if (SmokeMeshes.IsValidIndex(Idx) && IsValid(SmokeMeshes[Idx]))
 	{
-		SmokeMeshes[Idx]->SetWorldLocationAndRotation(State.Location, FRotator::ZeroRotator);
-		SmokeMeshes[Idx]->SetWorldScale3D(FVector(State.StartScale, State.StartScale, State.StartScale * 0.78f));
+		SmokeMeshes[Idx]->SetWorldLocation(State.Location);
+		SmokeMeshes[Idx]->SetWorldScale3D(FVector(State.StartScale, State.StartScale, 1.f));
 		SmokeMeshes[Idx]->SetVisibility(true, true);
 		if (SmokeMids.IsValidIndex(Idx) && IsValid(SmokeMids[Idx]))
 		{
@@ -395,14 +436,31 @@ void UBNVehicleEffectsComponent::SpawnSkidStrip(const FVector& PrevLoc, const FV
 	}
 	State.Age = 0.f;
 	State.Lifetime = 12.f;
-	State.BaseOpacity = FMath::Lerp(0.55f, 0.76f, SlipIntensity);
+	State.BaseOpacity = FMath::Lerp(0.55f, 0.78f, SlipIntensity);
 
 	if (SkidMeshes.IsValidIndex(Idx) && IsValid(SkidMeshes[Idx]))
 	{
 		const FVector Delta = CurrLoc - PrevLoc;
 		const float Length = Delta.Size();
-		const FVector Midpoint = 0.5f * (PrevLoc + CurrLoc);
-		const FRotator Rot = Delta.Rotation();
+		FVector Midpoint = 0.5f * (PrevLoc + CurrLoc);
+		FVector SurfaceNormal = FVector::UpVector;
+
+		if (const UWorld* World = GetWorld())
+		{
+			FHitResult Hit;
+			FCollisionQueryParams Params(SCENE_QUERY_STAT(BNSkidTrace), false, GetOwner());
+			if (World->LineTraceSingleByChannel(Hit, Midpoint + FVector(0.f, 0.f, 55.f),
+				Midpoint - FVector(0.f, 0.f, 90.f), ECC_WorldStatic, Params))
+			{
+				SurfaceNormal = Hit.ImpactNormal.GetSafeNormal();
+				Midpoint = Hit.ImpactPoint + SurfaceNormal * 2.5f;
+			}
+		}
+
+		const FVector Forward = FVector::VectorPlaneProject(Delta, SurfaceNormal).GetSafeNormal();
+		const FRotator Rot = Forward.IsNearlyZero()
+			? Delta.Rotation()
+			: FRotationMatrix::MakeFromXZ(Forward, SurfaceNormal).Rotator();
 
 		SkidMeshes[Idx]->SetWorldLocationAndRotation(Midpoint, Rot);
 		SkidMeshes[Idx]->SetWorldScale3D(FVector((Length + 12.f) / 100.f, SkidWidthScaleY, 1.f));
@@ -471,6 +529,18 @@ void UBNVehicleEffectsComponent::UpdateSmokePool(float DeltaSeconds)
 		return;
 	}
 	const float DragFactor = FMath::Exp(-1.35f * DeltaSeconds);
+	FVector CamLoc = GetComponentLocation() + FVector(0.f, 0.f, 200.f);
+	if (const UWorld* World = GetWorld())
+	{
+		if (const APlayerController* PC = World->GetFirstPlayerController())
+		{
+			if (const APlayerCameraManager* CamMgr = PC->PlayerCameraManager)
+			{
+				CamLoc = CamMgr->GetCameraLocation();
+			}
+		}
+	}
+
 	for (int32 i = 0; i < SmokePoolSize; ++i)
 	{
 		FSmokeState& State = SmokeStates[i];
@@ -494,16 +564,21 @@ void UBNVehicleEffectsComponent::UpdateSmokePool(float DeltaSeconds)
 		State.Velocity.X *= DragFactor;
 		State.Velocity.Y *= DragFactor;
 		State.Location += State.Velocity * DeltaSeconds;
+		State.SpinAngleDeg += State.SpinRateDeg * DeltaSeconds;
 
 		if (SmokeMeshes.IsValidIndex(i) && IsValid(SmokeMeshes[i]))
 		{
 			const float Scale = FMath::Lerp(State.StartScale, State.EndScale, FMath::Pow(Frac, 0.68f));
-			const float FadeIn = FMath::Clamp(Frac / 0.12f, 0.f, 1.f);
+			const float FadeIn = FMath::Clamp(Frac / 0.14f, 0.f, 1.f);
 			const float FadeOut = FMath::Square(1.f - Frac);
 			const float Opacity = State.BaseOpacity * FadeIn * FadeOut;
 
-			SmokeMeshes[i]->SetWorldLocation(State.Location);
-			SmokeMeshes[i]->SetWorldScale3D(FVector(Scale, Scale, Scale * 0.78f));
+			// Billboard Plane's +Z normal directly toward active camera with gentle roll spin.
+			const FVector ToCam = (CamLoc - State.Location).GetSafeNormal();
+			const FQuat BaseRot = FRotationMatrix::MakeFromZ(ToCam.IsNearlyZero() ? FVector::UpVector : ToCam).ToQuat();
+			const FQuat SpinRot(ToCam.IsNearlyZero() ? FVector::UpVector : ToCam, FMath::DegreesToRadians(State.SpinAngleDeg));
+			SmokeMeshes[i]->SetWorldLocationAndRotation(State.Location, (SpinRot * BaseRot).Rotator());
+			SmokeMeshes[i]->SetWorldScale3D(FVector(Scale, Scale, 1.f));
 			if (SmokeMids.IsValidIndex(i) && IsValid(SmokeMids[i]))
 			{
 				SmokeMids[i]->SetVectorParameterValue(ColorParam,
@@ -614,26 +689,26 @@ void UBNVehicleEffectsComponent::UpdateExhaustFlames(bool bNosActive, bool bBack
 
 	for (int32 i = 0; i < FlameMeshes.Num(); ++i)
 	{
-		UStaticMeshComponent* Cone = FlameMeshes[i];
-		if (!IsValid(Cone))
+		UStaticMeshComponent* Card = FlameMeshes[i];
+		if (!IsValid(Card))
 		{
 			continue;
 		}
-		const float Side = (i == 0) ? -1.f : 1.f;
+		const float Side = (i < 2) ? -1.f : 1.f;
 		const float Flicker = 0.84f
 			+ 0.14f * FMath::Sin(EffectTime * 58.f + Side * 1.7f)
 			+ 0.06f * FMath::Sin(EffectTime * 117.f + Side * 0.9f);
-		const float LengthScale = (bNosActive ? 0.72f : 0.48f) * Flicker;
-		const float RadiusScale = (bNosActive ? 0.145f : 0.18f) * (0.92f + 0.08f * Flicker);
+		const float LengthScale = (bNosActive ? 0.92f : 0.62f) * Flicker;
+		const float WidthScale = (bNosActive ? 0.28f : 0.34f) * (0.90f + 0.10f * Flicker);
 
-		// Keep the circular base anchored at the rear exhaust tips (-226 cm) while stretching backward.
-		Cone->SetRelativeLocation(FVector(-226.f - 45.f * LengthScale, Side * 42.f, 40.f));
-		Cone->SetRelativeScale3D(FVector(RadiusScale, RadiusScale, LengthScale));
-		Cone->SetVisibility(true, true);
+		// Anchor nozzle edge at rear exhaust tips (-222 cm) stretching backward along -X.
+		Card->SetRelativeLocation(FVector(-222.f - 48.f * LengthScale, Side * 42.f, 36.f));
+		Card->SetRelativeScale3D(FVector(WidthScale, LengthScale, 1.f));
+		Card->SetVisibility(true, true);
 
 		if (FlameMids.IsValidIndex(i) && IsValid(FlameMids[i]))
 		{
-			FLinearColor Color = BaseColor * FMath::Clamp(Flicker, 0.75f, 1.15f);
+			FLinearColor Color = BaseColor * FMath::Clamp(Flicker, 0.78f, 1.18f);
 			Color.A = BaseColor.A;
 			FlameMids[i]->SetVectorParameterValue(ColorParam, Color);
 		}

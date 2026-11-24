@@ -17,6 +17,7 @@
 #include "Story/BNStorySubsystem.h"
 #include "UI/BNUITheme.h"
 #include "Vehicle/BNVehiclePawn.h"
+#include "World/BNRoadGraph.h"
 #include "World/BNTrafficSubsystem.h"
 
 namespace BNRadar
@@ -32,7 +33,10 @@ namespace BNRadar
 
 	const FLinearColor RadarBg(0.032f, 0.036f, 0.045f, 0.84f);
 	const FLinearColor RadarRing(0.95f, 0.66f, 0.08f, 0.90f);
-	const FLinearColor RadarRoad(0.30f, 0.31f, 0.34f, 0.65f);
+	const FLinearColor RadarRoad(0.32f, 0.34f, 0.38f, 0.72f);
+	const FLinearColor RadarHighway(0.46f, 0.48f, 0.54f, 0.85f);
+	const FLinearColor RadarDirtRoad(0.48f, 0.36f, 0.22f, 0.72f);
+	const FLinearColor BlipCooldown(0.18f, 0.62f, 1.00f, 0.96f);
 	const FLinearColor RouteShadow(0.02f, 0.02f, 0.03f, 0.92f);
 	const FLinearColor RouteAmber(0.95f, 0.66f, 0.08f, 0.96f);
 	const FLinearColor RouteNextLeg(0.28f, 0.92f, 1.00f, 1.00f);
@@ -160,8 +164,50 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 		DrawLine(Pt.X - R, Pt.Y, Pt.X, Pt.Y - R, Col, Thick);
 	};
 
-	// 1. Karamara main arterial road grid clipped inside the circular radar
-	if (GetWorld() && GetWorld()->GetMapName().Contains(TEXT("Karamara")))
+	// 1. Real 2 km Karamara curved road network from UBNRoadGraphSubsystem clipped inside the circular radar
+	const UBNRoadGraphSubsystem* RoadGraph = GetWorld() ? GetWorld()->GetSubsystem<UBNRoadGraphSubsystem>() : nullptr;
+	if (RoadGraph && RoadGraph->HasGraph())
+	{
+		for (const FBNRoadEdge& Edge : RoadGraph->GetEdges())
+		{
+			const TArray<FVector>& Pts = Edge.SampledPoints;
+			if (Pts.Num() < 2)
+			{
+				continue;
+			}
+			const FLinearColor Col = Edge.bDirt ? BNRadar::RadarDirtRoad
+				: (Edge.bHighway ? BNRadar::RadarHighway : BNRadar::RadarRoad);
+			const float Thick = Edge.bHighway ? 3.2f : (Edge.WidthCm >= 1400.f ? 2.2f : 1.5f);
+			for (int32 i = 0; i + 1 < Pts.Num(); ++i)
+			{
+				DrawClippedLine(Pts[i], Pts[i + 1], Col, Thick);
+			}
+		}
+
+		// Cooldown hiding spots (blue circles/diamonds — especially prominent during police cooldown!)
+		const bool bShowCooldown = !Pursuit || Pursuit->GetState().Phase == EBNPursuitPhase::Cooldown
+			|| Pursuit->GetState().IsPursuitRunning();
+		if (bShowCooldown)
+		{
+			const bool bInCooldown = Pursuit && Pursuit->GetState().Phase == EBNPursuitPhase::Cooldown;
+			const float Pulse = 0.5f + 0.5f * FMath::Sin((GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f) * 6.f);
+			for (const FBNCooldownSpot& Spot : RoadGraph->GetCooldownSpots())
+			{
+				const FVector2D RawPt = BNRadar::ProjectUnclamped(Spot.Location, PlayerLoc, CosY, SinY, Cx, Cy, ActiveRangeCm);
+				const bool bInCircle = FVector2D::DistSquared(RawPt, FVector2D(Cx, Cy)) <= BNRadar::RadarInnerClip * BNRadar::RadarInnerClip;
+				if (bInCircle || bInCooldown)
+				{
+					const FVector2D Pt = BNRadar::ClampToRadarEdge(RawPt, Cx, Cy, BNRadar::RadarInnerClip - 3.f);
+					PlotDiamond(Pt, bInCooldown ? (5.5f + Pulse * 2.0f) : 4.0f, BNRadar::BlipCooldown, bInCooldown ? 2.4f : 1.6f);
+					if (bInCooldown)
+					{
+						PlotSquare(Pt, 2.2f, FLinearColor::White);
+					}
+				}
+			}
+		}
+	}
+	else if (GetWorld() && GetWorld()->GetMapName().Contains(TEXT("Karamara")))
 	{
 		struct FRoadSeg { float X0, Y0, X1, Y1; };
 		static const FRoadSeg Roads[] = {
@@ -405,6 +451,46 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 	DrawLine(Cx, Cy - 8.f, Cx - 5.5f, Cy + 6.f, FLinearColor::White, 2.2f);
 	DrawLine(Cx, Cy - 8.f, Cx + 5.5f, Cy + 6.f, FLinearColor::White, 2.2f);
 	DrawLine(Cx - 5.5f, Cy + 6.f, Cx + 5.5f, Cy + 6.f, BNRadar::RadarRing, 2.f);
+
+	// Current district pill right above radar + brief top-center District Entry Banner on boundary crossing
+	if (RoadGraph && RoadGraph->HasGraph() && GetWorld())
+	{
+		FString DistName, DistSub;
+		const EBNDistrict CurDist = RoadGraph->GetDistrictAt(PlayerLoc, &DistName, &DistSub);
+		const int32 DistInt = static_cast<int32>(CurDist);
+		const double Now = GetWorld()->GetRealTimeSeconds();
+		if (LastDistrictId != DistInt)
+		{
+			if (LastDistrictId >= 0)
+			{
+				DistrictBannerName = DistName;
+				DistrictBannerSubtitle = DistSub;
+				DistrictBannerUntil = Now + 3.4;
+			}
+			LastDistrictId = DistInt;
+		}
+
+		UFont* Font = GEngine->GetLargeFont();
+		float W = 0.f, H = 0.f;
+		GetTextSize(DistName, W, H, Font, 0.72f);
+		const float PillX = BNRadar::RadarMargin;
+		const float PillY = Cy - BNRadar::RadarHalfSize - H - 14.f;
+		DrawRect(BNRadar::RadarBg, PillX, PillY - 3.f, W + 18.f, H + 6.f);
+		DrawRect(BNRadar::RadarRing, PillX, PillY - 3.f, 3.f, H + 6.f);
+		DrawText(DistName, BNRadar::LegendColour, PillX + 10.f, PillY, Font, 0.72f);
+
+		if (Now < DistrictBannerUntil && !DistrictBannerName.IsEmpty() && !bRaceActive)
+		{
+			const float Remaining = static_cast<float>(DistrictBannerUntil - Now);
+			const float Alpha = FMath::Clamp(FMath::Min(Remaining, 3.4f - Remaining) * 2.5f, 0.f, 1.f);
+			FLinearColor TitleCol = BNRadar::DashColour;
+			TitleCol.A = Alpha;
+			FLinearColor SubCol = BNRadar::LegendColour;
+			SubCol.A = Alpha * 0.9f;
+			DrawCentred(DistrictBannerName, 112.f, 1.25f, TitleCol);
+			DrawCentred(DistrictBannerSubtitle, 144.f, 0.78f, SubCol);
+		}
+	}
 }
 
 void ABNHUD::DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNStorySubsystem* Story)
@@ -454,7 +540,7 @@ void ABNHUD::DrawEconomyPill(const UBNProgressionSubsystem& Progression)
 {
 	UFont* Font = GEngine->GetLargeFont();
 	const FBNPlayerProfile& P = Progression.GetProfile();
-	const FString EconText = FString::Printf(TEXT("$%s   //   %s ITIBAR   //   [ESC] MENU"),
+	const FString EconText = FString::Printf(TEXT("$%s   //   %s İTİBAR   //   [ESC] MENÜ"),
 		*FString::FormatAsNumber(P.Cash), *FString::FormatAsNumber(P.Reputation));
 	float W = 0.f, H = 0.f;
 	GetTextSize(EconText, W, H, Font, BNRadar::LabelScale);

@@ -1,5 +1,6 @@
 #include "UI/BNUITheme.h"
 
+#include "Audio/BNAudioSubsystem.h"
 #include "Engine/Texture2D.h"
 #include "Misc/App.h"
 #include "Styling/CoreStyle.h"
@@ -147,6 +148,7 @@ namespace
 
 		void Construct(const FArguments& InArgs)
 		{
+			VariantFlag = InArgs._Variant;
 			Palette = PaletteFor(InArgs._Variant);
 			bEnabledFlag = InArgs._bEnabled;
 			const bool bHasSub = !InArgs._SubLabel.IsEmpty();
@@ -172,13 +174,30 @@ namespace
 				];
 			}
 
+			const EBNButtonVariant ChosenVariant = InArgs._Variant;
+			const FOnClicked RawClicked = InArgs._OnClicked;
+			FOnClicked WrappedClicked = FOnClicked::CreateLambda([ChosenVariant, RawClicked]()
+			{
+				const EBNSfxId Sfx = (ChosenVariant == EBNButtonVariant::PrimaryAmber || ChosenVariant == EBNButtonVariant::ConfirmGreen)
+					? EBNSfxId::UiConfirm : EBNSfxId::UiClick;
+				UBNAudioSubsystem::PlayUiSfx(Sfx, 0.85f);
+				return RawClicked.IsBound() ? RawClicked.Execute() : FReply::Handled();
+			});
+
 			ChildSlot
 			[
 				SAssignNew(InnerButton, SButton)
 				.ButtonStyle(FCoreStyle::Get(), "NoBorder")
 				.IsFocusable(false)
 				.IsEnabled(bEnabledFlag)
-				.OnClicked(InArgs._OnClicked)
+				.OnClicked(WrappedClicked)
+				.OnHovered_Lambda([bEnabled = bEnabledFlag]()
+				{
+					if (bEnabled)
+					{
+						UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiHover, 0.45f);
+					}
+				})
 				.ContentPadding(FMargin(0.f))
 				[
 					SNew(SBorder)
@@ -242,9 +261,14 @@ namespace
 			{
 				return FLinearColor(0.35f, 0.35f, 0.37f, 0.75f);
 			}
+			if (VariantFlag == EBNButtonVariant::PrimaryAmber)
+			{
+				return FLinearColor(0.10f, 0.09f, 0.07f, 0.92f);
+			}
 			return IsBtnHovered() ? BNUITheme::ChalkWhite : BNUITheme::SteelMuted;
 		}
 
+		EBNButtonVariant VariantFlag = EBNButtonVariant::SecondarySteel;
 		FBNButtonPalette Palette;
 		bool bEnabledFlag = true;
 		TSharedPtr<SButton> InnerButton;

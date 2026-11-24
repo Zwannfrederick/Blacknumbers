@@ -1,5 +1,6 @@
 #include "Police/BNPursuitBreaker.h"
 
+#include "Audio/BNAudioSubsystem.h"
 #include "Components/BoxComponent.h"
 #include "Components/PointLightComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -9,6 +10,7 @@
 #include "Police/BNPursuitSubsystem.h"
 #include "Race/BNRaceEvent.h"
 #include "UObject/ConstructorHelpers.h"
+#include "Vehicle/BNVehicleEffects.h"
 #include "Vehicle/BNVehiclePawn.h"
 
 namespace
@@ -118,9 +120,22 @@ void ABNPursuitBreaker::TriggerCollapse(ABNVehiclePawn* TriggerCar)
 	CollapseTimer = 0.f;
 	DebrisTimer = 0.f;
 	ResetTimer = 0.f;
+	LaunchDebrisChunks();
+
+	if (TriggerCar)
+	{
+		if (UBNVehicleEffectsComponent* Fx = TriggerCar->FindComponentByClass<UBNVehicleEffectsComponent>())
+		{
+			Fx->TriggerCollisionSparks(GetActorLocation() + FVector(0.f, 0.f, 220.f), FVector::UpVector, 1.3f);
+		}
+	}
 
 	if (UWorld* World = GetWorld())
 	{
+		if (UBNAudioSubsystem* Audio = World->GetSubsystem<UBNAudioSubsystem>())
+		{
+			Audio->PlaySfxAtLocation(EBNSfxId::BreakerCollapse, GetActorLocation(), 1.0f);
+		}
 		if (UBNPursuitSubsystem* Pursuit = World->GetSubsystem<UBNPursuitSubsystem>())
 		{
 			Pursuit->OnPursuitBreakerTriggered(this, TriggerCar);
@@ -135,9 +150,90 @@ void ABNPursuitBreaker::ResetStructure()
 	DebrisTimer = 0.f;
 	ResetTimer = 0.f;
 	ApplyCollapseTransform(0.f);
+	HideDebrisChunks();
 	WarningLight->SetLightColor(WarningColor);
 	WarningLight->SetIntensity(WarningNormalCandelas);
 	WarningLight->SetVisibility(true);
+}
+
+void ABNPursuitBreaker::EnsureDebrisChunks()
+{
+	if (DebrisMeshes.Num() > 0 || !OverheadBeam)
+	{
+		return;
+	}
+	UStaticMesh* ChunkMesh = OverheadBeam->GetStaticMesh();
+	UMaterialInterface* ChunkMat = OverheadBeam->GetMaterial(0);
+	if (!ChunkMesh)
+	{
+		return;
+	}
+	constexpr int32 NumChunks = 8;
+	DebrisMeshes.Reserve(NumChunks);
+	DebrisPhysics.SetNum(NumChunks);
+	for (int32 i = 0; i < NumChunks; ++i)
+	{
+		UStaticMeshComponent* Chunk = NewObject<UStaticMeshComponent>(this);
+		Chunk->SetStaticMesh(ChunkMesh);
+		if (ChunkMat) { Chunk->SetMaterial(0, ChunkMat); }
+		Chunk->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Chunk->SetCastShadow(false);
+		Chunk->SetupAttachment(RootComponent);
+		Chunk->SetRelativeScale3D(FVector(FMath::FRandRange(0.7f, 1.5f), FMath::FRandRange(0.7f, 1.8f), FMath::FRandRange(0.4f, 0.9f)));
+		Chunk->SetVisibility(false, true);
+		Chunk->RegisterComponent();
+		DebrisMeshes.Add(Chunk);
+	}
+}
+
+void ABNPursuitBreaker::LaunchDebrisChunks()
+{
+	EnsureDebrisChunks();
+	for (int32 i = 0; i < DebrisMeshes.Num(); ++i)
+	{
+		UStaticMeshComponent* Chunk = DebrisMeshes[i];
+		if (!IsValid(Chunk)) { continue; }
+		const float OffsetY = FMath::Lerp(-420.f, 420.f, static_cast<float>(i) / FMath::Max(DebrisMeshes.Num() - 1, 1));
+		Chunk->SetRelativeLocation(FVector(FMath::FRandRange(-90.f, 90.f), OffsetY, BeamBaseZ));
+		Chunk->SetRelativeRotation(FRotator(FMath::FRandRange(-30.f, 30.f), FMath::FRandRange(-180.f, 180.f), FMath::FRandRange(-30.f, 30.f)));
+		Chunk->SetVisibility(true, true);
+
+		DebrisPhysics[i].Velocity = FVector(FMath::FRandRange(-520.f, 520.f), OffsetY * 0.85f + FMath::FRandRange(-240.f, 240.f), FMath::FRandRange(220.f, 580.f));
+		DebrisPhysics[i].SpinRate = FRotator(FMath::FRandRange(-280.f, 280.f), FMath::FRandRange(-240.f, 240.f), FMath::FRandRange(-280.f, 280.f));
+	}
+}
+
+void ABNPursuitBreaker::TickDebrisChunks(float DeltaSeconds)
+{
+	for (int32 i = 0; i < DebrisMeshes.Num(); ++i)
+	{
+		UStaticMeshComponent* Chunk = DebrisMeshes[i];
+		if (!IsValid(Chunk) || !Chunk->IsVisible()) { continue; }
+		FDebrisChunk& Phys = DebrisPhysics[i];
+		Phys.Velocity.Z -= 1450.f * DeltaSeconds;
+		FVector Loc = Chunk->GetRelativeLocation() + Phys.Velocity * DeltaSeconds;
+		if (Loc.Z < 38.f)
+		{
+			Loc.Z = 38.f;
+			Phys.Velocity.Z = FMath::Abs(Phys.Velocity.Z) * 0.32f;
+			Phys.Velocity.X *= 0.65f;
+			Phys.Velocity.Y *= 0.65f;
+			Phys.SpinRate *= 0.55f;
+		}
+		Chunk->SetRelativeLocation(Loc);
+		Chunk->AddRelativeRotation(Phys.SpinRate * DeltaSeconds);
+	}
+}
+
+void ABNPursuitBreaker::HideDebrisChunks()
+{
+	for (UStaticMeshComponent* Chunk : DebrisMeshes)
+	{
+		if (IsValid(Chunk))
+		{
+			Chunk->SetVisibility(false, true);
+		}
+	}
 }
 
 void ABNPursuitBreaker::ApplyCollapseTransform(float Alpha)
@@ -201,10 +297,16 @@ void ABNPursuitBreaker::Tick(float DeltaSeconds)
 	if (DebrisTimer < DebrisWindowSeconds)
 	{
 		DebrisTimer += DeltaSeconds;
+		TickDebrisChunks(DeltaSeconds);
 		if (UBNPursuitSubsystem* Pursuit = World ? World->GetSubsystem<UBNPursuitSubsystem>() : nullptr)
 		{
 			Pursuit->DisablePoliceNear(GetActorLocation(), DisableRadiusCm);
 		}
+	}
+	else if (DebrisTimer < DebrisWindowSeconds + 3.0f)
+	{
+		DebrisTimer += DeltaSeconds;
+		TickDebrisChunks(DeltaSeconds);
 	}
 
 	ResetTimer += DeltaSeconds;

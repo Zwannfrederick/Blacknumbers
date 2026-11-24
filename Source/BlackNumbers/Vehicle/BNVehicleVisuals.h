@@ -40,6 +40,9 @@ public:
 	static void UpdateExhaustLights(const TArray<TObjectPtr<UPointLightComponent>>& ExhaustLights,
 		bool bNosActive, bool bBackfireActive, float RealTimeSeconds);
 
+	/** Updates emissive front DRL/headlight and dynamic rear brake/taillight strips. */
+	void UpdateLightStrips(bool bHeadlightsOn, bool bBraking);
+
 	EBNBodyStyle GetAppliedBodyStyle() const { return AppliedBodyStyle; }
 	EBNAeroKit GetAppliedAeroKit() const { return AppliedAeroKit; }
 	int32 GetAeroPartCount() const { return AeroParts.Num(); }
@@ -87,6 +90,12 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> ExhaustChromeMID;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> HeadlightStripMID;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> BrakeLightStripMID;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> AeroParts;

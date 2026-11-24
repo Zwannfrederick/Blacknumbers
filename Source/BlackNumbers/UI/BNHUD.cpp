@@ -537,7 +537,7 @@ void ABNHUD::DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsy
 {
 	const FBNPursuitState& S = Pursuit.GetState();
 	UFont* Font = GEngine->GetLargeFont();
-	const FString CostText = FString::Printf(TEXT("SEHIR FATURASI: $%s"), *FString::FormatAsNumber(S.CostToStateDollars));
+	const FString CostText = FString::Printf(TEXT("ŞEHİR FATURASI: $%s"), *FString::FormatAsNumber(S.CostToStateDollars));
 
 	if (S.Phase == EBNPursuitPhase::None)
 	{
@@ -563,7 +563,7 @@ void ABNHUD::DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsy
 	DrawRect(bFlash ? PoliceBlueColour : PoliceRedColour, BarX + PursuitBarWidth + 10.f, TopY - 8.f, 6.f, 64.f);
 	DrawRect(FrameTrimColour, BarX - 10.f, TopY - 8.f, PursuitBarWidth + 20.f, 2.f);
 
-	const FString LeftInfo = FString::Printf(TEXT("%s   //   BIRIM: %d"), *Spec.Label, Pursuit.GetActivePoliceCount());
+	const FString LeftInfo = FString::Printf(TEXT("%s   //   BİRİM: %d"), *Spec.Label, Pursuit.GetActivePoliceCount());
 	DrawText(LeftInfo, Spec.bDemirInvolved ? PoliceRedColour : DashColour, BarX, TopY - 2.f, Font, LabelScale);
 
 	float CostW = 0.f, CostH = 0.f;
@@ -581,17 +581,19 @@ void ABNHUD::DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsy
 	case EBNPursuitPhase::Pursuit:
 		FillFraction = S.BustMeter > 0.02f ? S.BustMeter : 1.f;
 		FillColour = bFlash ? PoliceRedColour : PoliceBlueColour;
-		StatusLabel = S.BustMeter > 0.02f ? TEXT("YAKALANIYORSUN  //  BUSTED RISK") : FString::Printf(TEXT("POLIS TAKIBI   %s"), *FormatRaceTime(S.PursuitTimeSeconds));
+		StatusLabel = S.BustMeter > 0.02f ? TEXT("YAKALANIYORSUN  //  BUSTED RİSKİ") : FString::Printf(TEXT("POLİS TAKİBİ   %s"), *FormatRaceTime(S.PursuitTimeSeconds));
 		break;
 	case EBNPursuitPhase::Evade:
 		FillFraction = S.EvadeMeter;
 		FillColour = NosColour;
-		StatusLabel = TEXT("KACIS  //  EVADE");
+		StatusLabel = TEXT("KAÇIŞ  //  EVADE");
 		break;
 	case EBNPursuitPhase::Cooldown:
 		FillFraction = S.PhaseProgress;
-		FillColour = PoliceBlueColour;
-		StatusLabel = TEXT("SOGUMA  //  SAKLAN");
+		FillColour = S.bInsideCooldownSpot ? SweetSpotColour : PoliceBlueColour;
+		StatusLabel = S.bInsideCooldownSpot
+			? FString::Printf(TEXT("SAKLANMA NOKTASI (3.5x): %s"), *S.ActiveCooldownSpotName.ToUpper())
+			: FString(TEXT("SOĞUMA  //  SAKLAN"));
 		break;
 	case EBNPursuitPhase::Busted:
 		FillFraction = 1.f;
@@ -601,7 +603,7 @@ void ABNHUD::DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsy
 	case EBNPursuitPhase::Escaped:
 		FillFraction = 1.f;
 		FillColour = DashColour;
-		StatusLabel = TEXT("KACIS BASARILI");
+		StatusLabel = TEXT("KAÇIŞ BAŞARILI");
 		break;
 	default:
 		break;
@@ -614,11 +616,17 @@ void ABNHUD::DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsy
 	DrawCentred(StatusLabel, MeterY + 1.f, LabelScale * 1.02f, RaceColour);
 
 	float ExtraY = TopY + 62.f;
+	if (Pursuit.IsPlayerTireSpiked())
+	{
+		DrawCentred(TEXT("DİKENLİ ŞERİT! LASTİKLER HASARLI (HIZ KISITLI)"), ExtraY, LabelScale * 1.02f,
+			bFlash ? PoliceRedColour : DashColour);
+		ExtraY += 24.f;
+	}
 	if (Story && Story->GetState().bFinalChaseActive)
 	{
 		const int32 DistA = FMath::RoundToInt(UBNStorySubsystem::GetDistanceToEscapeRouteCm(Cast<ABNVehiclePawn>(GetOwningPawn()), 0) / 100.f);
 		const int32 DistB = FMath::RoundToInt(UBNStorySubsystem::GetDistanceToEscapeRouteCm(Cast<ABNVehiclePawn>(GetOwningPawn()), 1) / 100.f);
-		DrawCentred(FString::Printf(TEXT("CIKIS ROTALARI:  [A] LIMAN %dm   |   [B] KUZEY %dm"), DistA, DistB), ExtraY, LabelScale, NosActiveColour);
+		DrawCentred(FString::Printf(TEXT("ÇIKIŞ ROTALARI:  [A] LİMAN %dm   |   [B] KUZEY %dm"), DistA, DistB), ExtraY, LabelScale, NosActiveColour);
 		ExtraY += 26.f;
 	}
 	if (S.ActiveRadio.RemainingSeconds > 0.f && !S.ActiveRadio.Message.IsEmpty())
