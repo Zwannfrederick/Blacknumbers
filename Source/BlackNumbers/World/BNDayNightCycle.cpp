@@ -16,6 +16,7 @@
 ABNDayNightCycle::ABNDayNightCycle()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.TickInterval = 0.1f;
 	Keys = BNTimeOfDay::MakeDefaultKeys();
 }
 

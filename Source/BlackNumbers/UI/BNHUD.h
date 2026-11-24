@@ -98,7 +98,7 @@ private:
 	void DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNStorySubsystem* Story);
 	void DrawDashboard(const ABNVehiclePawn& Car, const FBNDashReadout& Dash, bool bMenuBlocking);
 	void DrawGaugeBar(const TCHAR* Label, float X, float Y, float Width, float Height, float Fraction, const FLinearColor& FillColour, bool bActive);
-	void DrawActionBanners(const ABNVehiclePawn& Car, float BaseY);
+	void DrawActionBanners(const ABNVehiclePawn& Car, const UBNPursuitSubsystem* Pursuit, float BaseY);
 	void DrawCameraModePill(const ABNVehiclePawn& Car);
 	void DrawCentred(const FString& Text, float Y, float Scale, const FLinearColor& Colour);
 	void SyncStoryCardOverlay();

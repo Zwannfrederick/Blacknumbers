@@ -68,6 +68,7 @@ private:
 		float CurrentSpeedCmPerSec = 1550.f;
 		float LateralPullOffset = 0.f;
 		float NearMissCooldown = 0.f;
+		bool bWasBraking = false;
 
 		ETrafficCarState State = ETrafficCarState::Cruising;
 		float StateTimer = 0.f;

@@ -55,3 +55,13 @@ Yağ lekeli beton zemin, iki direkli hidrolik liftte şasi hâlindeki yarış ar
 - Tüm gerçek zamanlı dünya ve araç aydınlatması **Lumen, Ray Tracing ve Virtual Shadow Maps kapalı** (`DefaultEngine.ini`) olarak tasarlanır.
 - Araç farları, stop lambaları, sokak lambaları ve **NOS/Backfire egzoz ışıkları** gölgesiz (`SetCastShadows(false)`) tutularak 1080p düşük-orta donanımda yüksek kare hızı korunur.
 - HUD tamamen `UCanvas` çizim ilkelleri (`DrawLine`, `DrawRect`, `DrawText`) ile sıfır ek doku maliyetiyle çizilir.
+
+---
+
+## 4. Telifsiz CC0 1.0 PBR Doku Kaynakları (PolyHaven)
+
+`Tools/fetch_cc0_textures.py` betiği, çevrimiçi ortamda **CC0 1.0 Universal (Public Domain)** lisanslı 1K PBR doku setlerini ([polyhaven.com/license](https://polyhaven.com/license)) indirip `Saved/CC0Cache/` altında önbelleğe alır (çevrimdışı kalındığında prosedürel dokulara otomatik düşer):
+
+- **Yol & Zemin:** `asphalt_02`, `concrete_floor_02`, `precast_stone_paving`, `cobblestone_02`, `dirt_aerial_02`, `sparse_grass`, `aerial_rocks_04`
+- **Mimari & Cephe:** `red_brick_03` ve `clay_plaster` (üzerine Karamara gündüz koyu cam + gece `NightFactor` sıcak pencere maskesi kompozitlenir)
+- **Endüstriyel & Doğa:** `corrugated_iron_02` (renklendirilebilir nötr metal), `wood_planks`, `bark_brown_02`

@@ -118,7 +118,10 @@ public:
 	void SetSpeedbreakerWanted(bool bWanted) { bSpeedbreakerWanted = bWanted; }
 
 	UFUNCTION(BlueprintCallable, Category = "Vehicle")
-	void GrantNearMissBonus() { BoostState.AddNearMissBonus(Boost); }
+	void GrantNearMissBonus();
+
+	/** Triggers a short physical camera jolt + FOV micro-punch on heavy crashes, rams, or Pursuit Breakers. */
+	void AddCameraImpulse(float Strength);
 
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
 	float GetNosFraction() const { return BoostState.NosFraction; }
@@ -143,6 +146,12 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
 	float GetNearMissBannerSeconds() const { return BoostState.NearMissBannerRemaining; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	int32 GetNearMissStreak() const { return NearMissStreak; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetDriftExitBannerSeconds() const { return DriftExitBannerRemaining; }
 
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
 	bool IsBackfireActive() const { return BoostState.BackfireFlashRemaining > 0.f; }
@@ -313,6 +322,12 @@ private:
 	bool bHasPlayerSteeringInput = false;
 	int32 LastGear = 0;
 	float GearShiftKick = 0.f;
+	float CameraImpactShake = 0.f;
+	float DriftHoldSeconds = 0.f;
+	float DriftExitBoostRemaining = 0.f;
+	float DriftExitBannerRemaining = 0.f;
+	int32 NearMissStreak = 0;
+	float NearMissStreakTimer = 0.f;
 	float ActiveTireGripScale = 1.f;
 	float LastAppliedTireGripScale = 1.f;
 	float CurrentSocketBaseZ = 150.f;

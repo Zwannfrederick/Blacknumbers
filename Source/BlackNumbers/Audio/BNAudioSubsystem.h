@@ -100,5 +100,6 @@ private:
 	bool bHasStateOverride = false;
 	float ActiveTrackGain = 0.f;
 	float FadingTrackGain = 0.f;
+	float StatePollAccum = 0.f;
 	float LastSfxTimes[static_cast<int32>(EBNSfxId::Count)] = {};
 };

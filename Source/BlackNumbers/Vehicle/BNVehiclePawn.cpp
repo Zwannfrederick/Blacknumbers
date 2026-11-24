@@ -18,6 +18,8 @@
 #include "Garage/BNGarageSubsystem.h"
 #include "Garage/BNGarageTypes.h"
 #include "Kismet/GameplayStatics.h"
+#include "Police/BNPoliceController.h"
+#include "Police/BNPursuitSubsystem.h"
 #include "Story/BNStorySubsystem.h"
 #include "UI/BNHUD.h"
 #include "UObject/ConstructorHelpers.h"
@@ -398,6 +400,17 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 		BoostState.bSpeedbreakerActive = false;
 	}
 	BoostState.TickTimers(RealDt);
+	DriftExitBoostRemaining = FMath::Max(0.f, DriftExitBoostRemaining - RealDt);
+	DriftExitBannerRemaining = FMath::Max(0.f, DriftExitBannerRemaining - RealDt);
+	CameraImpactShake = FMath::FInterpTo(CameraImpactShake, 0.f, RealDt, 5.5f);
+	if (NearMissStreakTimer > 0.f)
+	{
+		NearMissStreakTimer = FMath::Max(0.f, NearMissStreakTimer - RealDt);
+		if (NearMissStreakTimer <= 0.f)
+		{
+			NearMissStreak = 0;
+		}
+	}
 
 	if (IsPlayerControlled())
 	{
@@ -417,7 +430,8 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 	if (!bInputLocked && bOnGround)
 	{
 		const float SurgeAccel = (BoostState.bNosActive ? Boost.NosAccelCmPerSec2 : 0.f)
-			+ (BoostState.LaunchBoostRemaining > 0.f ? Boost.LaunchBoostAccelCmPerSec2 : 0.f);
+			+ (BoostState.LaunchBoostRemaining > 0.f ? Boost.LaunchBoostAccelCmPerSec2 : 0.f)
+			+ (DriftExitBoostRemaining > 0.f ? 850.f : 0.f);
 		if (SurgeAccel > 0.f)
 		{
 			USkeletalMeshComponent* Body = GetMesh();
@@ -470,6 +484,25 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 	UpdateCamera(DeltaSeconds, RealDt, SpeedKmh, RealTimeSeconds);
 }
 
+void ABNVehiclePawn::GrantNearMissBonus()
+{
+	NearMissStreak = FMath::Min(NearMissStreak + 1, 5);
+	NearMissStreakTimer = 4.5f;
+	BoostState.AddNearMissBonus(Boost);
+	if (NearMissStreak > 1)
+	{
+		BoostState.NosFraction = FMath::Min(1.f, BoostState.NosFraction + 0.02f * (NearMissStreak - 1));
+	}
+}
+
+void ABNVehiclePawn::AddCameraImpulse(float Strength)
+{
+	if (IsPlayerControlled())
+	{
+		CameraImpactShake = FMath::Clamp(FMath::Max(CameraImpactShake, Strength), 0.f, 1.4f);
+	}
+}
+
 void ABNVehiclePawn::UpdateNearMiss(float SpeedKmh)
 {
 	if (FMath::Abs(SpeedKmh) < NearMissMinSpeedKmh || !GetWorld())
@@ -490,7 +523,7 @@ void ABNVehiclePawn::UpdateNearMiss(float SpeedKmh)
 			continue;
 		}
 		NearMissCooldowns.Add(Other, Now + NearMissCooldownSeconds);
-		BoostState.AddNearMissBonus(Boost);
+		GrantNearMissBonus();
 		if (UBNAudioSubsystem* Audio = GetWorld()->GetSubsystem<UBNAudioSubsystem>())
 		{
 			Audio->PlaySfx2D(EBNSfxId::NearMissWhoosh, 0.85f);
@@ -501,12 +534,10 @@ void ABNVehiclePawn::UpdateNearMiss(float SpeedKmh)
 void ABNVehiclePawn::OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp,
 	FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (ABNVehiclePawn* OtherCar = Cast<ABNVehiclePawn>(OtherActor))
+	ABNVehiclePawn* OtherCar = Cast<ABNVehiclePawn>(OtherActor);
+	if (OtherCar && GetWorld())
 	{
-		if (GetWorld())
-		{
-			NearMissCooldowns.Add(OtherCar, GetWorld()->GetRealTimeSeconds() + CrashNearMissSuppressSeconds);
-		}
+		NearMissCooldowns.Add(OtherCar, GetWorld()->GetRealTimeSeconds() + CrashNearMissSuppressSeconds);
 	}
 	const float ImpulseMag = NormalImpulse.Size();
 	if (ImpulseMag > CollisionSparkMinImpulse)
@@ -518,10 +549,23 @@ void ABNVehiclePawn::OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* Oth
 		{
 			Effects->TriggerCollisionSparks(SparkLoc, SparkNormal, Intensity);
 		}
+		AddCameraImpulse(Intensity * 1.05f);
 		if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
 		{
 			const EBNSfxId CrashId = ImpulseMag > 260000.f ? EBNSfxId::CrashHeavy : EBNSfxId::CrashLight;
 			Audio->PlaySfxAtLocation(CrashId, SparkLoc, FMath::Clamp(0.45f + Intensity * 0.6f, 0.4f, 1.f));
+		}
+		// High-speed player slam against an active police cruiser can damage or disable the pursuing unit!
+		if (IsPlayerControlled() && OtherCar && ImpulseMag > 280000.f && FMath::Abs(GetSpeedKmh()) >= 100.f)
+		{
+			if (const ABNPoliceController* CopCtrl = Cast<ABNPoliceController>(OtherCar->GetController());
+				CopCtrl && !CopCtrl->IsUnitDisabled())
+			{
+				if (UBNPursuitSubsystem* Pursuit = GetWorld() ? GetWorld()->GetSubsystem<UBNPursuitSubsystem>() : nullptr)
+				{
+					Pursuit->OnPlayerRammedPolice(OtherCar, FMath::Abs(GetSpeedKmh()));
+				}
+			}
 		}
 	}
 }
@@ -569,6 +613,7 @@ void ABNVehiclePawn::UpdateDrift(float DeltaSeconds)
 	if (!bDrifting && bHandbrake && Speed >= Drift.MinSpeedKmh && FMath::Abs(Steer) >= DriftStartMinSteer)
 	{
 		bDrifting = true;
+		DriftHoldSeconds = 0.f;
 		DriftDirection = Steer > 0.f ? -1.f : 1.f;
 		DriftEntrySpeed = GetMesh()->GetPhysicsLinearVelocity().Size2D();
 		CurrentDriftTargetSlip = GetSlipAngleDegrees();
@@ -576,6 +621,10 @@ void ABNVehiclePawn::UpdateDrift(float DeltaSeconds)
 
 	if (bDrifting)
 	{
+		if (Speed >= Drift.MinSpeedKmh && FMath::Abs(GetSlipAngleDegrees()) >= 10.f)
+		{
+			DriftHoldSeconds += DeltaSeconds;
+		}
 		const float Into = -Steer * DriftDirection;
 		const float TargetAngle = Into > DriftHoldMinSteer
 			? FMath::GetMappedRangeValueClamped(FVector2f(DriftHoldMinSteer, 1.f), FVector2f(Drift.MinAngleDegrees, Drift.MaxAngleDegrees), Into)
@@ -587,7 +636,21 @@ void ABNVehiclePawn::UpdateDrift(float DeltaSeconds)
 		const bool bUnwound = TargetAngle == 0.f && FMath::Abs(GetSlipAngleDegrees()) < Drift.ExitAngleDegrees;
 		if (bUnwound || Speed < Drift.MinSpeedKmh * DriftEndSpeedFraction)
 		{
+			// Reward a sustained clean drift exit with a punchy arcade turbo surge & NOS drip!
+			if (bUnwound && IsPlayerControlled() && DriftHoldSeconds >= 1.1f && Speed >= 45.f)
+			{
+				DriftExitBoostRemaining = 0.85f;
+				DriftExitBannerRemaining = 1.6f;
+				GearShiftKick = FMath::Max(GearShiftKick, 0.75f);
+				BoostState.TriggerBackfire(0.32f);
+				BoostState.NosFraction = FMath::Min(1.f, BoostState.NosFraction + 0.08f);
+				if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
+				{
+					Audio->PlaySfx2D(EBNSfxId::NosIgnite, 0.52f);
+				}
+			}
 			bDrifting = false;
+			DriftHoldSeconds = 0.f;
 			CurrentDriftTargetSlip = 0.f;
 		}
 		else if (IsOnGround())

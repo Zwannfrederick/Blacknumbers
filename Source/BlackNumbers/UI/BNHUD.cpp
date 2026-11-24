@@ -710,7 +710,7 @@ void ABNHUD::DrawHUD()
 	}
 
 	const float BannerY = RaceTop + (bPursuitVisible ? (bRaceActive ? 168.f : 108.f) : 96.f);
-	DrawActionBanners(*Car, BannerY);
+	DrawActionBanners(*Car, Pursuit, BannerY);
 
 	if (Prog)
 	{

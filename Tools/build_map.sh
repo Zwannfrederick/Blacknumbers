@@ -12,8 +12,10 @@ if pgrep -x UnrealEditor > /dev/null; then
   exit 2
 fi
 
-# Generate seamless PBR PNGs, Most Wanted UI PNGs, 3D glTF meshes, procedural audio WAVs, and stage UE template vehicles.
+# Generate seamless PBR PNGs (with CC0 1.0 PolyHaven upgrade + offline fallback), Most Wanted UI PNGs,
+# 3D glTF meshes, procedural audio WAVs, and stage UE template vehicles.
 python3 "$PROJECT_DIR/Tools/bn_pbr_textures.py" --generate-only || exit $?
+python3 "$PROJECT_DIR/Tools/fetch_cc0_textures.py" || exit $?
 python3 "$PROJECT_DIR/Tools/bn_ui_textures.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/bn_meshes.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/bn_audio_assets.py" --generate-only || exit $?

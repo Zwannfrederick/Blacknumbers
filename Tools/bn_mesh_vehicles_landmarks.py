@@ -366,6 +366,120 @@ def build_surrounding_hills(b):
         b.add_quad(0, p_mid0, p_mid1, p_out1, p_out0)
 
 
+def build_karamara_hills(b):
+    """Sculpted organic 3D coastal mountain & hillside terrain for Kuzey Gecidi (up to +88 m ridges)
+    and Yamac Mahallesi (+26 m slopes), smoothly carved below every road corridor so zero terrain
+    triangles ever poke above the asphalt."""
+    import karamara_network as knet
+
+    # Gather road segments in metres: (ax, ay, az, bx, by, bz, hw_m)
+    _nodes, edges, _lookup = knet.build_network()
+    segs = []
+    for e in edges:
+        pts = e["points"]
+        hw_m = (e["width"] * 0.5) / 100.0
+        for i in range(len(pts) - 1):
+            a, c = pts[i], pts[i + 1]
+            segs.append((
+                a[0] * 0.01, a[1] * 0.01, a[2] * 0.01,
+                c[0] * 0.01, c[1] * 0.01, c[2] * 0.01,
+                hw_m,
+            ))
+
+    def road_clamp(xm, ym, raw_z):
+        # Also keep Seyir Tepesi overlook terrace (-600, -860, +62 m) and Selin's garage courtyard (-549, +372, +16 m) clear
+        best_d = 1e9
+        best_z = raw_z
+        for ax, ay, az, bx, by, bz, hw in segs:
+            vx, vy = bx - ax, by - ay
+            l2 = vx * vx + vy * vy
+            if l2 < 1e-4:
+                t = 0.0
+            else:
+                t = max(0.0, min(1.0, ((xm - ax) * vx + (ym - ay) * vy) / l2))
+            px, py, pz = ax + vx * t, ay + vy * t, az + (bz - az) * t
+            d = math.hypot(xm - px, ym - py) - hw
+            if d < best_d:
+                best_d = d
+                best_z = pz
+        # Flat pads: Seyir Tepesi overlook & Selin workshop courtyard
+        for cx, cy, cz, rad in ((-600.0, -860.0, 61.5, 32.0), (-549.0, 372.0, 15.6, 28.0)):
+            dp = math.hypot(xm - cx, ym - cy) - rad
+            if dp < best_d:
+                best_d = dp
+                best_z = cz
+        if best_d < 14.0:
+            return min(raw_z, best_z - 0.70)
+        if best_d < 44.0:
+            t = (best_d - 14.0) / 30.0
+            s = t * t * (3.0 - 2.0 * t)
+            target = min(raw_z, best_z - 0.70)
+            return target * (1.0 - s) + raw_z * s
+        return raw_z
+
+    def emit_patch(x0, x1, y0, y1, nx, ny, height_fn, rock_z_thresh):
+        grid = []
+        for iy in range(ny + 1):
+            row = []
+            fy = iy / float(ny)
+            ym = y0 + (y1 - y0) * fy
+            # Fade outer boundary smoothly below main ground plane (-5.5 m) so no cliff skirt shows
+            ey = min(fy, 1.0 - fy) * 5.5
+            ey_mask = 1.0 if ey >= 1.0 else ey * ey * (3.0 - 2.0 * ey)
+            for ix in range(nx + 1):
+                fx = ix / float(nx)
+                xm = x0 + (x1 - x0) * fx
+                ex = min(fx, 1.0 - fx) * 5.5
+                ex_mask = 1.0 if ex >= 1.0 else ex * ex * (3.0 - 2.0 * ex)
+                edge_m = ex_mask * ey_mask
+                raw_z = -5.5 + (height_fn(xm, ym) + 5.5) * edge_m
+                zm = road_clamp(xm, ym, raw_z)
+                row.append((xm, ym, zm))
+            grid.append(row)
+
+        for iy in range(ny):
+            for ix in range(nx):
+                p00 = grid[iy][ix]
+                p10 = grid[iy][ix + 1]
+                p11 = grid[iy + 1][ix + 1]
+                p01 = grid[iy + 1][ix]
+                # Skip triangles completely submerged below flat city ground
+                if max(p00[2], p10[2], p11[2], p01[2]) < -3.5:
+                    continue
+                avg_z = 0.25 * (p00[2] + p10[2] + p11[2] + p01[2])
+                dz = max(p00[2], p10[2], p11[2], p01[2]) - min(p00[2], p10[2], p11[2], p01[2])
+                cell_span = max(abs(p10[0] - p00[0]), abs(p01[1] - p00[1]), 1.0)
+                # Rock on steep faces or alpine altitude, Mediterranean grass on lower rolling foothills
+                slot = 0 if (avg_z > rock_z_thresh or (dz / cell_span) > 0.36) else 1
+                # Outward upward normal (+Z) matching add_box top face: (x0,y0) -> (x1,y0) -> (x1,y1) -> (x0,y1)
+                b.add_quad(slot, p00, p10, p11, p01)
+
+    def kuzey_height(x, y):
+        # Main summit massif under Seyir Tepesi (-600, -860) + alpine ridge behind it + east switchback shoulder
+        summit = 66.0 * math.exp(-(((x + 580.0) / 310.0) ** 2 + ((y + 870.0) / 165.0) ** 2))
+        back_peak = 36.0 * math.exp(-(((x + 480.0) / 360.0) ** 2 + ((y + 985.0) / 105.0) ** 2))
+        east_spur = 34.0 * math.exp(-(((x + 170.0) / 230.0) ** 2 + ((y + 775.0) / 140.0) ** 2))
+        west_ridge = 38.0 * math.exp(-(((x + 830.0) / 190.0) ** 2 + ((y + 720.0) / 200.0) ** 2))
+        crags = (
+            4.2 * math.sin(x * 0.023 + y * 0.019)
+            + 2.8 * math.cos(x * 0.041 - y * 0.037)
+            + 1.6 * math.sin(x * 0.073 + y * 0.061)
+        )
+        base = summit + back_peak + east_spur + west_ridge
+        return base + crags * min(1.0, base / 25.0)
+
+    def yamac_height(x, y):
+        upper = 27.5 * math.exp(-(((x + 730.0) / 220.0) ** 2 + ((y - 420.0) / 220.0) ** 2))
+        mid = 14.5 * math.exp(-(((x + 510.0) / 210.0) ** 2 + ((y - 360.0) / 230.0) ** 2))
+        south_knoll = 12.0 * math.exp(-(((x + 540.0) / 190.0) ** 2 + ((y - 590.0) / 150.0) ** 2))
+        undulate = 2.0 * math.sin(x * 0.025 - y * 0.021) + 1.2 * math.cos(x * 0.048 + y * 0.034)
+        base = upper + mid + south_knoll
+        return base + undulate * min(1.0, base / 14.0)
+
+    emit_patch(-1040.0, 120.0, -1080.0, -560.0, 40, 24, kuzey_height, rock_z_thresh=21.0)
+    emit_patch(-940.0, -240.0, 80.0, 740.0, 26, 24, yamac_height, rock_z_thresh=19.5)
+
+
 def build_race_ring(b):
     """Sleek octagonal holographic start-zone ground ring (radius 4.6 m, height 2.9 m, UV V=0 bottom..1 top)."""
     segs = 24

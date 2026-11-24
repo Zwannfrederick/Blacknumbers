@@ -44,21 +44,21 @@ PHYSICAL = {
 SURFACES = {
     # --- Existing 17 canonical instances (names preserved 100%) ---
     "MI_Asphalt": dict(
-        base_color=(0.74, 0.74, 0.78), albedo="T_Asphalt_D", normal="T_Asphalt_N", roughness_map="T_Asphalt_R",
-        tile_scale=0.18, roughness=0.90, roughness_min=0.46, specular=0.45, normal_strength=0.95, macro_var=0.18,
-        puddle_amount=0.58,
+        base_color=(0.86, 0.86, 0.90), albedo="T_Asphalt_D", normal="T_Asphalt_N", roughness_map="T_Asphalt_R",
+        tile_scale=0.14, roughness=0.90, roughness_min=0.44, specular=0.46, normal_strength=1.00, macro_var=0.16,
+        puddle_amount=0.52,
     ),
     "MI_Concrete": dict(
-        base_color=(0.76, 0.75, 0.72), albedo="T_Concrete_D", normal="T_Concrete_N", roughness_map="T_Concrete_R",
-        tile_scale=0.22, roughness=0.90, roughness_min=0.52, specular=0.38, normal_strength=0.85, macro_var=0.16,
+        base_color=(0.86, 0.85, 0.82), albedo="T_Concrete_D", normal="T_Concrete_N", roughness_map="T_Concrete_R",
+        tile_scale=0.18, roughness=0.90, roughness_min=0.50, specular=0.40, normal_strength=0.95, macro_var=0.16,
     ),
     "MI_Dirt": dict(
-        base_color=(0.86, 0.80, 0.74), albedo="T_Dirt_D", normal="T_Dirt_N", roughness_map="T_Dirt_R",
-        tile_scale=0.25, roughness=0.95, roughness_min=0.68, specular=0.30, normal_strength=1.0, macro_var=0.22,
+        base_color=(0.90, 0.86, 0.82), albedo="T_Dirt_D", normal="T_Dirt_N", roughness_map="T_Dirt_R",
+        tile_scale=0.14, roughness=0.95, roughness_min=0.66, specular=0.30, normal_strength=1.05, macro_var=0.22,
     ),
     "MI_Grass": dict(
         base_color=(0.82, 0.88, 0.78), albedo="T_Grass_D", normal="T_Grass_N", roughness_map="T_Grass_R",
-        tile_scale=0.32, roughness=0.94, roughness_min=0.64, specular=0.28, normal_strength=0.95, macro_var=0.24,
+        tile_scale=0.14, roughness=0.94, roughness_min=0.64, specular=0.28, normal_strength=0.95, macro_var=0.24,
     ),
     "MI_LineWhite": dict(
         base_color=(0.78, 0.78, 0.74), tile_scale=0.5, roughness=0.58, roughness_min=0.58,
@@ -135,13 +135,13 @@ SURFACES = {
         tile_scale=0.28, roughness=0.70, roughness_min=0.30, specular=0.54, metallic=0.50, normal_strength=1.15, macro_var=0.12,
     ),
     "MI_Sidewalk": dict(
-        base_color=(0.82, 0.80, 0.76), albedo="T_Sidewalk_D", normal="T_Sidewalk_N", roughness_map="T_Sidewalk_R",
-        tile_scale=0.38, roughness=0.88, roughness_min=0.48, specular=0.40, normal_strength=0.95, macro_var=0.14,
+        base_color=(0.88, 0.86, 0.82), albedo="T_Sidewalk_D", normal="T_Sidewalk_N", roughness_map="T_Sidewalk_R",
+        tile_scale=0.28, roughness=0.88, roughness_min=0.48, specular=0.40, normal_strength=0.95, macro_var=0.14,
         puddle_amount=0.22,
     ),
     "MI_Cobblestone": dict(
-        base_color=(0.90, 0.87, 0.82), albedo="T_Cobblestone_D", normal="T_Cobblestone_N", roughness_map="T_Cobblestone_R",
-        tile_scale=0.32, roughness=0.84, roughness_min=0.40, specular=0.44, normal_strength=1.10, macro_var=0.16,
+        base_color=(0.94, 0.92, 0.88), albedo="T_Cobblestone_D", normal="T_Cobblestone_N", roughness_map="T_Cobblestone_R",
+        tile_scale=0.22, roughness=0.84, roughness_min=0.40, specular=0.44, normal_strength=1.10, macro_var=0.16,
         puddle_amount=0.32,
     ),
     "MI_FoliageAutumn": dict(
@@ -165,8 +165,8 @@ SURFACES = {
         tile_scale=0.26, roughness=0.58, roughness_min=0.28, specular=0.58, metallic=0.72, normal_strength=0.70, macro_var=0.12,
     ),
     "MI_MountainRock": dict(
-        base_color=(0.44, 0.43, 0.39), albedo="T_Dirt_D", normal="T_Dirt_N", roughness_map="T_Dirt_R",
-        tile_scale=0.06, roughness=0.94, roughness_min=0.70, specular=0.25, normal_strength=1.15, macro_var=0.28,
+        base_color=(0.78, 0.76, 0.72), albedo="T_Rock_D", normal="T_Rock_N", roughness_map="T_Rock_R",
+        tile_scale=0.075, roughness=0.94, roughness_min=0.68, specular=0.28, normal_strength=1.15, macro_var=0.26,
     ),
     "MI_TrafficLightRed": dict(
         base_color=(0.95, 0.08, 0.04), roughness=0.22, roughness_min=0.22, normal_strength=0.0, macro_var=0.0,

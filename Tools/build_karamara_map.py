@@ -72,6 +72,77 @@ def place_mesh(label, mesh_name, location, yaw=0.0, pitch=0.0, scale=(1.0, 1.0, 
     return actor
 
 
+class HismBatcher:
+    """Batches thousands of repeated road/city StaticMeshes into minimal GPU-instanced HISM components."""
+
+    def __init__(self, actor_label, folder):
+        self.actor = spawn(unreal.Actor, actor_label, (0.0, 0.0, 0.0), folder=folder)
+        self.sds = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
+        self.root_handle = None
+        actor_handle = None
+        for h in self.sds.k2_gather_subobject_data_for_instance(self.actor):
+            d = unreal.SubobjectDataBlueprintFunctionLibrary.get_data(h)
+            if unreal.SubobjectDataBlueprintFunctionLibrary.is_root_component(d):
+                self.root_handle = h
+            elif unreal.SubobjectDataBlueprintFunctionLibrary.is_actor(d):
+                actor_handle = h
+        if not self.root_handle:
+            self.root_handle, err = self.sds.add_new_subobject(unreal.AddNewSubobjectParams(
+                parent_handle=actor_handle,
+                new_class=unreal.SceneComponent.static_class(),
+                blueprint_context=None,
+            ))
+            if not err.is_empty():
+                raise RuntimeError(str(err))
+            self.sds.rename_subobject(handle=self.root_handle, new_name=unreal.Text("BatchRoot"))
+        self.buckets = {}
+        self.counter = 0
+
+    def _get_comp(self, name_hint, mesh, mat_name, phys_name, collision, cast_shadow, cull_cm):
+        key = (mesh.get_name(), mat_name, phys_name, bool(collision), bool(cast_shadow), int(cull_cm))
+        comp = self.buckets.get(key)
+        if comp is not None:
+            return comp
+        self.counter += 1
+        comp_handle, err = self.sds.add_new_subobject(unreal.AddNewSubobjectParams(
+            parent_handle=self.root_handle,
+            new_class=unreal.HierarchicalInstancedStaticMeshComponent.static_class(),
+            blueprint_context=None,
+        ))
+        if not err.is_empty():
+            raise RuntimeError(str(err))
+        self.sds.rename_subobject(handle=comp_handle, new_name=unreal.Text("%s_%d" % (name_hint, self.counter)))
+        comp = unreal.SubobjectDataBlueprintFunctionLibrary.get_associated_object(
+            unreal.SubobjectDataBlueprintFunctionLibrary.get_data(comp_handle)
+        )
+        comp.set_static_mesh(mesh)
+        if mat_name is not None:
+            comp.set_material(0, MI[mat_name])
+        if phys_name is not None:
+            comp.set_phys_material_override(PM[phys_name])
+        comp.set_editor_property("cast_shadow", bool(cast_shadow))
+        if collision:
+            comp.set_collision_profile_name("BlockAll")
+            comp.set_collision_enabled(unreal.CollisionEnabled.QUERY_AND_PHYSICS)
+        else:
+            comp.set_collision_profile_name("NoCollision")
+            comp.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
+        if cull_cm > 0:
+            comp.set_cull_distances(0, int(cull_cm))
+        self.buckets[key] = comp
+        return comp
+
+    def add(self, name_hint, loc, scale, mat_name=None, phys_name=None, collision=True,
+            yaw=0.0, pitch=0.0, mesh=CUBE, cast_shadow=True, cull_cm=0):
+        comp = self._get_comp(name_hint, mesh, mat_name, phys_name, collision, cast_shadow, cull_cm)
+        xf = unreal.Transform(
+            location=unreal.Vector(*loc),
+            rotation=unreal.Rotator(roll=0.0, pitch=pitch, yaw=yaw),
+            scale=unreal.Vector(*scale),
+        )
+        comp.add_instance(xf, True)
+
+
 def reset_level():
     if unreal.EditorAssetLibrary.does_asset_exist(MAP_PATH):
         levels.load_level(MAP_PATH)
@@ -85,10 +156,8 @@ def reset_level():
 
 def build_road_geometry(nodes, edges):
     """Constructs continuous smooth curved & sloped drivable asphalt/cobblestone/dirt roads,
-    sidewalks, viaduct support piers, embankment retaining slopes, and intersection pads."""
-    road_f = "RoadNetwork/Surface"
-    mark_f = "RoadNetwork/Markings"
-    struct_f = "RoadNetwork/Structures"
+    sidewalks, viaduct support piers, embankment retaining slopes, and intersection pads via HISM batching."""
+    roads = HismBatcher("Karamara_RoadNetwork_HISM", "RoadNetwork/HISM")
 
     # Track widest incident edge per node for clean circular junction pads
     node_width = {nid: 1400.0 for nid in nodes}
@@ -120,61 +189,59 @@ def build_road_geometry(nodes, edges):
             pitch = math.degrees(math.atan2(dz, dxy))
             mx, my, mz = 0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1]), 0.5 * (a[2] + b[2])
 
-            # 45 cm thick drivable road slab overlapped 18% lengthwise so curves & grade crests stay butter-smooth
+            # 46 cm thick drivable road slab overlapped 18% lengthwise so curves & grade crests stay butter-smooth
             slab_len_m = (seg3d * 1.18) / 100.0
             slab_w_m = w / 100.0
             thick_cm = 46.0
-            block("RoadSeg", (mx, my, mz - thick_cm * 0.5), (slab_len_m, slab_w_m, thick_cm / 100.0),
-                  mat, phys, yaw=yaw, pitch=pitch, folder=road_f)
+            roads.add("RoadSeg", (mx, my, mz - thick_cm * 0.5), (slab_len_m, slab_w_m, thick_cm / 100.0),
+                      mat, phys, collision=True, yaw=yaw, pitch=pitch, cast_shadow=(mz > 120.0))
 
-            # Lane markings (center yellow dashes + white edges on paved roads)
+            # Lane markings (center yellow dashes + white edges on paved roads, culled past 280 m)
             if not is_dirt:
-                block("CenterLine", (mx, my, mz + 1.8), (slab_len_m * 0.52, 0.16, 0.02),
-                      "MI_LineYellow", collision=False, yaw=yaw, pitch=pitch, folder=mark_f)
+                roads.add("CenterLine", (mx, my, mz + 1.8), (slab_len_m * 0.52, 0.16, 0.02),
+                          "MI_LineYellow", None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=28000)
                 nx, ny = -dy / dxy, dx / dxy
                 for side in (-1.0, 1.0):
                     eo = (w * 0.5 - 55.0) * side
-                    block("EdgeLine", (mx + nx * eo, my + ny * eo, mz + 1.5), (slab_len_m, 0.14, 0.02),
-                          "MI_LineWhite", collision=False, yaw=yaw, pitch=pitch, folder=mark_f)
+                    roads.add("EdgeLine", (mx + nx * eo, my + ny * eo, mz + 1.5), (slab_len_m, 0.14, 0.02),
+                              "MI_LineWhite", None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=28000)
 
-                # Raised urban sidewalks along flat Merkez / Sanayi / Liman / Yamac streets
+                # Raised urban sidewalks along flat Merkez / Sanayi / Yamac streets
                 if not e["highway"] and e["district"] in (knet.DIST_MERKEZ, knet.DIST_SANAYI, knet.DIST_YAMAC):
                     sw_w = 300.0
                     for side in (-1.0, 1.0):
                         so = (w * 0.5 + sw_w * 0.5) * side
-                        block("Sidewalk", (mx + nx * so, my + ny * so, mz - 12.0),
-                              (slab_len_m, sw_w / 100.0, 0.52), "MI_Sidewalk", "PM_Concrete",
-                              yaw=yaw, pitch=pitch, folder=road_f)
+                        roads.add("Sidewalk", (mx + nx * so, my + ny * so, mz - 12.0),
+                                  (slab_len_m, sw_w / 100.0, 0.52), "MI_Sidewalk", "PM_Concrete",
+                                  collision=True, yaw=yaw, pitch=pitch, cast_shadow=False)
 
             # Structural support under elevated segments (Z > 120 cm)
             if mz > 120.0:
                 is_bridge_span = (e["node_a"], e["node_b"]) in ((20, 21), (21, 20))
                 if e["highway"] and not is_bridge_span:
-                    # Viaduct box-girder underside + piers down to Z = -200 cm every ~45 m
-                    block("ViaductGirder", (mx, my, mz - 95.0), (slab_len_m, slab_w_m * 0.86, 1.3),
-                          "MI_Concrete", "PM_Concrete", yaw=yaw, pitch=pitch, folder=struct_f)
+                    roads.add("ViaductGirder", (mx, my, mz - 95.0), (slab_len_m, slab_w_m * 0.86, 1.3),
+                              "MI_Concrete", "PM_Concrete", collision=True, yaw=yaw, pitch=pitch, cast_shadow=True)
                     pier_accum += seg3d
                     if pier_accum >= 4500.0:
                         pier_accum = 0.0
                         pier_h = mz + 120.0
-                        block("ViaductPier", (mx, my, (mz - 100.0) * 0.5 - 60.0),
-                              (2.6, 2.6, pier_h / 100.0), "MI_Concrete", "PM_Concrete",
-                              mesh=CYLINDER, folder=struct_f)
+                        roads.add("ViaductPier", (mx, my, (mz - 100.0) * 0.5 - 60.0),
+                                  (2.6, 2.6, pier_h / 100.0), "MI_Concrete", "PM_Concrete",
+                                  collision=True, mesh=CYLINDER, cast_shadow=True)
                 elif not is_bridge_span:
-                    # Mountain / hillside solid rock-concrete retaining embankment down to terrain!
                     emb_h = mz + 240.0
-                    block("Embankment", (mx, my, mz - 42.0 - emb_h * 0.5),
-                          (slab_len_m * 1.04, slab_w_m * 1.24, emb_h / 100.0),
-                          "MI_MountainRock" if e["district"] == knet.DIST_GECIT else "MI_Concrete",
-                          "PM_Concrete", yaw=yaw, pitch=0.0, folder=struct_f)
+                    roads.add("Embankment", (mx, my, mz - 42.0 - emb_h * 0.5),
+                              (slab_len_m * 1.04, slab_w_m * 1.24, emb_h / 100.0),
+                              "MI_MountainRock" if e["district"] == knet.DIST_GECIT else "MI_Concrete",
+                              "PM_Concrete", collision=True, yaw=yaw, pitch=0.0, cast_shadow=False)
 
     # Circular intersection blend pads at every road node (eliminates T/4-way seam gaps)
     for nid, n in nodes.items():
         x, y, z = n["pos"]
         dia_m = (node_width[nid] * 1.18) / 100.0
         nmat, nphys = node_mat[nid]
-        block("JunctionPad", (x, y, z - 22.5), (dia_m, dia_m, 0.45),
-              nmat, nphys, mesh=CYLINDER, folder=road_f)
+        roads.add("JunctionPad", (x, y, z - 22.5), (dia_m, dia_m, 0.45),
+                  nmat, nphys, collision=True, mesh=CYLINDER, cast_shadow=False)
 
 
 def export_road_graph_asset(nodes, edges):
@@ -401,7 +468,8 @@ def build_lighting():
 reset_level()
 nodes, edges, lookup = knet.build_network()
 clearance = kscene.build_road_clearance_checker(edges)
-ctx = dict(spawn=spawn, block=block, place_mesh=place_mesh, MI=MI, PM=PM, meshes=MESHES)
+scenery_batch = HismBatcher("Karamara_CityScenery_HISM", "Environment/HISM")
+ctx = dict(spawn=spawn, block=block, place_mesh=place_mesh, hism=scenery_batch, MI=MI, PM=PM, meshes=MESHES, cube=CUBE)
 
 kscene.build_terrain_and_sea(ctx)
 build_road_geometry(nodes, edges)

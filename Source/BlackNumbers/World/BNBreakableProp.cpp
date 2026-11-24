@@ -18,6 +18,7 @@ namespace
 ABNBreakableProp::ABNBreakableProp()
 {
 	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.TickInterval = 0.04f; // 25 Hz proximity backup; OnPropHit handles instant high-speed impacts
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cube(TEXT("/Engine/BasicShapes/Cube.Cube"));
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
 	CubeMesh = Cube.Object;
@@ -84,6 +85,7 @@ void ABNBreakableProp::BreakProp(const FVector& ImpactVelocity, bool bByPlayer)
 	}
 	bBroken = true;
 	BrokenSeconds = 0.f;
+	SetActorTickInterval(0.25f);
 
 	PropMesh->SetCollisionResponseToChannel(ECC_Vehicle, ECR_Ignore);
 	PropMesh->SetCollisionResponseToChannel(ECC_Pawn, ECR_Ignore);

@@ -523,6 +523,7 @@ MESH_MANIFEST = [
     ("SM_BN_CargoShip", bm_extra.build_cargo_ship, ["MI_Barrier_Red", "MI_Metal_Dark", "MI_Concrete", "MI_Container_Blue", "MI_Container_Amber"], "none"),
     ("SM_BN_TunnelArch", bm_extra.build_tunnel_arch, ["MI_Concrete", "MI_Metal_Dark", "MI_HazardYellow"], "complex"),
     ("SM_BN_SurroundingHills", bm_extra.build_surrounding_hills, ["MI_MountainRock", "MI_Grass"], "none"),
+    ("SM_BN_KaramaraHills", bm_extra.build_karamara_hills, ["MI_MountainRock", "MI_Grass"], "none"),
     ("SM_BN_Traffic_Sedan", bm_extra.build_traffic_sedan, ["MI_Traffic_Paint", "MI_Traffic_Glass", "MI_Traffic_Trim", "MI_Traffic_Headlight", "MI_Traffic_Taillight"], "simple"),
     ("SM_BN_Traffic_Hatchback", bm_extra.build_traffic_hatchback, ["MI_Traffic_Paint", "MI_Traffic_Glass", "MI_Traffic_Trim", "MI_Traffic_Headlight", "MI_Traffic_Taillight"], "simple"),
     ("SM_BN_Traffic_Van", bm_extra.build_traffic_van, ["MI_Traffic_Paint", "MI_Traffic_Glass", "MI_Traffic_Trim", "MI_Traffic_Headlight", "MI_Traffic_Taillight"], "simple"),

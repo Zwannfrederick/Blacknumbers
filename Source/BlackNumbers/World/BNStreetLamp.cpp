@@ -67,7 +67,9 @@ ABNStreetLamp::ABNStreetLamp()
 	Light->SetAttenuationRadius(LampRadius);
 	Light->SetInnerConeAngle(40.f);
 	Light->SetOuterConeAngle(70.f);
-	Light->SetCastShadows(false); // ponytail: ~26 lamps per street; enable on hero lamps if night shadows are wanted
+	Light->MaxDrawDistance = 18000.f;
+	Light->MaxDistanceFadeRange = 3500.f;
+	Light->SetCastShadows(false); // ponytail: ~110 lamps citywide; 180m cull keeps night RenderThread fast
 	Light->SetVisibility(false);
 }
 

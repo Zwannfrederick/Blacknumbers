@@ -45,8 +45,13 @@ public:
 
 	void OnPursuitBreakerTriggered(ABNPursuitBreaker* Breaker, ABNVehiclePawn* PlayerCar);
 	void DisablePoliceNear(const FVector& Origin, float RadiusCm);
+	void OnPlayerRammedPolice(ABNVehiclePawn* PoliceCar, float PlayerSpeedKmh);
+	bool GetNearestRoadblockAhead(const ABNVehiclePawn& Player, float& OutDistanceMeters, bool& bOutHasSpikes, FVector* OutWorldLoc = nullptr) const;
 
 	const FBNPursuitState& GetState() const { return State; }
+
+	UFUNCTION(BlueprintPure, Category = "Police")
+	float GetTakedownBannerSeconds() const { return TakedownBannerSeconds; }
 
 	UFUNCTION(BlueprintPure, Category = "Police")
 	int32 GetActivePoliceCount() const;
@@ -97,6 +102,7 @@ private:
 	float SpawnCooldown = 0.f;
 	float RoadblockCooldown = 0.f;
 	float SpikePenaltySeconds = 0.f;
+	float TakedownBannerSeconds = 0.f;
 	float PatrolSpawnCooldown = 2.f;
 	int32 NextSlot = 0;
 	int32 LastDispatchSerial = 0;

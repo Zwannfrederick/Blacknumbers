@@ -158,6 +158,7 @@ def _build_particle_master(mat_dir, name, textures, additive, h):
     mel.delete_all_material_expressions(mat)
     mat.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE if additive else unreal.BlendMode.BLEND_TRANSLUCENT)
     mat.set_editor_property("two_sided", True)
+    mat.set_editor_property("used_with_instanced_static_meshes", True)
     try:
         mat.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     except Exception:

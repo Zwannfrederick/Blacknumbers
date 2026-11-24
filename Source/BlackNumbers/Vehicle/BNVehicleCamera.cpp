@@ -91,7 +91,10 @@ void ABNVehiclePawn::UpdateCamera(float DeltaSeconds, float RealDt, float SpeedK
 	const float SpeedFov = FMath::GetMappedRangeValueClamped(
 		FVector2f(0.f, FovMaxSpeedKmh), FVector2f(BaseFov, MaxFov), FMath::Abs(SpeedKmh));
 	const float NosFovScale = bHood ? 0.55f : 1.f;
-	Camera->SetFieldOfView(SpeedFov + BoostState.NosBlend * Boost.NosFovBonus * NosFovScale - BoostState.SpeedbreakerBlend * 6.f);
+	const float DriftBoostFov = (DriftExitBoostRemaining > 0.f ? 3.5f : 0.f) * NosFovScale;
+	const float ImpactFovKick = -CameraImpactShake * 2.8f;
+	Camera->SetFieldOfView(SpeedFov + BoostState.NosBlend * Boost.NosFovBonus * NosFovScale + DriftBoostFov
+		+ ImpactFovKick - BoostState.SpeedbreakerBlend * 6.f);
 	Camera->PostProcessBlendWeight = BoostState.SpeedbreakerBlend;
 
 	const float BaseDistance = ChaseDistances.IsValidIndex(ChaseDistanceIndex) ? ChaseDistances[ChaseDistanceIndex] : 650.f;
@@ -101,8 +104,10 @@ void ABNVehiclePawn::UpdateCamera(float DeltaSeconds, float RealDt, float SpeedK
 
 	const float ShakeScale = (BoostState.bSpeedbreakerActive ? 0.f : (bHood ? 0.35f : 1.f))
 		* FMath::GetMappedRangeValueClamped(FVector2f(SpeedShakeMinKmh, SpeedShakeFullKmh), FVector2f(0.f, MaxSpeedShakeAmplitude), FMath::Abs(SpeedKmh));
-	const float ShakeY = ShakeScale * FMath::Sin(RealTimeSeconds * 37.f);
-	const float ShakeZ = ShakeScale * 0.7f * FMath::Sin(RealTimeSeconds * 53.f + 1.1f);
+	const float ImpactAmp = CameraImpactShake * (bHood ? 4.5f : 11.5f);
+	const float ShakeX = ImpactAmp * 0.6f * FMath::Sin(RealTimeSeconds * 79.f);
+	const float ShakeY = ShakeScale * FMath::Sin(RealTimeSeconds * 37.f) + ImpactAmp * FMath::Sin(RealTimeSeconds * 67.f + 0.7f);
+	const float ShakeZ = ShakeScale * 0.7f * FMath::Sin(RealTimeSeconds * 53.f + 1.1f) + ImpactAmp * 0.8f * FMath::Cos(RealTimeSeconds * 89.f);
 	CurrentSocketBaseZ = FMath::FInterpTo(CurrentSocketBaseZ, bHood ? 0.f : BaseSocketZ, RealDt, 16.f);
-	CameraBoom->SocketOffset = FVector(0.f, ShakeY, CurrentSocketBaseZ + ShakeZ);
+	CameraBoom->SocketOffset = FVector(ShakeX, ShakeY, CurrentSocketBaseZ + ShakeZ);
 }

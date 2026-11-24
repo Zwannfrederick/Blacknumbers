@@ -200,6 +200,10 @@ void UBNPursuitSubsystem::OnPursuitBreakerTriggered(ABNPursuitBreaker* Breaker, 
 		}
 	}
 
+	if (DisabledCount > 0)
+	{
+		TakedownBannerSeconds = 2.2f;
+	}
 	State.RecordPursuitBreaker(Breaker->CollateralCostDollars, DisabledCount);
 	UE_LOG(LogTemp, Display, TEXT("BN PursuitBreaker '%s': cost +$%d (total $%d), disabled %d units"),
 		*Breaker->StructureName, Breaker->CollateralCostDollars, State.CostToStateDollars, DisabledCount);
@@ -224,8 +228,88 @@ void UBNPursuitSubsystem::DisablePoliceNear(const FVector& Origin, float RadiusC
 		{
 			Ctrl->DisableUnit();
 			State.RecordUnitDisabled();
+			TakedownBannerSeconds = 2.2f;
 		}
 	}
+}
+
+void UBNPursuitSubsystem::OnPlayerRammedPolice(ABNVehiclePawn* PoliceCar, float PlayerSpeedKmh)
+{
+	if (!PoliceCar || !State.IsPursuitRunning())
+	{
+		return;
+	}
+	for (const FPoliceUnit& Unit : Units)
+	{
+		if (Unit.Car.Get() != PoliceCar)
+		{
+			continue;
+		}
+		ABNPoliceController* Ctrl = Unit.Controller.Get();
+		if (!Ctrl || Ctrl->IsUnitDisabled())
+		{
+			return;
+		}
+		// High-speed slam disables a regular cruiser; Heavy Rhinos absorb the hit and log heavy collateral!
+		if (!Ctrl->IsHeavyRhino() && PlayerSpeedKmh >= 130.f)
+		{
+			Ctrl->DisableUnit();
+			State.RecordUnitDisabled();
+			State.RecordCollateralDamage(5000, TEXT("Polis Aracı Devre Dışı"));
+			State.PostDispatch(TEXT("MERKEZ"), TEXT("Birim çarpışmada devre dışı kaldı! Takviye yönlendiriliyor!"));
+			TakedownBannerSeconds = 2.2f;
+		}
+		else
+		{
+			State.RecordCollateralDamage(3000, TEXT("Polis Aracı Hasarı"));
+		}
+		return;
+	}
+}
+
+bool UBNPursuitSubsystem::GetNearestRoadblockAhead(const ABNVehiclePawn& Player, float& OutDistanceMeters,
+	bool& bOutHasSpikes, FVector* OutWorldLoc) const
+{
+	if (!State.IsPursuitRunning())
+	{
+		return false;
+	}
+	const FVector PlayerLoc = Player.GetActorLocation();
+	const FVector PlayerFwd = Player.GetActorForwardVector().GetSafeNormal2D();
+	FVector SumLoc = FVector::ZeroVector;
+	int32 Count = 0;
+	float BestAlong = 24000.f;
+
+	for (const FPoliceUnit& Unit : Units)
+	{
+		const ABNVehiclePawn* Car = Unit.Car.Get();
+		const ABNPoliceController* Ctrl = Unit.Controller.Get();
+		if (!Car || !Ctrl || !Ctrl->IsRoadblockUnit() || Ctrl->IsUnitDisabled())
+		{
+			continue;
+		}
+		const FVector ToCar = Car->GetActorLocation() - PlayerLoc;
+		const float Along = FVector::DotProduct(ToCar, PlayerFwd);
+		const float Dist2D = ToCar.Size2D();
+		if (Along > 400.f && Dist2D <= 24000.f)
+		{
+			SumLoc += Car->GetActorLocation();
+			++Count;
+			BestAlong = FMath::Min(BestAlong, Dist2D);
+		}
+	}
+	if (Count == 0)
+	{
+		return false;
+	}
+	const FVector Center = SumLoc / static_cast<float>(Count);
+	OutDistanceMeters = BestAlong / 100.f;
+	bOutHasSpikes = SpikeStrips.Num() > 0;
+	if (OutWorldLoc)
+	{
+		*OutWorldLoc = Center;
+	}
+	return true;
 }
 
 int32 UBNPursuitSubsystem::GetActivePoliceCount() const
@@ -473,6 +557,7 @@ void UBNPursuitSubsystem::Tick(float DeltaTime)
 	}
 
 	PruneUnits();
+	TakedownBannerSeconds = FMath::Max(0.f, TakedownBannerSeconds - DeltaTime);
 	TickSpikeStrips(*Player, DeltaTime);
 
 	const FVector PlayerLoc = Player->GetActorLocation();

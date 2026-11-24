@@ -653,10 +653,14 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 		}
 
 		const bool bBraking = TargetSpeed < Car.CurrentSpeedCmPerSec - 120.f;
-		if (UMaterialInstanceDynamic* TailMid = Car.TaillightMid.Get())
+		if (bBraking != Car.bWasBraking)
 		{
-			TailMid->SetVectorParameterValue(TEXT("Emissive"),
-				bBraking ? FLinearColor(9.0f, 0.22f, 0.08f, 1.f) : FLinearColor(1.8f, 0.08f, 0.04f, 1.f));
+			Car.bWasBraking = bBraking;
+			if (UMaterialInstanceDynamic* TailMid = Car.TaillightMid.Get())
+			{
+				TailMid->SetVectorParameterValue(TEXT("Emissive"),
+					bBraking ? FLinearColor(9.0f, 0.22f, 0.08f, 1.f) : FLinearColor(1.8f, 0.08f, 0.04f, 1.f));
+			}
 		}
 
 		const float AccelRate = bBraking ? 1450.f : 680.f;
@@ -702,6 +706,7 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 				{
 					Fx->TriggerCollisionSparks(0.5f * (NextLoc + PlayerLoc) + FVector(0.f, 0.f, 55.f), -Away2D, 1.f);
 				}
+				Player->AddCameraImpulse(0.8f);
 				if (Pursuit)
 				{
 					Pursuit->ReportCollateralDamage(TrafficCollateralDollars, TEXT("Sivil Trafik Çarpışması"));

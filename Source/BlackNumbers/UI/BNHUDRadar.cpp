@@ -430,6 +430,20 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 					PlotSquare(Pt, 3.2f, bFlash ? BNRadar::BlipPoliceRed : BNRadar::BlipPoliceBlue);
 				}
 			}
+
+			// Roadblock tactical X warning icon on circular radar
+			float RbDistM = 0.f;
+			bool bRbSpikes = false;
+			FVector RbCenter = FVector::ZeroVector;
+			if (Pursuit->GetNearestRoadblockAhead(Car, RbDistM, bRbSpikes, &RbCenter))
+			{
+				const FVector2D RbPt = BNRadar::ClampToRadarEdge(
+					BNRadar::ProjectUnclamped(RbCenter, PlayerLoc, CosY, SinY, Cx, Cy, ActiveRangeCm),
+					Cx, Cy, BNRadar::RadarInnerClip - 3.f);
+				const FLinearColor RbCol = bFlash ? BNRadar::BlipPoliceRed : BNRadar::BlipBreaker;
+				DrawLine(RbPt.X - 5.5f, RbPt.Y - 5.5f, RbPt.X + 5.5f, RbPt.Y + 5.5f, RbCol, 2.8f);
+				DrawLine(RbPt.X + 5.5f, RbPt.Y - 5.5f, RbPt.X - 5.5f, RbPt.Y + 5.5f, RbCol, 2.8f);
+			}
 		}
 	}
 
@@ -556,15 +570,40 @@ void ABNHUD::DrawEconomyPill(const UBNProgressionSubsystem& Progression)
 	}
 }
 
-void ABNHUD::DrawActionBanners(const ABNVehiclePawn& Car, float BaseY)
+void ABNHUD::DrawActionBanners(const ABNVehiclePawn& Car, const UBNPursuitSubsystem* Pursuit, float BaseY)
 {
-	if (Car.GetLaunchBannerSeconds() > 0.f)
+	float RbDistM = 0.f;
+	bool bRbSpikes = false;
+	if (Pursuit && Pursuit->GetNearestRoadblockAhead(Car, RbDistM, bRbSpikes))
 	{
-		DrawCentred(TEXT("PERFECT LAUNCH!"), BaseY, BNRadar::BannerScale * 1.1f, BNRadar::DashColour);
+		const bool bFlash = GetWorld() && FMath::Fmod(GetWorld()->GetTimeSeconds() * 7.0, 1.0) < 0.55;
+		const int32 DistM = FMath::Max(10, FMath::RoundToInt(RbDistM / 5.f) * 5);
+		const FString Alert = bRbSpikes
+			? FString::Printf(TEXT("DİKENLİ BARİKAT ÖNÜNDE — %dm  [B] SPEEDBREAKER"), DistM)
+			: FString::Printf(TEXT("POLİS BARİKATI ÖNÜNDE — %dm"), DistM);
+		DrawCentred(Alert, BaseY, BNRadar::BannerScale * 0.85f, bFlash ? BNRadar::BlipPoliceRed : BNRadar::DashColour);
+		BaseY += 32.f;
+	}
+
+	if (Pursuit && Pursuit->GetTakedownBannerSeconds() > 0.f)
+	{
+		DrawCentred(TEXT("POLİS DEVRE DIŞI!  +$5,000"), BaseY, BNRadar::BannerScale * 1.05f, BNRadar::BlipBreaker);
+	}
+	else if (Car.GetLaunchBannerSeconds() > 0.f)
+	{
+		DrawCentred(TEXT("MÜKEMMEL KALKIŞ!"), BaseY, BNRadar::BannerScale * 1.1f, BNRadar::DashColour);
+	}
+	else if (Car.GetDriftExitBannerSeconds() > 0.f)
+	{
+		DrawCentred(TEXT("DRİFT ÇIKIŞI  +NOS"), BaseY, BNRadar::BannerScale, BNRadar::NosActiveColour);
 	}
 	else if (Car.GetNearMissBannerSeconds() > 0.f)
 	{
-		DrawCentred(TEXT("NEAR MISS  +NOS"), BaseY, BNRadar::BannerScale, BNRadar::NosActiveColour);
+		const int32 Streak = Car.GetNearMissStreak();
+		const FString Label = Streak > 1
+			? FString::Printf(TEXT("SIFIR GEÇİŞ x%d  +NOS"), Streak)
+			: FString(TEXT("SIFIR GEÇİŞ  +NOS"));
+		DrawCentred(Label, BaseY, BNRadar::BannerScale, BNRadar::NosActiveColour);
 	}
 	else if (Car.IsSpeedbreakerActive())
 	{

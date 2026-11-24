@@ -324,5 +324,12 @@ void UBNAudioSubsystem::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 	const float SafeDt = FMath::Clamp(DeltaTime, 0.f, 0.1f);
-	UpdateMusicCrossfade(SafeDt, DetermineDesiredMusicState());
+	StatePollAccum += SafeDt;
+	EBNMusicState Desired = ActiveMusicState;
+	if (StatePollAccum >= 0.10f || ActiveMusicState == EBNMusicState::Silent)
+	{
+		StatePollAccum = 0.f;
+		Desired = DetermineDesiredMusicState();
+	}
+	UpdateMusicCrossfade(SafeDt, Desired);
 }

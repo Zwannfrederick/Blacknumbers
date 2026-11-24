@@ -117,6 +117,7 @@ void ABNPursuitBreaker::TriggerCollapse(ABNVehiclePawn* TriggerCar)
 		return;
 	}
 	bCollapsed = true;
+	SetActorTickInterval(0.f);
 	CollapseTimer = 0.f;
 	DebrisTimer = 0.f;
 	ResetTimer = 0.f;
@@ -124,6 +125,7 @@ void ABNPursuitBreaker::TriggerCollapse(ABNVehiclePawn* TriggerCar)
 
 	if (TriggerCar)
 	{
+		TriggerCar->AddCameraImpulse(1.1f);
 		if (UBNVehicleEffectsComponent* Fx = TriggerCar->FindComponentByClass<UBNVehicleEffectsComponent>())
 		{
 			Fx->TriggerCollisionSparks(GetActorLocation() + FVector(0.f, 0.f, 220.f), FVector::UpVector, 1.3f);
@@ -262,11 +264,16 @@ void ABNPursuitBreaker::Tick(float DeltaSeconds)
 	if (!bCollapsed)
 	{
 		const bool bArmedForPursuit = CanTriggerBreakerFor(GetWorld(), Player);
-		WarningLight->SetVisibility(bArmedForPursuit);
+		if (WarningLight->IsVisible() != bArmedForPursuit)
+		{
+			WarningLight->SetVisibility(bArmedForPursuit);
+		}
 		if (!bArmedForPursuit)
 		{
+			SetActorTickInterval(0.25f);
 			return;
 		}
+		SetActorTickInterval(0.f);
 		const bool bBeaconPulse = World && FMath::Fmod(World->GetTimeSeconds() * 2.5, 1.0) < 0.65;
 		WarningLight->SetIntensity(bBeaconPulse ? WarningNormalCandelas : 80.f);
 
@@ -280,6 +287,7 @@ void ABNPursuitBreaker::Tick(float DeltaSeconds)
 		}
 		return;
 	}
+	SetActorTickInterval(0.f);
 
 	if (CollapseTimer < CollapseDurationSeconds)
 	{

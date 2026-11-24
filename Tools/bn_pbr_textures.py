@@ -536,9 +536,11 @@ def ensure_ue_textures(force_reimport=False):
     for name, kind in TEXTURE_MANIFEST:
         ue_path = "%s/%s" % (UE_TEX_DIR, name)
         png_path = os.path.join(OUT_DIR, name + ".png")
+        uasset_path = os.path.join(PROJECT_DIR, "Content", "World", "Textures", name + ".uasset")
         if not os.path.isfile(png_path):
             raise RuntimeError("Missing generated texture PNG: " + png_path)
-        if force_reimport or not assets.does_asset_exist(ue_path):
+        png_newer = os.path.isfile(uasset_path) and os.path.getmtime(png_path) > os.path.getmtime(uasset_path)
+        if force_reimport or png_newer or not assets.does_asset_exist(ue_path):
             task = unreal.AssetImportTask()
             task.filename = png_path
             task.destination_path = UE_TEX_DIR

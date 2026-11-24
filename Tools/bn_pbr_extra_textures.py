@@ -30,12 +30,15 @@ EXTRA_TEXTURE_MANIFEST = [
     ("T_Sign_DoguSanayi", "albedo"),
     ("T_Storefront_Karamara_D", "albedo"),
     ("T_Storefront_Karamara_E", "emissive"),
-    # Road details & cobblestone
+    # Road details, cobblestone & mountain rock
     ("T_Crosswalk_D", "albedo"),
     ("T_RoadArrow_D", "albedo"),
     ("T_Cobblestone_D", "albedo"),
     ("T_Cobblestone_N", "normal"),
     ("T_Cobblestone_R", "roughness"),
+    ("T_Rock_D", "albedo"),
+    ("T_Rock_N", "normal"),
+    ("T_Rock_R", "roughness"),
 ]
 
 
@@ -401,5 +404,15 @@ def generate_extra_pngs(out_dir, save_rgb, save_gray, save_normal, periodic_nois
     save_rgb("T_Cobblestone_D", cob_d)
     save_normal("T_Cobblestone_N", cob_h, strength=5.0)
     save_gray("T_Cobblestone_R", cob_r)
+
+    # Procedural fallback cliff rock (overridden by CC0 rock_wall_04 when online)
+    rng = np.random.default_rng(1303)
+    r_macro = fbm(rng, C, [(6, 0.40), (18, 0.35), (54, 0.25)])
+    r_fine = periodic_noise(rng, C, 128)
+    strata = 0.5 + 0.5 * np.sin((yy / float(C)) * 2.0 * math.pi * 7.0 + r_macro * 5.0)
+    rk = 0.26 + 0.20 * r_macro + 0.08 * strata + 0.05 * (r_fine - 0.5)
+    save_rgb("T_Rock_D", np.stack([rk * 1.03, rk * 0.99, rk * 0.93], axis=-1))
+    save_normal("T_Rock_N", 0.45 * r_macro + 0.35 * strata + 0.20 * r_fine, strength=6.0)
+    save_gray("T_Rock_R", np.clip(0.84 + 0.14 * r_macro - 0.08 * strata, 0.55, 0.98))
 
     return len(EXTRA_TEXTURE_MANIFEST)
