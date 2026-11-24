@@ -8,6 +8,7 @@
 #include "Engine/GameViewportClient.h"
 #include "Engine/Texture2D.h"
 #include "EngineUtils.h"
+#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "Garage/BNGarageSubsystem.h"
 #include "Kismet/GameplayStatics.h"
@@ -129,7 +130,7 @@ void ABNHUD::RemoveAllSlateOverlays()
 {
 	if (GEngine && GEngine->GameViewport)
 	{
-		for (const TSharedPtr<SWidget>& Host : { TitleScreenHost, ResultsHost, MenuHost, StoryCardHost })
+		for (const TSharedPtr<SWidget>& Host : { TitleScreenHost, ResultsHost, MenuHost, StoryCardHost, RaceBriefingHost, WorldMapHost })
 		{
 			if (Host.IsValid())
 			{
@@ -145,6 +146,10 @@ void ABNHUD::RemoveAllSlateOverlays()
 	MenuWidget.Reset();
 	StoryCardHost.Reset();
 	StoryCardWidget.Reset();
+	RaceBriefingHost.Reset();
+	RaceBriefingWidget.Reset();
+	WorldMapHost.Reset();
+	WorldMapWidget.Reset();
 	LastShownCardKey.Reset();
 	if (bPausedForRaceMenu)
 	{
@@ -281,6 +286,16 @@ bool ABNHUD::HandleMenuCloseOrAdvanceCard()
 		DismissTitleScreen(true);
 		return true;
 	}
+	if (IsRaceBriefingOpen())
+	{
+		CloseRaceBriefing(true);
+		return true;
+	}
+	if (IsWorldMapOpen())
+	{
+		CloseWorldMap();
+		return true;
+	}
 	if (IsResultsOverlayOpen())
 	{
 		DismissResultsOverlay(true);
@@ -302,6 +317,118 @@ bool ABNHUD::HandleMenuCloseOrAdvanceCard()
 	}
 	OpenMenu(EBNMenuTab::Races);
 	return true;
+}
+
+void ABNHUD::OpenRaceBriefing(ABNRaceEvent* Event)
+{
+	if (!CanUseViewportSlate() || !Event || !Event->Definition || IsMenuOpen())
+	{
+		return;
+	}
+	SAssignNew(RaceBriefingWidget, SBNRaceBriefingWidget)
+		.OwnerHUD(this)
+		.RaceEvent(Event);
+	RaceBriefingHost = SNew(SWeakWidget).PossiblyNullContent(RaceBriefingWidget.ToSharedRef());
+	GEngine->GameViewport->AddViewportWidgetContent(RaceBriefingHost.ToSharedRef(), 28);
+	if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn()))
+	{
+		Car->SetInputLocked(true);
+	}
+	ApplyCursorMode(true);
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetKeyboardFocus(RaceBriefingWidget);
+	}
+}
+
+void ABNHUD::CloseRaceBriefing(bool bRestoreControl)
+{
+	if (GEngine && GEngine->GameViewport && RaceBriefingHost.IsValid())
+	{
+		GEngine->GameViewport->RemoveViewportWidgetContent(RaceBriefingHost.ToSharedRef());
+	}
+	RaceBriefingHost.Reset();
+	RaceBriefingWidget.Reset();
+	if (bRestoreControl && !HasStoryCardOpen() && !IsMenuOpen())
+	{
+		if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn()))
+		{
+			Car->SetInputLocked(false);
+		}
+		ApplyCursorMode(false);
+	}
+}
+
+bool ABNHUD::TryOpenNearbyRaceBriefing()
+{
+	const ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn());
+	if (!Car || IsMenuOpen() || HasStoryCardOpen())
+	{
+		return false;
+	}
+	if (ABNRaceEvent* Nearby = ABNRaceEvent::FindNearbyIdleRace(GetWorld(), Car))
+	{
+		OpenRaceBriefing(Nearby);
+		return true;
+	}
+	return false;
+}
+
+void ABNHUD::ToggleWorldMap()
+{
+	if (!CanUseViewportSlate())
+	{
+		return;
+	}
+	if (WorldMapWidget.IsValid())
+	{
+		CloseWorldMap();
+		return;
+	}
+	if (IsMenuOpen() || HasStoryCardOpen() || ABNRaceEvent::FindActiveRace(GetWorld()) != nullptr)
+	{
+		return;
+	}
+	SAssignNew(WorldMapWidget, SBNWorldMapWidget).OwnerHUD(this);
+	WorldMapHost = SNew(SWeakWidget).PossiblyNullContent(WorldMapWidget.ToSharedRef());
+	GEngine->GameViewport->AddViewportWidgetContent(WorldMapHost.ToSharedRef(), 26);
+	if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn()))
+	{
+		Car->SetInputLocked(true);
+	}
+	ApplyCursorMode(true);
+	if (FSlateApplication::IsInitialized())
+	{
+		FSlateApplication::Get().SetKeyboardFocus(WorldMapWidget);
+	}
+}
+
+void ABNHUD::CloseWorldMap()
+{
+	if (GEngine && GEngine->GameViewport && WorldMapHost.IsValid())
+	{
+		GEngine->GameViewport->RemoveViewportWidgetContent(WorldMapHost.ToSharedRef());
+	}
+	WorldMapHost.Reset();
+	WorldMapWidget.Reset();
+	if (!HasStoryCardOpen() && !IsMenuOpen())
+	{
+		if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn()))
+		{
+			Car->SetInputLocked(false);
+		}
+		ApplyCursorMode(false);
+	}
+}
+
+void ABNHUD::ShowFreeRoamTotaledOverlay()
+{
+	FBNRaceResultSummary Sum;
+	Sum.RaceName = TEXT("KARAMARA SERBEST SÜRÜŞ");
+	Sum.DisciplineLabel = TEXT("AĞIR KAZA RAPORU");
+	Sum.bTotaled = true;
+	Sum.bCompleted = false;
+	ShowRaceResults(Sum);
 }
 
 void ABNHUD::SyncStoryCardOverlay()
@@ -487,7 +614,11 @@ void ABNHUD::DrawDashboard(const ABNVehiclePawn& Car, const FBNDashReadout& Dash
 	}
 
 	const bool bCountdownLaunch = Car.IsInputLocked() && !bMenuBlocking;
-	const float ShownFraction = FMath::Clamp(bCountdownLaunch ? Car.GetLaunchRevFraction() : Dash.RpmFraction, 0.f, 1.f);
+	const bool bDrag = Car.IsDragModeActive();
+	const float LiveRpmFrac = bDrag ? FMath::Clamp(Car.GetDragState().RpmFraction, 0.f, 1.f) : Dash.RpmFraction;
+	const FString ShownGear = bDrag ? FString::FromInt(Car.GetDragState().Gear) : Dash.Gear;
+	const float ShiftFlash = Car.GetShiftFlashFraction();
+	const float ShownFraction = FMath::Clamp(bCountdownLaunch ? Car.GetLaunchRevFraction() : LiveRpmFrac, 0.f, 1.f);
 	const float ArcRadius = TachRadius * 0.855f;
 
 	// Dynamic glowing RPM sweep arc along the inside of the metallic bezel
@@ -537,23 +668,84 @@ void ABNHUD::DrawDashboard(const ABNVehiclePawn& Car, const FBNDashReadout& Dash
 	DrawText(TEXT("KM/H"), DashColour, Cx - UnitW * 0.5f, Cy + SpeedH * 0.16f, Font, 0.72f);
 
 	float GearW = 0.f, GearH = 0.f;
-	GetTextSize(Dash.Gear, GearW, GearH, Font, GearScale);
+	GetTextSize(ShownGear, GearW, GearH, Font, GearScale);
 	const float GearBoxW = FMath::Max(GearW + 18.f, 36.f);
 	const float GearY = Cy + 42.f;
-	DrawRect(BarBackground, Cx - GearBoxW * 0.5f, GearY, GearBoxW, GearH + 4.f);
-	DrawRect(Car.IsNosActive() ? NosActiveColour : FrameTrimColour, Cx - GearBoxW * 0.5f, GearY, GearBoxW, 2.f);
-	DrawText(Dash.Gear, Car.IsNosActive() ? NosActiveColour : DashColour, Cx - GearW * 0.5f, GearY + 2.f, Font, GearScale);
+	const FLinearColor GearBg = ShiftFlash > 0.05f
+		? FMath::Lerp(BarBackground, Car.IsNosActive() ? NosActiveColour : DashColour, ShiftFlash * 0.55f)
+		: BarBackground;
+	DrawRect(GearBg, Cx - GearBoxW * 0.5f, GearY, GearBoxW, GearH + 4.f);
+	DrawRect((Car.IsNosActive() || ShiftFlash > 0.1f) ? NosActiveColour : FrameTrimColour, Cx - GearBoxW * 0.5f, GearY, GearBoxW, 2.5f);
+	DrawText(ShownGear, ShiftFlash > 0.15f ? RaceColour : (Car.IsNosActive() ? NosActiveColour : DashColour),
+		Cx - GearW * 0.5f, GearY + 2.f, Font, GearScale);
 
-	// Sleek NOS & Speedbreaker gauge dock tucked directly beneath the circular dial
+	// Sleek NOS & Speedbreaker gauge dock tucked directly beneath the circular dial (+ HASAR bar when damaged!)
+	const float Health = Car.GetVehicleHealth();
+	const bool bShowDamage = Health < 0.85f;
 	const float DockW = TachDiameter + 6.f;
 	const float DockX = Cx - DockW * 0.5f;
-	const float DockY = Cy + TachRadius + 4.f;
-	DrawRect(SmokedPanelBg, DockX, DockY, DockW, 38.f);
-	DrawRect(FrameTrimColour, DockX, DockY, 3.f, 38.f);
-	DrawGaugeBar(TEXT("NOS [SHF]"), DockX + 8.f, DockY + 6.f, DockW - 14.f, 9.f, Car.GetNosFraction(),
+	const float DockH = bShowDamage ? 54.f : 38.f;
+	const float DockY = Cy + TachRadius + (bShowDamage ? -10.f : 4.f);
+	DrawRect(SmokedPanelBg, DockX, DockY, DockW, DockH);
+	DrawRect(bShowDamage && Health < 0.30f ? RedlineColour : FrameTrimColour, DockX, DockY, 3.f, DockH);
+	float RowY = DockY + 6.f;
+	if (bShowDamage)
+	{
+		const bool bCritFlash = Health < 0.30f && GetWorld() && FMath::Fmod(GetWorld()->GetTimeSeconds() * 8.0, 1.0) < 0.5;
+		const FLinearColor DmgCol = Health < 0.30f ? (bCritFlash ? RedlineColour : DashColour) : DashColour;
+		DrawGaugeBar(TEXT("GÖVDE"), DockX + 8.f, RowY, DockW - 14.f, 9.f, Health, DmgCol, Health < 0.30f);
+		RowY += 16.f;
+	}
+	DrawGaugeBar(TEXT("NOS [SHF]"), DockX + 8.f, RowY, DockW - 14.f, 9.f, Car.GetNosFraction(),
 		Car.IsNosActive() ? NosActiveColour : NosColour, Car.IsNosActive());
-	DrawGaugeBar(TEXT("SPD [X]"), DockX + 8.f, DockY + 22.f, DockW - 14.f, 9.f, Car.GetSpeedbreakerFraction(),
+	DrawGaugeBar(TEXT("SPD [X]"), DockX + 8.f, RowY + 16.f, DockW - 14.f, 9.f, Car.GetSpeedbreakerFraction(),
 		Car.IsSpeedbreakerActive() ? SpeedbreakerActiveColour : SpeedbreakerColour, Car.IsSpeedbreakerActive());
+}
+
+void ABNHUD::DrawDragShiftBar(const ABNVehiclePawn& Car)
+{
+	const FBNDragState& D = Car.GetDragState();
+	if (!D.bActive)
+	{
+		return;
+	}
+	UFont* Font = GEngine->GetLargeFont();
+	const float BarW = 420.f;
+	const float BarH = 18.f;
+	const float BarX = (Canvas->ClipX - BarW) * 0.5f;
+	const float BarY = RaceTop + 82.f;
+
+	DrawRect(SmokedPanelBg, BarX - 14.f, BarY - 24.f, BarW + 28.f, 68.f);
+	DrawRect(D.GetOverheatFraction() > 0.35f ? RedlineColour : FrameTrimColour, BarX - 14.f, BarY - 24.f, BarW + 28.f, 3.f);
+
+	const FString TopLabel = FString::Printf(TEXT("DRAG MANUEL VİTES: %d / 6   |   [E] YÜKSELT   [Q] DÜŞÜR"), D.Gear);
+	DrawCentred(TopLabel, BarY - 20.f, 0.78f, LegendColour);
+
+	// RPM background track + colored sweet-spot zone (80..94% green) + danger redline zone (94..100% red)
+	DrawRect(BarBackground, BarX, BarY, BarW, BarH);
+	DrawRect(FLinearColor(0.10f, 0.42f, 0.22f, 0.72f), BarX + BarW * 0.80f, BarY, BarW * 0.14f, BarH);
+	DrawRect(FLinearColor(0.55f, 0.10f, 0.10f, 0.75f), BarX + BarW * 0.94f, BarY, BarW * 0.06f, BarH);
+
+	const float ClampedRpm = FMath::Clamp(D.RpmFraction, 0.f, 1.f);
+	const FLinearColor FillCol = ClampedRpm >= 0.94f ? RedlineColour
+		: (ClampedRpm >= 0.80f ? SweetSpotColour : NosColour);
+	DrawRect(FillCol, BarX, BarY, BarW * ClampedRpm, BarH);
+
+	// Overheat danger strip beneath RPM bar
+	const float Heat = D.GetOverheatFraction();
+	if (Heat > 0.02f)
+	{
+		const bool bBlink = GetWorld() && FMath::Fmod(GetWorld()->GetTimeSeconds() * 10.0, 1.0) < 0.55;
+		DrawRect(BarBackground, BarX, BarY + BarH + 6.f, BarW, 8.f);
+		DrawRect(bBlink ? RedlineColour : DashColour, BarX, BarY + BarH + 6.f, BarW * Heat, 8.f);
+		DrawCentred(TEXT("MOTOR AŞIRI ISINIYOR!  [E] İLE VİTES AT!"), BarY + BarH + 18.f, 0.95f, bBlink ? RedlineColour : DashColour);
+	}
+	else if (D.ShiftFeedbackRemaining > 0.f && D.LastShiftGrade != EBNDragShiftGrade::None)
+	{
+		const FLinearColor GradeCol = D.LastShiftGrade == EBNDragShiftGrade::Perfect ? SweetSpotColour
+			: D.LastShiftGrade == EBNDragShiftGrade::Good ? DashColour : RedlineColour;
+		DrawCentred(FBNDragState::GradeLabel(D.LastShiftGrade), BarY + BarH + 16.f, 1.25f, GradeCol);
+	}
 }
 
 void ABNHUD::DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsystem* Story, bool bRaceActive)
@@ -685,12 +877,21 @@ void ABNHUD::DrawHUD()
 	UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr;
 	const UBNPursuitSubsystem* Pursuit = GetWorld() ? GetWorld()->GetSubsystem<UBNPursuitSubsystem>() : nullptr;
 
+	const float FrameDt = GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.f;
 	if (Prog)
 	{
-		Prog->TickFeedback(GetWorld() ? GetWorld()->GetDeltaSeconds() : 0.f);
+		Prog->TickFeedback(FrameDt);
 		if (Prog->IsGarageOpen() && !IsMenuOpen())
 		{
 			OpenMenu(EBNMenuTab::Garage);
+		}
+	}
+	if (Story)
+	{
+		Story->TickComms(FrameDt);
+		if (Prog)
+		{
+			Story->NotifyReputationUpdated(Prog->GetProfile().Reputation);
 		}
 	}
 
@@ -726,22 +927,28 @@ void ABNHUD::DrawHUD()
 	}
 
 	const bool bRaceActive = ActiveRace != nullptr;
+	const bool bDragBarVisible = bRaceActive && ActiveRace->GetState() == EBNRaceState::Racing && Car->IsDragModeActive();
+	if (bDragBarVisible)
+	{
+		DrawDragShiftBar(*Car);
+	}
 	const bool bPursuitVisible = Pursuit && Pursuit->GetState().Phase != EBNPursuitPhase::None;
 	if (Pursuit)
 	{
 		DrawPursuit(*Pursuit, Story, bRaceActive);
 	}
 
-	const float BannerY = RaceTop + (bPursuitVisible ? (bRaceActive ? 168.f : 108.f) : 96.f);
+	const float BannerY = RaceTop + (bDragBarVisible ? 166.f : (bPursuitVisible ? (bRaceActive ? 168.f : 108.f) : 96.f));
 	DrawActionBanners(*Car, Pursuit, BannerY);
 
 	if (Prog)
 	{
-		DrawEconomyPill(*Prog);
+		DrawEconomyPill(*Prog, Story, bRaceActive);
 	}
 
 	DrawWorldMarkers(*Car, ActiveRace, Story);
 	DrawRadar(*Car, ActiveRace, Pursuit, Story);
+	DrawLiveCommsAndPrompts(*Car, ActiveRace, Story);
 	const bool bMenuBlocking = HasStoryCardOpen() || (Prog && Prog->IsGarageOpen());
 	DrawDashboard(*Car, MakeReadout(*Car), bMenuBlocking);
 	DrawCameraModePill(*Car);

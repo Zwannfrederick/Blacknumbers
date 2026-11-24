@@ -19,7 +19,11 @@ struct FBNRaceResultSummary
 	FString RaceName;
 	FString DisciplineLabel;
 	bool bIsDrift = false;
+	bool bIsDrag = false;
 	bool bCompleted = false;
+	bool bTotaled = false;
+	bool bBlownEngine = false;
+	int32 PerfectShifts = 0;
 	int32 Position = 1;
 	int32 TotalRacers = 1;
 	float FinishTimeSeconds = 0.f;

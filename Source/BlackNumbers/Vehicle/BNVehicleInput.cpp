@@ -111,6 +111,9 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	UInputAction* PauseMenuToggle = MakeAction(EInputActionValueType::Boolean);
 	PauseMenuToggle->bTriggerWhenPaused = true;
 	UInputAction* StoryCardAdvance = MakeAction(EInputActionValueType::Boolean);
+	UInputAction* WorldMapToggle = MakeAction(EInputActionValueType::Boolean);
+	UInputAction* DragShiftUp = MakeAction(EInputActionValueType::Boolean);
+	UInputAction* DragShiftDown = MakeAction(EInputActionValueType::Boolean);
 
 	InputContext->MapKey(Steering, EKeys::D);
 	InputContext->MapKey(Steering, EKeys::Right);
@@ -162,6 +165,15 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
 	InputContext->MapKey(StoryCardAdvance, EKeys::Enter);
 
+	InputContext->MapKey(WorldMapToggle, EKeys::M);
+	InputContext->MapKey(WorldMapToggle, EKeys::Tab);
+
+	InputContext->MapKey(DragShiftUp, EKeys::E);
+	InputContext->MapKey(DragShiftUp, EKeys::Gamepad_DPad_Right);
+
+	InputContext->MapKey(DragShiftDown, EKeys::Q);
+	InputContext->MapKey(DragShiftDown, EKeys::Gamepad_LeftShoulder);
+
 	Subsystem->AddMappingContext(InputContext, 0);
 
 	// Completed fires with a zero value on release, which centres the wheel and lifts the pedals.
@@ -182,15 +194,40 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	Input->BindAction(DossierToggle, ETriggerEvent::Started, this, &ABNVehiclePawn::ToggleStoryDossier);
 	Input->BindAction(PauseMenuToggle, ETriggerEvent::Started, this, &ABNVehiclePawn::TogglePauseMenu);
 	Input->BindAction(StoryCardAdvance, ETriggerEvent::Started, this, &ABNVehiclePawn::AdvanceStoryCard);
+	Input->BindAction(WorldMapToggle, ETriggerEvent::Started, this, &ABNVehiclePawn::ToggleWorldMap);
+	Input->BindAction(DragShiftUp, ETriggerEvent::Started, this, &ABNVehiclePawn::TriggerManualShiftUp);
+	Input->BindAction(DragShiftDown, ETriggerEvent::Started, this, &ABNVehiclePawn::TriggerManualShiftDown);
 }
 
 void ABNVehiclePawn::AdvanceStoryCard()
 {
 	if (APlayerController* PC = GetController<APlayerController>())
 	{
-		if (ABNHUD* HUD = PC->GetHUD<ABNHUD>(); HUD && HUD->HasStoryCardOpen())
+		if (ABNHUD* HUD = PC->GetHUD<ABNHUD>())
 		{
-			HUD->HandleMenuCloseOrAdvanceCard();
+			if (HUD->HasStoryCardOpen())
+			{
+				HUD->HandleMenuCloseOrAdvanceCard();
+			}
+			else if (!HUD->IsMenuOpen())
+			{
+				HUD->TryOpenNearbyRaceBriefing();
+			}
+		}
+	}
+}
+
+void ABNVehiclePawn::ToggleWorldMap()
+{
+	if (ABNRaceEvent::FindActiveRace(GetWorld()) != nullptr)
+	{
+		return;
+	}
+	if (APlayerController* PC = GetController<APlayerController>())
+	{
+		if (ABNHUD* HUD = PC->GetHUD<ABNHUD>())
+		{
+			HUD->ToggleWorldMap();
 		}
 	}
 }

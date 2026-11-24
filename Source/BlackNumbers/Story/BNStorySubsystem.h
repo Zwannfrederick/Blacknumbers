@@ -8,6 +8,15 @@
 class ABNVehiclePawn;
 class UBNSaveGame;
 
+/** Non-blocking live crew/rival radio or phone message banner shown during gameplay. */
+struct FBNLiveComms
+{
+	FString Speaker;
+	FString Message;
+	FLinearColor AccentColor = FLinearColor(0.95f, 0.72f, 0.16f, 1.f);
+	float RemainingSeconds = 0.f;
+};
+
 /**
  * Owns BLACK NUMBERS campaign progress, 16-member boss roster dossier, R1-R8 evidence ledger,
  * Tarik reconciliation + Tier 6 gating, Heat 6+ unlock sync, Perde 5 2-route Special Tier escape,
@@ -73,11 +82,24 @@ public:
 	void DismissActiveCard(ABNVehiclePawn* PlayerCar);
 	bool ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar);
 
+	// Non-blocking Live Crew/Rival Comms & living world story hooks
+	void PostComms(const FString& Speaker, const FString& Message, float DurationSeconds = 5.2f,
+		const FLinearColor& AccentColor = FLinearColor(0.95f, 0.72f, 0.16f, 1.f));
+	void TickComms(float DeltaSeconds);
+	const FBNLiveComms* GetActiveComms() const { return CommsQueue.Num() > 0 ? &CommsQueue[0] : nullptr; }
+	void NotifyDistrictEntered(int32 DistrictId);
+	void NotifyReputationUpdated(int32 CurrentReputation);
+	void NotifyTotaledOrBlown(bool bBlownEngine);
+	void NotifyRaceOutcome(bool bWon, bool bDrag, const FString& RaceName);
+
 private:
 	void EnqueueCards(const TArray<FBNStoryCard>& Cards, ABNVehiclePawn* PlayerCar);
 
 	FBNStoryState State;
 	TArray<FBNStoryCard> CardQueue;
+	TArray<FBNLiveComms> CommsQueue;
+	uint32 VisitedDistrictMask = 0;
+	int32 AnnouncedReadyBossRank = 0;
 	bool bDossierOpen = false;
 	int32 DossierTab = 0; // 0 = 16'lik Liste, 1 = Kanit Dosyasi
 	int32 SelectedBossIndex = 0; // 0..15 maps to Rank 16..1

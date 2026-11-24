@@ -1,5 +1,6 @@
 #include "UI/BNHUD.h"
 
+#include "Audio/BNAudioSubsystem.h"
 #include "Components/SplineComponent.h"
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -115,7 +116,7 @@ namespace BNRadar
 	}
 }
 
-void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNPursuitSubsystem* Pursuit, const UBNStorySubsystem* Story)
+void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNPursuitSubsystem* Pursuit, UBNStorySubsystem* Story)
 {
 	const float Cx = BNRadar::RadarMargin + BNRadar::RadarHalfSize;
 	const float Cy = Canvas->ClipY - BNRadar::RadarMargin - BNRadar::RadarHalfSize;
@@ -165,9 +166,21 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 	};
 
 	// 1. Real 2 km Karamara curved road network from UBNRoadGraphSubsystem clipped inside the circular radar
-	const UBNRoadGraphSubsystem* RoadGraph = GetWorld() ? GetWorld()->GetSubsystem<UBNRoadGraphSubsystem>() : nullptr;
+	UBNRoadGraphSubsystem* RoadGraph = GetWorld() ? GetWorld()->GetSubsystem<UBNRoadGraphSubsystem>() : nullptr;
 	if (RoadGraph && RoadGraph->HasGraph())
 	{
+		if (!bRaceActive && RoadGraph->HasGpsDestination())
+		{
+			if (RoadGraph->UpdateGpsForPlayer(PlayerLoc))
+			{
+				GpsArrivalBannerUntil = GetWorld()->GetRealTimeSeconds() + 3.5;
+				if (UBNAudioSubsystem* Audio = GetWorld()->GetSubsystem<UBNAudioSubsystem>())
+				{
+					Audio->PlaySfx2D(EBNSfxId::GpsArrive, 0.90f);
+				}
+			}
+		}
+
 		for (const FBNRoadEdge& Edge : RoadGraph->GetEdges())
 		{
 			const TArray<FVector>& Pts = Edge.SampledPoints;
@@ -182,6 +195,26 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 			{
 				DrawClippedLine(Pts[i], Pts[i + 1], Col, Thick);
 			}
+		}
+
+		// Active Free-Roam A* GPS Route (plotted from [M] World Map) drawn in luminous cyan!
+		if (!bRaceActive && RoadGraph->HasGpsDestination())
+		{
+			const TArray<FVector>& GpsPts = RoadGraph->GetGpsRoutePoints();
+			for (int32 i = 0; i + 1 < GpsPts.Num(); ++i)
+			{
+				DrawClippedLine(GpsPts[i], GpsPts[i + 1], BNRadar::RouteShadow, 5.8f);
+			}
+			for (int32 i = 0; i + 1 < GpsPts.Num(); ++i)
+			{
+				DrawClippedLine(GpsPts[i], GpsPts[i + 1], BNRadar::RouteNextLeg, 3.2f);
+			}
+			const float GpsPulse = 0.5f + 0.5f * FMath::Sin((GetWorld() ? GetWorld()->GetTimeSeconds() : 0.f) * 6.5f);
+			const FVector2D GpsDest = BNRadar::ClampToRadarEdge(
+				BNRadar::ProjectUnclamped(RoadGraph->GetGpsTargetLocation(), PlayerLoc, CosY, SinY, Cx, Cy, ActiveRangeCm),
+				Cx, Cy, BNRadar::RadarInnerClip - 3.f);
+			PlotDiamond(GpsDest, 5.5f + GpsPulse * 2.f, BNRadar::RouteNextLeg, 2.4f);
+			PlotSquare(GpsDest, 2.4f, FLinearColor::White);
 		}
 
 		// Cooldown hiding spots (blue circles/diamonds — especially prominent during police cooldown!)
@@ -482,6 +515,10 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 				DistrictBannerUntil = Now + 3.4;
 			}
 			LastDistrictId = DistInt;
+			if (Story && !bRaceActive)
+			{
+				Story->NotifyDistrictEntered(DistInt);
+			}
 		}
 
 		UFont* Font = GEngine->GetLargeFont();
@@ -543,6 +580,17 @@ void ABNHUD::DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* Act
 		}
 	}
 
+	if (!ActiveRace && GetWorld())
+	{
+		if (const UBNRoadGraphSubsystem* RoadGraph = GetWorld()->GetSubsystem<UBNRoadGraphSubsystem>();
+			RoadGraph && RoadGraph->HasGpsDestination())
+		{
+			DrawProjectedTag(RoadGraph->GetGpsTargetLocation(),
+				FString::Printf(TEXT("GPS: %s"), *RoadGraph->GetGpsTargetLabel().Left(24).ToUpper()),
+				BNRadar::RouteNextLeg);
+		}
+	}
+
 	if (Story && Story->GetState().bFinalChaseActive)
 	{
 		DrawProjectedTag(UBNStorySubsystem::GetEscapeRouteLocation(GetWorld(), 0), TEXT("ROTA A: LIMAN"), BNRadar::BlipEscape);
@@ -550,11 +598,11 @@ void ABNHUD::DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* Act
 	}
 }
 
-void ABNHUD::DrawEconomyPill(const UBNProgressionSubsystem& Progression)
+void ABNHUD::DrawEconomyPill(const UBNProgressionSubsystem& Progression, const UBNStorySubsystem* Story, bool bRaceActive)
 {
 	UFont* Font = GEngine->GetLargeFont();
 	const FBNPlayerProfile& P = Progression.GetProfile();
-	const FString EconText = FString::Printf(TEXT("$%s   //   %s İTİBAR   //   [ESC] MENÜ"),
+	const FString EconText = FString::Printf(TEXT("$%s   //   %s İTİBAR   //   [M] HARİTA   //   [ESC] MENÜ"),
 		*FString::FormatAsNumber(P.Cash), *FString::FormatAsNumber(P.Reputation));
 	float W = 0.f, H = 0.f;
 	GetTextSize(EconText, W, H, Font, BNRadar::LabelScale);
@@ -564,9 +612,101 @@ void ABNHUD::DrawEconomyPill(const UBNProgressionSubsystem& Progression)
 	DrawRect(BNRadar::RadarRing, X, Y, 4.f, 30.f);
 	DrawText(EconText, BNRadar::DashColour, X + 12.f, Y + 5.f, Font, BNRadar::LabelScale);
 
+	float NextY = Y + 36.f;
+	// Compact free-roam Story Objective Tracker Pill beneath Cash/Rep!
+	if (!bRaceActive && Story)
+	{
+		const FBNStoryState& S = Story->GetState();
+		FString ObjText;
+		FLinearColor ObjCol = BNRadar::LegendColour;
+		FLinearColor BarCol = BNRadar::RadarRing;
+		if (S.bFinalChaseActive)
+		{
+			ObjText = TEXT("HEDEF: KARAMARA'DAN KAÇ!  (ROTA A LİMAN / ROTA B KUZEY)");
+			ObjCol = BNRadar::BlipEscape;
+			BarCol = BNRadar::BlipEscape;
+		}
+		else if (S.NextBossRank > 0)
+		{
+			if (const FBNBossSpec* Boss = FBNStoryState::FindBossByRank(S.NextBossRank))
+			{
+				const bool bReady = S.CanChallengeBoss(S.NextBossRank);
+				ObjText = FString::Printf(TEXT("HEDEF #%02d: %s (%s)  •  %s  •  [B] BLACKLIST"),
+					Boss->Rank, *Boss->Name, *Boss->VehicleName, *Boss->DisciplineLabel);
+				ObjCol = bReady ? BNRadar::SweetSpotColour : BNRadar::LegendColour;
+				BarCol = bReady ? BNRadar::SweetSpotColour : BNRadar::RadarRing;
+			}
+		}
+		if (!ObjText.IsEmpty())
+		{
+			float OW = 0.f, OH = 0.f;
+			GetTextSize(ObjText, OW, OH, Font, 0.74f);
+			DrawRect(BNRadar::RadarBg, X, NextY, OW + 22.f, 24.f);
+			DrawRect(BarCol, X, NextY, 3.f, 24.f);
+			DrawText(ObjText, ObjCol, X + 11.f, NextY + 4.f, Font, 0.74f);
+			NextY += 28.f;
+		}
+	}
+
 	if (Progression.GetRewardBannerSeconds() > 0.f && !Progression.GetRewardBanner().IsEmpty())
 	{
-		DrawText(Progression.GetRewardBanner(), BNRadar::SweetSpotColour, X + 12.f, Y + 34.f, Font, BNRadar::LabelScale * 1.05f);
+		DrawText(Progression.GetRewardBanner(), BNRadar::SweetSpotColour, X + 12.f, NextY, Font, BNRadar::LabelScale * 1.05f);
+	}
+}
+
+void ABNHUD::DrawLiveCommsAndPrompts(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNStorySubsystem* Story)
+{
+	UFont* Font = GEngine->GetLargeFont();
+	const double Now = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.0;
+
+	// 1. GPS Arrival Banner
+	if (Now < GpsArrivalBannerUntil)
+	{
+		DrawCentred(TEXT("GPS HEDEFİNE ULAŞILDI!"), 168.f, 1.35f, BNRadar::RouteNextLeg);
+	}
+
+	// 2. Interactive Free-Roam Pre-Race Briefing Prompt Pill (when parked inside an idle race ring)
+	if (!ActiveRace && GetWorld())
+	{
+		if (const ABNRaceEvent* Nearby = ABNRaceEvent::FindNearbyIdleRace(GetWorld(), &Car); Nearby && Nearby->Definition)
+		{
+			const UBNRaceDefinition* Def = Nearby->Definition;
+			const TCHAR* Disc = Def->Discipline == EBNRaceDiscipline::Drag ? TEXT("DRAG")
+				: Def->Discipline == EBNRaceDiscipline::Drift ? TEXT("DRİFT")
+				: Def->Discipline == EBNRaceDiscipline::Circuit ? TEXT("PİST") : TEXT("SPRINT");
+			const FString Prompt = FString::Printf(TEXT("[ENTER]  YARIŞ ÖZETİ  —  %s  (%s)"),
+				*Def->DisplayName.ToString().ToUpper(), Disc);
+			float PW = 0.f, PH = 0.f;
+			GetTextSize(Prompt, PW, PH, Font, 1.02f);
+			const float BoxW = PW + 36.f;
+			const float BoxH = PH + 16.f;
+			const float BoxX = (Canvas->ClipX - BoxW) * 0.5f;
+			const float BoxY = Canvas->ClipY - 126.f;
+			DrawRect(BNRadar::RadarBg, BoxX, BoxY, BoxW, BoxH);
+			DrawRect(BNRadar::SweetSpotColour, BoxX, BoxY, BoxW, 3.f);
+			DrawRect(BNRadar::SweetSpotColour, BoxX, BoxY, 5.f, BoxH);
+			DrawText(Prompt, BNRadar::SweetSpotColour, BoxX + 18.f, BoxY + 8.f, Font, 1.02f);
+		}
+	}
+
+	// 3. Non-blocking Live Crew / Rival Comms Banner stacked neatly above the bottom-left radar
+	if (Story)
+	{
+		if (const FBNLiveComms* Comms = Story->GetActiveComms())
+		{
+			const FString Header = FString::Printf(TEXT("TELSİZ // %s"), *Comms->Speaker);
+			float HW = 0.f, HH = 0.f, MW = 0.f, MH = 0.f;
+			GetTextSize(Header, HW, HH, Font, 0.74f);
+			GetTextSize(Comms->Message, MW, MH, Font, 0.78f);
+			const float BoxW = FMath::Clamp(FMath::Max(HW, MW) + 28.f, 280.f, 640.f);
+			const float BoxH = HH + MH + 20.f;
+			const float BoxX = BNRadar::RadarMargin;
+			const float BoxY = Canvas->ClipY - BNRadar::RadarMargin - BNRadar::RadarHalfSize * 2.f - BoxH - 44.f;
+			DrawRect(BNRadar::RadarBg, BoxX, BoxY, BoxW, BoxH);
+			DrawRect(Comms->AccentColor, BoxX, BoxY, 4.f, BoxH);
+			DrawText(Header, Comms->AccentColor, BoxX + 12.f, BoxY + 6.f, Font, 0.74f);
+			DrawText(Comms->Message, FLinearColor(0.95f, 0.94f, 0.90f, 1.f), BoxX + 12.f, BoxY + HH + 10.f, Font, 0.78f);
+		}
 	}
 }
 

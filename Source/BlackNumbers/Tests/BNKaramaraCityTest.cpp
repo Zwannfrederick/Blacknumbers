@@ -119,7 +119,7 @@ bool FBNKaramaraCityTest::RunTest(const FString& Parameters)
 			}
 
 			int32 RaceCount = 0;
-			bool bCircuit = false, bSprint = false, bDrift = false;
+			bool bCircuit = false, bSprint = false, bDrift = false, bDrag = false;
 			for (TActorIterator<ABNRaceEvent> It(World); It; ++It)
 			{
 				if (!It->Definition)
@@ -130,11 +130,13 @@ bool FBNKaramaraCityTest::RunTest(const FString& Parameters)
 				bCircuit |= It->Definition->Discipline == EBNRaceDiscipline::Circuit;
 				bSprint |= It->Definition->Discipline == EBNRaceDiscipline::Sprint;
 				bDrift |= It->Definition->Discipline == EBNRaceDiscipline::Drift;
+				bDrag |= It->Definition->Discipline == EBNRaceDiscipline::Drag;
 			}
-			TestTrue(TEXT("Karamara has 9 unique races"), RaceCount >= 9);
+			TestTrue(TEXT("Karamara has 11 unique races (incl. 2 Drag strips)"), RaceCount >= 11);
 			TestTrue(TEXT("Karamara has Circuit race"), bCircuit);
 			TestTrue(TEXT("Karamara has Sprint race"), bSprint);
 			TestTrue(TEXT("Karamara has Drift race"), bDrift);
+			TestTrue(TEXT("Karamara has Drag race"), bDrag);
 
 			FActorSpawnParameters Params;
 			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;

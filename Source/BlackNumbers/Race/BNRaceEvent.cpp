@@ -10,6 +10,7 @@
 #include "GameFramework/PlayerController.h"
 #include "Garage/BNGarageSubsystem.h"
 #include "Materials/MaterialInterface.h"
+#include "Misc/App.h"
 #include "Misc/PackageName.h"
 #include "Police/BNPursuitSubsystem.h"
 #include "Race/BNRaceDefinition.h"
@@ -200,12 +201,39 @@ ABNRaceEvent* ABNRaceEvent::FindActiveRace(const UWorld* World, const ABNRaceEve
 	return nullptr;
 }
 
+ABNRaceEvent* ABNRaceEvent::FindNearbyIdleRace(const UWorld* World, const ABNVehiclePawn* Car)
+{
+	if (!World || !Car || FindActiveRace(World) != nullptr)
+	{
+		return nullptr;
+	}
+	ABNRaceEvent* Best = nullptr;
+	float BestDistSq = BIG_NUMBER;
+	const FVector CarLoc = Car->GetActorLocation();
+	for (TActorIterator<ABNRaceEvent> It(const_cast<UWorld*>(World)); It; ++It)
+	{
+		ABNRaceEvent* Event = *It;
+		if (!Event || !Event->Definition || Event->State != EBNRaceState::Idle || !Event->bPlayerInStartRing)
+		{
+			continue;
+		}
+		const float D2 = FVector::DistSquared2D(CarLoc, Event->GetActorLocation());
+		if (D2 < BestDistSq)
+		{
+			BestDistSq = D2;
+			Best = Event;
+		}
+	}
+	return Best;
+}
+
 void ABNRaceEvent::TickIdle(ABNVehiclePawn& Car)
 {
 	// Never display or trigger another race's world beacon while ANY race is already active!
 	if (FindActiveRace(GetWorld(), this) != nullptr)
 	{
 		bArmed = false;
+		bPlayerInStartRing = false;
 		if (Beacon && Beacon->IsVisible())
 		{
 			Beacon->SetVisibility(false);
@@ -221,10 +249,26 @@ void ABNRaceEvent::TickIdle(ABNVehiclePawn& Car)
 	if (Distance > StartRadius * RearmRadiusScale)
 	{
 		bArmed = true;
+		bPlayerInStartRing = false;
 	}
-	else if (bArmed && Distance <= StartRadius)
+	else if (Distance <= StartRadius)
 	{
-		StartRace(&Car);
+		if (GIsAutomationTesting || FApp::IsUnattended())
+		{
+			if (bArmed)
+			{
+				StartRace(&Car);
+			}
+		}
+		else
+		{
+			// Interactive play: show Pre-Race Briefing prompt ([ENTER]) instead of yanking the car into a race.
+			bPlayerInStartRing = true;
+		}
+	}
+	else
+	{
+		bPlayerInStartRing = false;
 	}
 }
 
@@ -269,6 +313,10 @@ void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float 
 
 	Player.Car = Car;
 	bArmed = false;
+	bPlayerInStartRing = false;
+	bFailedTotaled = false;
+	bFailedBlownEngine = false;
+	LastDragPerfectShifts = 0;
 	ClearRivals();
 
 	// Never carry an active free-roam police chase into a race grid (teleporting away from cops would trigger phantom Evade).
@@ -283,6 +331,8 @@ void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float 
 		}
 	}
 
+	Car->RepairVehicle();
+	Car->SetDragMode(Definition->Discipline == EBNRaceDiscipline::Drag);
 	Car->SetActorTransform(Definition->Grid, false, nullptr, ETeleportType::TeleportPhysics);
 	Car->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
 	Car->GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
@@ -307,6 +357,19 @@ void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float 
 
 void ABNRaceEvent::TickRacing(ABNVehiclePawn& Car, float DeltaSeconds)
 {
+	if (Car.IsEngineBlown())
+	{
+		bFailedBlownEngine = true;
+		Finish();
+		return;
+	}
+	if (Car.IsTotaled())
+	{
+		bFailedTotaled = true;
+		Finish();
+		return;
+	}
+
 	if (Definition->Discipline == EBNRaceDiscipline::Drift)
 	{
 		DriftScore.Update(DeltaSeconds, Car.GetSlipAngleDegrees(), Car.GetSpeedKmh());
@@ -417,10 +480,12 @@ void ABNRaceEvent::SpawnRivals()
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	const int32 RivalCount = ActiveBossRank > 0 ? 1 : Definition->RivalSkills.Num();
 
+	const bool bDrag = Definition->Discipline == EBNRaceDiscipline::Drag;
 	for (int32 i = 0; i < RivalCount; ++i)
 	{
-		const float Lane = (i % 2 == 0 ? 1.f : -1.f) * GridLaneOffset;
-		const FVector Slot = Definition->Grid.TransformPosition(FVector(-GridRowSpacing * ((i + 1) / 2), Lane, 0.f));
+		const float Lane = bDrag ? 430.f : ((i % 2 == 0 ? 1.f : -1.f) * GridLaneOffset);
+		const float BackDist = bDrag ? 0.f : (-GridRowSpacing * ((i + 1) / 2));
+		const FVector Slot = Definition->Grid.TransformPosition(FVector(BackDist, Lane, 0.f));
 		ABNVehiclePawn* Car = GetWorld()->SpawnActor<ABNVehiclePawn>(ABNVehiclePawn::StaticClass(),
 			FTransform(Definition->Grid.GetRotation(), Slot), Params);
 		if (!Car)
@@ -542,10 +607,13 @@ void ABNRaceEvent::Finish()
 {
 	const float RaceTime = State == EBNRaceState::Racing ? GetRaceTime() : 0.f;
 	const bool bDrift = Definition && Definition->Discipline == EBNRaceDiscipline::Drift;
+	const bool bDrag = Definition && Definition->Discipline == EBNRaceDiscipline::Drag;
 	const bool bDriftTimedOut = bDrift && State == EBNRaceState::Racing && GetTimeLeft() <= 0.1f;
 	DriftScore.Finish();
 	if (ABNVehiclePawn* Car = Player.Car.Get())
 	{
+		LastDragPerfectShifts = Car->GetDragState().PerfectShifts;
+		Car->SetDragMode(false);
 		Car->SetInputLocked(false);
 		Car->GetMesh()->OnComponentHit.RemoveDynamic(this, &ABNRaceEvent::OnCarHit);
 	}
@@ -554,7 +622,7 @@ void ABNRaceEvent::Finish()
 	StateStart = GetWorld()->GetTimeSeconds();
 	const FBNRaceProgress& Progress = Player.Progress;
 
-	const bool bCompleted = Progress.IsFinished() || bDriftTimedOut;
+	const bool bCompleted = !bFailedTotaled && !bFailedBlownEngine && (Progress.IsFinished() || bDriftTimedOut);
 	const int32 FinishedBossRank = ActiveBossRank;
 	const int32 BossDriftTarget = ActiveBossDriftTarget;
 	const bool bWonBoss = FinishedBossRank > 0 && bCompleted && (bDrift ? DriftScore.Total() >= BossDriftTarget : GetPlayerPosition() == 1);
@@ -573,6 +641,11 @@ void ABNRaceEvent::Finish()
 		if (UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
 		{
 			Prog->GrantRaceReward(GetPlayerPosition(), Rivals.Num() + 1, bDrift, DriftScore.Total());
+		}
+		if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
+		{
+			const bool bWon = bDrift ? (DriftScore.Total() >= 1500) : (GetPlayerPosition() == 1);
+			Story->NotifyRaceOutcome(bWon, bDrag, Definition ? Definition->DisplayName.ToString() : TEXT("Yarış"));
 		}
 	}
 

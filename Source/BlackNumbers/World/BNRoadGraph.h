@@ -192,6 +192,17 @@ public:
 	/** Returns outgoing (EdgeIdx, bTraverseReversed) pairs connected to NodeIdx. */
 	void GetOutgoingEdges(int32 NodeIdx, TArray<TPair<int32, bool>>& OutEdges) const;
 
+	// --- Interactive City Map A* GPS Navigation ---
+	void SetGpsDestination(const FVector& WorldPos, const FString& Label, const FVector& PlayerPos);
+	void ClearGpsDestination();
+	bool HasGpsDestination() const { return bHasGpsDestination; }
+	FVector GetGpsTargetLocation() const { return GpsTargetLocation; }
+	const FString& GetGpsTargetLabel() const { return GpsTargetLabel; }
+	const TArray<FVector>& GetGpsRoutePoints() const { return GpsRoutePoints; }
+	float GetGpsRemainingDistanceCm(const FVector& PlayerPos) const;
+	/** Refreshes the A* path when the player moves; returns true once upon reaching the destination. */
+	bool UpdateGpsForPlayer(const FVector& PlayerPos);
+
 	static const TCHAR* DefaultDistrictName(EBNDistrict District);
 	static const TCHAR* DefaultDistrictSubtitle(EBNDistrict District);
 
@@ -214,4 +225,10 @@ private:
 	TArray<TArray<FAdjEntry>> Adjacency;
 	TArray<float> EdgeLengthsCm;
 	TArray<TArray<float>> EdgeCumulativeDist;
+
+	bool bHasGpsDestination = false;
+	FVector GpsTargetLocation = FVector::ZeroVector;
+	FString GpsTargetLabel;
+	FVector LastGpsStartPos = FVector::ZeroVector;
+	TArray<FVector> GpsRoutePoints;
 };

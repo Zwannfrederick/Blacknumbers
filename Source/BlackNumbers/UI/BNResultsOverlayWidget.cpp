@@ -94,7 +94,19 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 	FLinearColor AccentCol = BNUITheme::AmberBright;
 	bool bDangerRibbon = false;
 
-	if (!R.bCompleted)
+	if (R.bBlownEngine)
+	{
+		BannerText = TEXT("MOTOR PATLADI!  //  BLOWN ENGINE");
+		AccentCol = BNUITheme::CrimsonRed;
+		bDangerRibbon = true;
+	}
+	else if (R.bTotaled)
+	{
+		BannerText = TEXT("ARAÇ PERT!  //  TOTALED");
+		AccentCol = BNUITheme::CrimsonRed;
+		bDangerRibbon = true;
+	}
+	else if (!R.bCompleted)
 	{
 		BannerText = TEXT("YARIŞ İPTAL EDİLDİ");
 		AccentCol = BNUITheme::CrimsonRed;
@@ -140,12 +152,18 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 		: (R.bCompleted ? ABNHUD::FormatRaceTime(R.FinishTimeSeconds) : FString(TEXT("--:--.--")));
 	const FString PrimarySubNote = (R.bIsDrift && R.BossDriftTarget > 0)
 		? FString::Printf(TEXT("Hedef: %s puan"), *FString::FormatAsNumber(R.BossDriftTarget))
-		: FString();
+		: (R.bIsDrag && R.PerfectShifts > 0
+			? FString::Printf(TEXT("Mükemmel Vites: %d"), R.PerfectShifts)
+			: FString());
 
-	const FString SecondaryMetricLabel = R.bIsDrift ? TEXT("DURUM") : TEXT("SIRALAMA");
-	const FString SecondaryMetricVal = R.bIsDrift
-		? (R.bCompleted ? TEXT("TAMAMLANDI") : TEXT("İPTAL"))
-		: FString::Printf(TEXT("%d / %d"), R.Position, FMath::Max(1, R.TotalRacers));
+	const FString SecondaryMetricLabel = (R.bBlownEngine || R.bTotaled || R.bIsDrift) ? TEXT("DURUM") : TEXT("SIRALAMA");
+	const FString SecondaryMetricVal = R.bBlownEngine
+		? TEXT("MOTOR HASARI")
+		: R.bTotaled
+			? TEXT("PERT (TOTALED)")
+			: R.bIsDrift
+				? (R.bCompleted ? TEXT("TAMAMLANDI") : TEXT("İPTAL"))
+				: FString::Printf(TEXT("%d / %d"), R.Position, FMath::Max(1, R.TotalRacers));
 
 	TSharedRef<SVerticalBox> Inner = SNew(SVerticalBox)
 	+ SVerticalBox::Slot().AutoHeight()
@@ -381,6 +399,7 @@ namespace
 		{
 		case EBNRaceDiscipline::Drift: return TEXT("DRİFT");
 		case EBNRaceDiscipline::Circuit: return TEXT("PİST TURU");
+		case EBNRaceDiscipline::Drag: return TEXT("DRAG YARIŞI");
 		default: return TEXT("SPRINT");
 		}
 	}
@@ -461,6 +480,10 @@ void ABNHUD::DismissResultsOverlay(bool bRestoreControl)
 	{
 		if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn()))
 		{
+			if (Car->IsTotaled() || Car->IsEngineBlown())
+			{
+				Car->RepairVehicle();
+			}
 			Car->SetInputLocked(false);
 		}
 		ApplyCursorMode(false);
@@ -557,6 +580,10 @@ void ABNHUD::UpdateRaceAndPursuitTracking(const UBNProgressionSubsystem* Prog, c
 			? TrackedRace.DisciplineLabel
 			: DisciplineLabelFor(RunningOrFinished->Definition);
 		Sum.bIsDrift = TrackedRace.bIsDrift || (RunningOrFinished->Definition && RunningOrFinished->Definition->Discipline == EBNRaceDiscipline::Drift);
+		Sum.bIsDrag = RunningOrFinished->Definition && RunningOrFinished->Definition->Discipline == EBNRaceDiscipline::Drag;
+		Sum.bTotaled = RunningOrFinished->WasFailedTotaled();
+		Sum.bBlownEngine = RunningOrFinished->WasFailedBlownEngine();
+		Sum.PerfectShifts = RunningOrFinished->GetLastDragPerfectShifts();
 		Sum.Position = RunningOrFinished->GetPlayerPosition();
 		Sum.TotalRacers = FMath::Max(TrackedRace.TotalRacers, RunningOrFinished->GetNumRivals() + 1);
 		Sum.FinishTimeSeconds = static_cast<float>(RunningOrFinished->GetProgress().FinishTime());
@@ -564,9 +591,9 @@ void ABNHUD::UpdateRaceAndPursuitTracking(const UBNProgressionSubsystem* Prog, c
 		Sum.BossDriftTarget = TrackedRace.BossDriftTarget;
 		Sum.CashEarned = FMath::Max(0, CurCash - TrackedRace.PreRaceCash);
 		Sum.RepEarned = FMath::Max(0, CurRep - TrackedRace.PreRaceRep);
-		Sum.bCompleted = Sum.bIsDrift
+		Sum.bCompleted = !Sum.bTotaled && !Sum.bBlownEngine && (Sum.bIsDrift
 			? (TrackedRace.bWasRacing && (TrackedRace.LastTimeLeft <= 0.5f || Sum.CashEarned > 0 || Sum.RepEarned > 0))
-			: RunningOrFinished->GetProgress().IsFinished();
+			: RunningOrFinished->GetProgress().IsFinished());
 		Sum.BossRank = TrackedRace.BossRank;
 		Sum.bBossVictory = Sum.BossRank > 0 && Sum.bCompleted
 			&& (Sum.bIsDrift ? Sum.DriftScore >= Sum.BossDriftTarget : Sum.Position == 1);

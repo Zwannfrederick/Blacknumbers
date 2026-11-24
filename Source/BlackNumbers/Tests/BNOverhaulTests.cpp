@@ -3,6 +3,7 @@
 #include "Audio/BNAudioSubsystem.h"
 #include "Garage/BNGarageTypes.h"
 #include "Police/BNPursuitLogic.h"
+#include "Race/BNDragLogic.h"
 #include "UObject/Package.h"
 #include "Vehicle/BNEngineAudioComponent.h"
 #include "World/BNRoadGraph.h"
@@ -170,6 +171,78 @@ bool FBNEngineProfilesAndAudioTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("FreeRoam music path defined"), FString(UBNAudioSubsystem::GetMusicAssetPath(EBNMusicState::FreeRoam)).IsEmpty());
 	TestFalse(TEXT("Race music path defined"), FString(UBNAudioSubsystem::GetMusicAssetPath(EBNMusicState::Race)).IsEmpty());
 	TestFalse(TEXT("Pursuit music path defined"), FString(UBNAudioSubsystem::GetMusicAssetPath(EBNMusicState::Pursuit)).IsEmpty());
+	return true;
+}
+
+// Pure unit test: verifies manual-shift Drag race timing windows, speed surge, gear ceilings, and redline blown engine.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNDragLogicTest, "BlackNumbers.Race.DragShiftAndBlownEngine",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNDragLogicTest::RunTest(const FString& Parameters)
+{
+	FBNDragState Drag;
+	Drag.Reset(true);
+	TestTrue(TEXT("Drag mode enabled"), Drag.bActive);
+	TestEqual(TEXT("Starts in Gear 1"), Drag.Gear, 1);
+
+	// Drive to sweet-spot RPM (~86%) and trigger a Perfect Shift!
+	Drag.RpmFraction = 0.86f;
+	EBNDragShiftGrade Grade = EBNDragShiftGrade::None;
+	const float Surge = Drag.ShiftUp(&Grade);
+	TestEqual(TEXT("86% RPM awards Perfect shift"), Grade, EBNDragShiftGrade::Perfect);
+	TestTrue(TEXT("Perfect shift grants strong positive velocity surge"), Surge > 200.f);
+	TestEqual(TEXT("Upshift moved to Gear 2"), Drag.Gear, 2);
+	TestEqual(TEXT("PerfectShifts counter incremented"), Drag.PerfectShifts, 1);
+
+	// Downshift returns to Gear 1 cleanly.
+	TestTrue(TEXT("Downshift succeeds from Gear 2"), Drag.ShiftDown());
+	TestEqual(TEXT("Back in Gear 1"), Drag.Gear, 1);
+
+	// Holding redline past OverheatLimitSeconds blows the engine!
+	for (int32 i = 0; i < 30; ++i)
+	{
+		Drag.Tick(0.1f, Drag.GetCurrentGearMaxSpeedKmh() + 10.f, 1.f);
+	}
+	TestTrue(TEXT("Holding redline under full gas blows Drag engine"), Drag.bEngineBlown);
+	return true;
+}
+
+// Pure unit test: verifies UBNRoadGraphSubsystem GPS destination routing, remaining distance, and arrival clear.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNGpsNavigationTest, "BlackNumbers.World.GpsNavigationPath",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNGpsNavigationTest::RunTest(const FString& Parameters)
+{
+	UBNRoadGraphAsset* Asset = NewObject<UBNRoadGraphAsset>(GetTransientPackage());
+	UBNRoadGraphSubsystem* Graph = NewObject<UBNRoadGraphSubsystem>(GetTransientPackage());
+	if (!Asset || !Graph) { return false; }
+
+	auto AddNode = [&](int32 Id, const FVector& Pos)
+	{
+		FBNRoadNode& N = Asset->Nodes.AddDefaulted_GetRef();
+		N.Id = Id;
+		N.Position = Pos;
+		N.District = EBNDistrict::MerkezBulvar;
+	};
+	AddNode(0, FVector(0.f, 0.f, 0.f));
+	AddNode(1, FVector(12000.f, 0.f, 0.f));
+	AddNode(2, FVector(24000.f, 0.f, 0.f));
+	for (const TPair<int32, int32>& Pair : { TPair<int32, int32>(0, 1), TPair<int32, int32>(1, 2) })
+	{
+		FBNRoadEdge& E = Asset->Edges.AddDefaulted_GetRef();
+		E.NodeA = Pair.Key;
+		E.NodeB = Pair.Value;
+		E.SampledPoints = { Asset->Nodes[Pair.Key].Position, Asset->Nodes[Pair.Value].Position };
+	}
+	Graph->SetRoadGraphAsset(Asset);
+
+	Graph->SetGpsDestination(FVector(24000.f, 0.f, 0.f), TEXT("Eski Liman"), FVector(0.f, 0.f, 0.f));
+	TestTrue(TEXT("GPS destination active"), Graph->HasGpsDestination());
+	TestTrue(TEXT("A* GPS route produced >= 2 waypoints"), Graph->GetGpsRoutePoints().Num() >= 2);
+	TestTrue(TEXT("Remaining distance reflects ~240 m"), Graph->GetGpsRemainingDistanceCm(FVector::ZeroVector) > 20000.f);
+	TestFalse(TEXT("Mid-route does not trigger arrival"), Graph->UpdateGpsForPlayer(FVector(10000.f, 0.f, 0.f)));
+	TestTrue(TEXT("Reaching within 35 m triggers GPS arrival & clears"), Graph->UpdateGpsForPlayer(FVector(23000.f, 0.f, 0.f)));
+	TestFalse(TEXT("GPS cleared upon arrival"), Graph->HasGpsDestination());
 	return true;
 }
 

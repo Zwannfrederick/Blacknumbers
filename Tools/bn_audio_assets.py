@@ -37,6 +37,9 @@ SFX_NAMES = [
     "SFX_Radio_Squelch",
     "SFX_Nos_Ignite",
     "SFX_NearMiss_Whoosh",
+    "SFX_Shift_Pop",
+    "SFX_Engine_Blown",
+    "SFX_Gps_Arrive",
 ]
 
 MUSIC_NAMES = [
@@ -226,6 +229,30 @@ def _make_sfx():
     doppler_f = 780.0 / (1.0 + 2.4 * t) + 140.0
     doppler = np.sin(2 * np.pi * np.cumsum(doppler_f) / SR) * env * 0.30
     _write_wav(os.path.join(SFX_DIR, "SFX_NearMiss_Whoosh.wav"), _fade_edges(wind + doppler, 0.01, 0.03), peak=0.72)
+
+    # 15. SFX_Shift_Pop (punchy exhaust backfire crackle + turbo blow-off flutter)
+    t = t_arr(0.32)
+    n1 = rng.normal(0.0, 1.0, len(t))
+    pop_thump = np.tanh(2.4 * np.sin(2 * np.pi * (170.0 * np.exp(-t * 28.0) + 52.0) * t)) * np.exp(-t * 24.0)
+    crackle = _bandpass(n1, 550.0, 3600.0) * (np.exp(-t * 26.0) + 0.45 * np.exp(-np.maximum(t - 0.055, 0.0) * 34.0) * (t >= 0.055))
+    bov_flutter = _bandpass(rng.normal(0.0, 1.0, len(t)), 1600.0, 4800.0) * (0.55 + 0.45 * np.sin(2 * np.pi * 24.0 * t)) * np.exp(-t * 10.5)
+    _write_wav(os.path.join(SFX_DIR, "SFX_Shift_Pop.wav"), _fade_edges(0.85 * pop_thump + 0.72 * crackle + 0.48 * bov_flutter, 0.002, 0.02), peak=0.86)
+
+    # 16. SFX_Engine_Blown (metallic rod snap + piston clatter + pressurized radiator steam hiss)
+    t = t_arr(1.35)
+    snap = np.tanh(3.0 * np.sin(2 * np.pi * (140.0 * np.exp(-t * 14.0) + 38.0) * t)) * np.exp(-t * 9.0)
+    clank = (np.sin(2 * np.pi * 410.0 * t) + 0.7 * np.sin(2 * np.pi * 735.0 * t) + 0.5 * np.sin(2 * np.pi * 1180.0 * t)) * np.exp(-t * 11.0)
+    steam = _bandpass(rng.normal(0.0, 1.0, len(t)), 1400.0, 7200.0) * np.minimum(np.maximum(t - 0.08, 0.0) / 0.10, 1.0) * np.exp(-np.maximum(t - 0.18, 0.0) * 1.9)
+    _write_wav(os.path.join(SFX_DIR, "SFX_Engine_Blown.wav"), _fade_edges(0.95 * snap + 0.65 * clank + 0.60 * steam, 0.002, 0.06), peak=0.88)
+
+    # 17. SFX_Gps_Arrive (crisp 3-note futuristic navigation arrival chime)
+    t = t_arr(0.45)
+    chime = (
+        0.60 * np.sin(2 * np.pi * 587.33 * t) * np.exp(-t * 14.0)
+        + 0.70 * (t >= 0.08) * np.sin(2 * np.pi * 880.0 * np.maximum(t - 0.08, 0.0)) * np.exp(-np.maximum(t - 0.08, 0.0) * 11.0)
+        + 0.80 * (t >= 0.16) * np.sin(2 * np.pi * 1174.66 * np.maximum(t - 0.16, 0.0)) * np.exp(-np.maximum(t - 0.16, 0.0) * 8.5)
+    )
+    _write_wav(os.path.join(SFX_DIR, "SFX_Gps_Arrive.wav"), _fade_edges(chime, 0.002, 0.03), peak=0.74)
 
 
 def _midi_hz(midi_note):

@@ -68,6 +68,9 @@ const TCHAR* UBNAudioSubsystem::GetSfxAssetPath(EBNSfxId Id)
 	case EBNSfxId::RadioSquelch: return TEXT("/Game/Audio/SFX/SFX_Radio_Squelch.SFX_Radio_Squelch");
 	case EBNSfxId::NosIgnite: return TEXT("/Game/Audio/SFX/SFX_Nos_Ignite.SFX_Nos_Ignite");
 	case EBNSfxId::NearMissWhoosh: return TEXT("/Game/Audio/SFX/SFX_NearMiss_Whoosh.SFX_NearMiss_Whoosh");
+	case EBNSfxId::ShiftPop: return TEXT("/Game/Audio/SFX/SFX_Shift_Pop.SFX_Shift_Pop");
+	case EBNSfxId::EngineBlown: return TEXT("/Game/Audio/SFX/SFX_Engine_Blown.SFX_Engine_Blown");
+	case EBNSfxId::GpsArrive: return TEXT("/Game/Audio/SFX/SFX_Gps_Arrive.SFX_Gps_Arrive");
 	default: return TEXT("");
 	}
 }

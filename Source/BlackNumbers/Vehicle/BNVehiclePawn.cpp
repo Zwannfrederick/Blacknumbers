@@ -371,13 +371,25 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 {
 	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
 	const int32 Gear = Move->GetCurrentGear();
-	if (Gear > LastGear && Gear > 1 && Move->GetEngineRotationSpeed() > UpshiftBackfireMinRpm)
+	if (!DragState.bActive && Gear > LastGear && Gear > 1 && Move->GetEngineRotationSpeed() > UpshiftBackfireMinRpm)
 	{
-		BoostState.TriggerBackfire(BackfireDurationSeconds);
-		GearShiftKick = 1.f;
+		BoostState.TriggerBackfire(0.24f);
+		GearShiftKick = 1.55f;
+		ShiftFlashRemaining = 0.24f;
+		if (Effects)
+		{
+			Effects->TriggerExhaustSparks(BoostState.bNosActive);
+		}
+		if (IsPlayerControlled())
+		{
+			if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
+			{
+				Audio->PlaySfx2D(EBNSfxId::ShiftPop, 0.72f, FMath::FRandRange(0.95f, 1.08f));
+			}
+		}
 	}
 	LastGear = Gear;
-	GearShiftKick = FMath::FInterpTo(GearShiftKick, 0.f, RealDt, 7.f);
+	GearShiftKick = FMath::FInterpTo(GearShiftKick, 0.f, RealDt, 7.5f);
 
 	const float SpeedKmh = GetSpeedKmh();
 	const bool bOnGround = IsOnGround();
@@ -401,9 +413,14 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 	BoostState.UpdateNos(RealDt, bNosWanted, bInputLocked, bOnGround, SpeedKmh, bDrifting, Boost);
 	if (!bWasNosActive && BoostState.bNosActive && IsPlayerControlled())
 	{
+		GearShiftKick = FMath::Max(GearShiftKick, 1.25f);
+		if (Effects)
+		{
+			Effects->TriggerExhaustSparks(true);
+		}
 		if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
 		{
-			Audio->PlaySfx2D(EBNSfxId::NosIgnite, 0.9f);
+			Audio->PlaySfx2D(EBNSfxId::NosIgnite, 0.95f);
 		}
 	}
 
@@ -428,7 +445,9 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 		}
 	}
 
-	if (IsPlayerControlled())
+	UpdateDamageAndDrag(DeltaSeconds, RealDt, SpeedKmh);
+
+	if (IsPlayerControlled() && TotaledSlowMoRemaining <= 0.f)
 	{
 		if (BoostState.bSpeedbreakerActive || BoostState.SpeedbreakerBlend > 0.01f)
 		{
@@ -495,7 +514,7 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 	if (Effects)
 	{
 		Effects->UpdateEffects(DeltaSeconds, SpeedKmh, GetSlipAngleDegrees(), bDrifting, bOnGround,
-			BoostState.bNosActive, IsBackfireActive());
+			BoostState.bNosActive, IsBackfireActive(), VehicleHealth, IsEngineBlown());
 	}
 	UpdateCamera(DeltaSeconds, RealDt, SpeedKmh, RealTimeSeconds);
 }
@@ -609,6 +628,7 @@ void ABNVehiclePawn::OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* Oth
 			const EBNSfxId CrashId = ImpulseMag > 260000.f ? EBNSfxId::CrashHeavy : EBNSfxId::CrashLight;
 			Audio->PlaySfxAtLocation(CrashId, SparkLoc, FMath::Clamp(0.45f + Intensity * 0.6f, 0.4f, 1.f));
 		}
+		ApplyCollisionDamage(ImpulseMag, GetSpeedKmh(), FMath::Abs(Hit.ImpactNormal.Z) < 0.65f || OtherCar != nullptr);
 		// High-speed player slam against an active police cruiser can damage or disable the pursuing unit!
 		if (IsPlayerControlled() && OtherCar && ImpulseMag > 280000.f && FMath::Abs(GetSpeedKmh()) >= 100.f)
 		{
@@ -874,6 +894,11 @@ void ABNVehiclePawn::SetInputLocked(bool bLocked)
 
 void ABNVehiclePawn::ResetVehicle()
 {
+	if (bTotaled || bBlownEngine)
+	{
+		RepairVehicle();
+		SetInputLocked(false);
+	}
 	FRotator Heading = GetActorRotation();
 	Heading.Pitch = 0.f;
 	Heading.Roll = 0.f;

@@ -190,12 +190,23 @@ def build_road_geometry(nodes, edges):
                 return True
         return False
 
-    # Track widest incident edge per node for clean circular junction pads
+    # Track widest incident edge & degree/slope per node for clean circular junction pads
     node_width = {nid: 1400.0 for nid in nodes}
     node_mat = {nid: ("MI_Asphalt", "PM_Asphalt") for nid in nodes}
+    node_degree = {nid: 0 for nid in nodes}
+    node_sloped = {nid: False for nid in nodes}
     for e in edges:
-        node_width[e["node_a"]] = max(node_width[e["node_a"]], e["width"])
-        node_width[e["node_b"]] = max(node_width[e["node_b"]], e["width"])
+        a_id, b_id = e["node_a"], e["node_b"]
+        node_width[a_id] = max(node_width[a_id], e["width"])
+        node_width[b_id] = max(node_width[b_id], e["width"])
+        node_degree[a_id] += 1
+        node_degree[b_id] += 1
+        pts_e = e["points"]
+        if len(pts_e) >= 2:
+            if abs(pts_e[1][2] - pts_e[0][2]) > 45.0:
+                node_sloped[a_id] = True
+            if abs(pts_e[-1][2] - pts_e[-2][2]) > 45.0:
+                node_sloped[b_id] = True
 
     for e in edges:
         pts = e["points"]
@@ -279,12 +290,16 @@ def build_road_geometry(nodes, edges):
                               "MI_MountainRock" if e["district"] == knet.DIST_GECIT else "MI_Concrete",
                               "PM_Concrete", collision=True, yaw=yaw, pitch=0.0, cast_shadow=False)
 
-    # Circular intersection blend pads at every road node (eliminates T/4-way seam gaps)
+    # Circular intersection blend pads at multi-way junctions (skip degree-2 pass-through sloped nodes so a flat pad
+    # never juts out as a horizontal shelf above a climbing ramp like Eski Liman Koprusu!)
     for nid, n in nodes.items():
+        if node_degree[nid] <= 2 and (node_sloped[nid] or nid in (20, 21)):
+            continue
         x, y, z = n["pos"]
-        dia_m = (node_width[nid] * 1.18) / 100.0
+        scale_f = 0.85 if node_sloped[nid] else 1.18
+        dia_m = (node_width[nid] * scale_f) / 100.0
         nmat, nphys = node_mat[nid]
-        roads.add("JunctionPad", (x, y, z - 22.5), (dia_m, dia_m, 0.45),
+        roads.add("JunctionPad", (x, y, z - 24.5), (dia_m, dia_m, 0.45),
                   nmat, nphys, collision=True, mesh=CYLINDER, cast_shadow=False)
 
 
@@ -418,11 +433,12 @@ def build_gameplay_actors(edges):
 
 
 def build_races(nodes, edges, lookup):
-    """Builds all 9 unique Karamara race DataAssets & places holographic start beacons in the world."""
+    """Builds all 11 unique Karamara race DataAssets (Circuit, Sprint, Drift, Drag) & places holographic beacons."""
     disc_map = {
         "CIRCUIT": unreal.BNRaceDiscipline.CIRCUIT,
         "SPRINT":  unreal.BNRaceDiscipline.SPRINT,
         "DRIFT":   unreal.BNRaceDiscipline.DRIFT,
+        "DRAG":    unreal.BNRaceDiscipline.DRAG,
     }
     specs = knet.build_race_specs(nodes, edges, lookup)
 

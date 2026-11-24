@@ -10,6 +10,7 @@ enum class EBNRaceDiscipline : uint8
 	Sprint,  // point to point through the gates
 	Circuit, // laps; gate 0 is the start/finish line
 	Drift,   // score as many drift points as possible before the time runs out
+	Drag,    // manual-shift 1/2-mile straightaway drag strip with blown-engine danger
 };
 
 /** One race as data: new races need no code. Created by Tools/build_test_map.py for the test track. */

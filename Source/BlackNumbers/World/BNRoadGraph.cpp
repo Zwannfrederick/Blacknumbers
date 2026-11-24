@@ -593,3 +593,68 @@ const TCHAR* UBNRoadGraphSubsystem::DefaultDistrictSubtitle(EBNDistrict District
 	default:                          return TEXT("KARAMARA ŞEHİR MERKEZİ");
 	}
 }
+
+void UBNRoadGraphSubsystem::SetGpsDestination(const FVector& WorldPos, const FString& Label, const FVector& PlayerPos)
+{
+	bHasGpsDestination = true;
+	GpsTargetLocation = WorldPos;
+	GpsTargetLabel = Label.IsEmpty() ? TEXT("HARİTA HEDEFİ") : Label;
+	LastGpsStartPos = PlayerPos;
+	GpsRoutePoints.Reset();
+
+	if (!FindPath(PlayerPos, WorldPos, GpsRoutePoints) || GpsRoutePoints.Num() < 2)
+	{
+		GpsRoutePoints.Reset();
+		GpsRoutePoints.Add(PlayerPos);
+		GpsRoutePoints.Add(WorldPos);
+	}
+	else if (FVector::Dist2D(PlayerPos, GpsRoutePoints[0]) > 400.f)
+	{
+		GpsRoutePoints.Insert(PlayerPos, 0);
+	}
+}
+
+void UBNRoadGraphSubsystem::ClearGpsDestination()
+{
+	bHasGpsDestination = false;
+	GpsTargetLocation = FVector::ZeroVector;
+	GpsTargetLabel.Reset();
+	GpsRoutePoints.Reset();
+}
+
+float UBNRoadGraphSubsystem::GetGpsRemainingDistanceCm(const FVector& PlayerPos) const
+{
+	if (!bHasGpsDestination)
+	{
+		return 0.f;
+	}
+	if (GpsRoutePoints.Num() < 2)
+	{
+		return FVector::Dist2D(PlayerPos, GpsTargetLocation);
+	}
+	float Total = FVector::Dist2D(PlayerPos, GpsRoutePoints[0]);
+	for (int32 i = 0; i + 1 < GpsRoutePoints.Num(); ++i)
+	{
+		Total += FVector::Dist2D(GpsRoutePoints[i], GpsRoutePoints[i + 1]);
+	}
+	return Total;
+}
+
+bool UBNRoadGraphSubsystem::UpdateGpsForPlayer(const FVector& PlayerPos)
+{
+	if (!bHasGpsDestination)
+	{
+		return false;
+	}
+	if (FVector::Dist2D(PlayerPos, GpsTargetLocation) <= 3500.f)
+	{
+		ClearGpsDestination();
+		return true;
+	}
+	// Recompute shortest A* path cleanly whenever the player moves >20 m from the last origin sample.
+	if (FVector::DistSquared2D(PlayerPos, LastGpsStartPos) >= FMath::Square(2000.f))
+	{
+		SetGpsDestination(GpsTargetLocation, GpsTargetLabel, PlayerPos);
+	}
+	return false;
+}

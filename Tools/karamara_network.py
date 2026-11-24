@@ -88,7 +88,7 @@ RAW_NODES = {
     17: ( 50000.0, -24000.0,    0.0, DIST_LIMAN,   True),   # Liman North Dock
     18: ( 50000.0,  -4000.0,    0.0, DIST_LIMAN,   True),   # Liman Central Quay
     19: ( 50000.0,  20000.0,    0.0, DIST_LIMAN,   False),  # Liman South Quay
-    20: ( 62000.0, -14000.0, 1600.0, DIST_LIMAN,   False),  # Bridge West Tower Deck (+16 m)
+    20: ( 64000.0, -14000.0, 1600.0, DIST_LIMAN,   False),  # Bridge West Tower Deck (+16 m)
     21: ( 84000.0, -14000.0, 1600.0, DIST_LIMAN,   False),  # Bridge East Tower Deck (+16 m)
     22: ( 88000.0,   8000.0,  600.0, DIST_LIMAN,   False),  # East Harbor Peninsula Loop
     23: ( 88000.0, -24000.0,  600.0, DIST_LIMAN,   False),  # Eski Liman Tunnel Portal (Route A)
@@ -163,14 +163,14 @@ RAW_EDGES = [
     (17, 18, [], 1800.0, 85.0, DIST_LIMAN, False, False),
     (18, 19, [], 1800.0, 85.0, DIST_LIMAN, False, False),
     (19, 14, [(56000.0, 31000.0, 0.0)], 1600.0, 80.0, DIST_LIMAN, False, False),
-    # West Bridge Approach Ramp (17 -> 20: 0 m -> +16 m over ~220 m curved climb)
-    (17, 20, [(55000.0, -22500.0, 520.0), (59000.0, -18000.0, 1120.0)], 1800.0, 100.0, DIST_LIMAN, True, False),
-    # Main Eski Liman Koprusu Truss Span (20 -> 21: straight elevated Z = +16 m over Mara Harbor!)
-    (20, 21, [(73000.0, -14000.0, 1600.0)], 1860.0, 120.0, DIST_LIMAN, True, False),
-    # East Bridge North Spur to Eski Liman Tunnel Portal (Route A)
-    (21, 23, [(87500.0, -17500.0, 1150.0)], 1700.0, 100.0, DIST_LIMAN, True, False),
-    # East Bridge South Sweep returning to East Harbor & Dogu Sanayi
-    (21, 22, [(89500.0, -4000.0, 1150.0)], 1800.0, 105.0, DIST_LIMAN, True, False),
+    # West Bridge Approach Ramp (17 -> 20: curves smoothly onto Y=-14000 & levels cleanly before bridge portal)
+    (17, 20, [(53200.0, -22600.0, 320.0), (56200.0, -17200.0, 860.0), (59500.0, -14000.0, 1320.0), (62200.0, -14000.0, 1545.0)], 1860.0, 100.0, DIST_LIMAN, True, False),
+    # Main Eski Liman Koprusu Truss Span (20 -> 21: straight elevated Z = +16 m over Mara Harbor, exactly 5x40 m spans!)
+    (20, 21, [(74000.0, -14000.0, 1600.0)], 1860.0, 120.0, DIST_LIMAN, True, False),
+    # East Bridge North Spur to Eski Liman Tunnel Portal (Route A — straight lead-out before curve)
+    (21, 23, [(86000.0, -14200.0, 1520.0), (87800.0, -18000.0, 1080.0)], 1700.0, 100.0, DIST_LIMAN, True, False),
+    # East Bridge South Sweep returning to East Harbor & Dogu Sanayi (straight lead-out before curve)
+    (21, 22, [(86200.0, -14000.0, 1550.0), (89200.0, -10800.0, 1320.0), (89800.0, -3500.0, 1020.0)], 1800.0, 105.0, DIST_LIMAN, True, False),
     (22, 14, [(78000.0, 26000.0, 300.0), (69000.0, 38000.0, 80.0)], 1700.0, 95.0, DIST_LIMAN, True, False),
 
     # --- Kuzey Viyadugu & O-5 Cevre Yolu Perimeter Highway ---
@@ -457,6 +457,16 @@ def build_race_specs(nodes, edges, edge_lookup):
               [5, 4, 8, 32, 33, 34, 31, 24, 25, 37, 38, 26, 27, 17, 20, 21, 22, 14, 13, 11, 7, 6, 5],
               num_gates=16, laps=1, gate_width=2400.0, rivals=(0.94, 0.98, 1.00),
               beacon_offset=(2200.0, 1500.0))
+
+    # 10. Kuzey Viyadugu 1/2 Mile Drag Strip (manual shift + blown engine danger!)
+    add_route("RACE_ViyadukDrag", "Kuzey Viyadüğü 1/2 Mil Drag", "DRAG",
+              [24, 25, 26], num_gates=4, laps=1, gate_width=2200.0,
+              rivals=(0.86,), beacon_offset=(1800.0, -1600.0))
+
+    # 11. Merkez Bulvar -> Eski Liman Grand Boulevard Drag Strip
+    add_route("RACE_LimanDrag", "Merkez – Liman Düzlüğü Drag", "DRAG",
+              [4, 5, 6, 7, 18], num_gates=4, laps=1, gate_width=2000.0,
+              rivals=(0.91,), beacon_offset=(2400.0, 1600.0))
 
     return specs
 

@@ -110,13 +110,13 @@ def build_landmarks(ctx):
     place_mesh = ctx["place_mesh"]
     MI = ctx["MI"]
 
-    # 1. Eski Liman Koprusu: 2 monumental H-frame towers + 6 arched Warren truss spans across Mara Channel
+    # 1. Eski Liman Koprusu: 2 monumental H-frame towers + 5 exact 40 m arched Warren truss spans (X = 64000..84000, zero overhang!)
     bf = "Landmarks/EskiLimanKoprusu"
-    for px in (66000.0, 80000.0):
+    for px in (68000.0, 80000.0):
         place_mesh("EskiLimanBridge_Pylon", "SM_BN_BridgePylon", (px, -14000.0, 0.0),
                    yaw=0.0, collision=False, folder=bf)
-    for k in range(6):
-        sx = 63000.0 + k * 4000.0
+    for k in range(5):
+        sx = 66000.0 + k * 4000.0
         place_mesh("EskiLimanBridge_Truss", "SM_BN_BridgeTruss", (sx, -14000.0, 1582.0),
                    yaw=0.0, collision=False, folder=bf)
 
@@ -179,8 +179,8 @@ def build_landmarks(ctx):
         (34500.0, 49500.0, 0.0, 2), (34500.0, 56500.0, 0.0, 2), (34500.0, 62500.0, 0.0, 1),
         (53500.0, 49500.0, 0.0, 2), (53500.0, 57500.0, 0.0, 2),
         (42000.0, 63200.0, 90.0, 2), (48000.0, 63200.0, 90.0, 1),
-        # Eski Liman wharf container stacks (well clear of X=50000 road)
-        (55500.0, -28000.0, 0.0, 2), (55500.0, -18000.0, 0.0, 2),
+        # Eski Liman wharf container stacks (well clear of X=50000 road & West Bridge Ramp)
+        (55500.0, -28000.0, 0.0, 2), (55500.0, -8000.0, 0.0, 2),
         (55500.0,  2000.0, 0.0, 2), (55500.0,  10000.0, 0.0, 2), (55500.0, 24000.0, 0.0, 2),
     ]):
         for lv in range(stack):
@@ -498,10 +498,13 @@ def build_street_furniture_and_foliage(ctx, nodes, edges, clearance):
                         continue
                     if any(math.hypot(bx - jx, by - jy) < 1750.0 and abs(pz - jz) < 350.0 for jx, jy, jz in junction_nodes):
                         continue
+                    # Keep barriers clean of the bridge truss portals (X=64000 & X=84000) so entry/exit stay unobstructed
+                    if abs(by - (-14000.0)) < 1300.0 and (63200.0 <= bx <= 64800.0 or 83200.0 <= bx <= 84800.0):
+                        continue
                     h_barrier.add_instance(unreal.Transform(
                         location=unreal.Vector(bx, by, pz),
                         rotation=unreal.Rotator(roll=0.0, pitch=pitch, yaw=yaw),
-                        scale=unreal.Vector(1.0, 1.0, 1.0),
+                        scale=unreal.Vector(1.16, 1.0, 1.0),
                     ), True)
 
     # Real-foliage Autumn Trees along Merkez, Yamac, Parks & Pine Forests on Kuzey Gecidi!

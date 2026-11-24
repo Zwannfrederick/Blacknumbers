@@ -74,6 +74,14 @@ public:
 	/** Returns any race currently in Countdown or Racing in World (optionally ignoring one event). */
 	static ABNRaceEvent* FindActiveRace(const UWorld* World, const ABNRaceEvent* IgnoreEvent = nullptr);
 
+	/** Returns an Idle race whose start ring currently contains Car (for interactive Pre-Race Briefing prompt). */
+	static ABNRaceEvent* FindNearbyIdleRace(const UWorld* World, const ABNVehiclePawn* Car);
+
+	bool WasFailedTotaled() const { return bFailedTotaled; }
+	bool WasFailedBlownEngine() const { return bFailedBlownEngine; }
+	int32 GetLastDragPerfectShifts() const { return LastDragPerfectShifts; }
+	bool IsPlayerInStartRing() const { return bPlayerInStartRing; }
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Race")
 	TObjectPtr<UBNRaceDefinition> Definition;
 
@@ -143,4 +151,8 @@ private:
 	FLinearColor ActiveBossTint = FLinearColor::White;
 	int32 LastCountdownDigit = 0;
 	bool bUsingHoloRaceMeshes = false;
+	bool bPlayerInStartRing = false;
+	bool bFailedTotaled = false;
+	bool bFailedBlownEngine = false;
+	int32 LastDragPerfectShifts = 0;
 };

@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "WheeledVehiclePawn.h"
 #include "Garage/BNGarageTypes.h"
+#include "Race/BNDragLogic.h"
 #include "Vehicle/BNVehicleBoost.h"
 #include "BNVehiclePawn.generated.h"
 
@@ -156,6 +157,32 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
 	bool IsBackfireActive() const { return BoostState.BackfireFlashRemaining > 0.f; }
 
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetShiftFlashFraction() const { return FMath::Clamp(ShiftFlashRemaining / 0.24f, 0.f, 1.f); }
+
+	// --- Chassis Integrity / Totaled & Manual-Shift Drag Mode ---
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetVehicleHealth() const { return VehicleHealth; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsTotaled() const { return bTotaled; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsEngineBlown() const { return bBlownEngine || DragState.bEngineBlown; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsDragModeActive() const { return DragState.bActive; }
+
+	const FBNDragState& GetDragState() const { return DragState; }
+
+	UFUNCTION(BlueprintCallable, Category = "Vehicle")
+	void RepairVehicle();
+
+	void SetDragMode(bool bEnable);
+	void TriggerManualShiftUp();
+	void TriggerManualShiftDown();
+	void ToggleWorldMap();
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Handling")
 	FBNDriftTuning Drift;
 
@@ -290,6 +317,8 @@ private:
 	void SetRearGrip(float Blend);
 	void ApplyPhysicsStats(const FBNComputedVehicleStats& Stats);
 	void UpdateBoostAndEffects(float DeltaSeconds, float RealDt);
+	void UpdateDamageAndDrag(float DeltaSeconds, float RealDt, float SpeedKmh);
+	void ApplyCollisionDamage(float ImpulseMag, float SpeedKmh, bool bWallOrVehicleHit);
 	void UpdateCamera(float DeltaSeconds, float RealDt, float SpeedKmh, float RealTimeSeconds);
 	void UpdateShowcaseCamera(float RealDt);
 	void UpdateNearMiss(float SpeedKmh);
@@ -322,7 +351,14 @@ private:
 	bool bHasPlayerSteeringInput = false;
 	int32 LastGear = 0;
 	float GearShiftKick = 0.f;
+	float ShiftFlashRemaining = 0.f;
 	float CameraImpactShake = 0.f;
+	float VehicleHealth = 1.f;
+	bool bTotaled = false;
+	bool bBlownEngine = false;
+	float TotaledSlowMoRemaining = 0.f;
+	float LastDamageHitTime = -10.f;
+	FBNDragState DragState;
 	float DriftHoldSeconds = 0.f;
 	float DriftExitBoostRemaining = 0.f;
 	float DriftExitBannerRemaining = 0.f;

@@ -32,12 +32,15 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void OnComponentDestroyed(bool bDestroyingHierarchy) override;
 
-	/** Driven each tick by ABNVehiclePawn with current kinematics and boost state. */
+	/** Driven each tick by ABNVehiclePawn with current kinematics, boost state, and chassis health. */
 	void UpdateEffects(float DeltaSeconds, float SpeedKmh, float SlipDegrees, bool bDrifting,
-		bool bOnGround, bool bNosActive, bool bBackfireActive);
+		bool bOnGround, bool bNosActive, bool bBackfireActive, float VehicleHealth = 1.f, bool bEngineBlown = false);
 
 	/** Spawns a pooled burst of bright streaks from WorldLocation along ImpactNormal. */
 	void TriggerCollisionSparks(const FVector& WorldLocation, const FVector& ImpactNormal, float Intensity);
+
+	/** Fires a punchy stream of glowing exhaust sparks/embers backward from both tailpipes on NOS ignition or shift pop. */
+	void TriggerExhaustSparks(bool bNosCyan);
 
 	UFUNCTION(BlueprintPure, Category = "Effects")
 	int32 GetActiveSmokeCount() const { return ActiveSmokeCount; }
@@ -57,6 +60,7 @@ private:
 		bool bActive = false;
 		FVector Location = FVector::ZeroVector;
 		FVector Velocity = FVector::ZeroVector;
+		FLinearColor Tint = FLinearColor(0.76f, 0.77f, 0.79f, 1.f);
 		float Age = 0.f;
 		float Lifetime = 0.9f;
 		float StartScale = 0.32f;
@@ -93,12 +97,13 @@ private:
 	void CleanupVisuals();
 
 	void GetRearWheelWorldPos(FVector& OutLeft, FVector& OutRight, FVector& OutUp, FVector& OutForward);
-	void SpawnSmokePuff(const FVector& SpawnLoc, const FVector& InheritedVel, float SlipIntensity);
+	void SpawnSmokePuff(const FVector& SpawnLoc, const FVector& InheritedVel, float SlipIntensity,
+		const FLinearColor& CustomTint = FLinearColor(0.76f, 0.77f, 0.79f, 1.f));
 	void SpawnSkidStrip(const FVector& PrevLoc, const FVector& CurrLoc, float SlipIntensity);
 	void UpdateSmokePool(float DeltaSeconds);
 	void UpdateSkidPool(float DeltaSeconds);
 	void UpdateSparkPool(float DeltaSeconds);
-	void UpdateExhaustFlames(bool bNosActive, bool bBackfireActive);
+	void UpdateExhaustFlames(bool bNosActive, bool bBackfireActive, float SpeedKmh);
 
 	UPROPERTY(Transient)
 	TObjectPtr<UStaticMesh> SphereMesh;
@@ -158,6 +163,8 @@ private:
 	TArray<FSparkState> SparkStates;
 
 	int32 NextSmokeIndex = 0;
+	float DamageSmokeAccum = 0.f;
+	float NosSparkAccum = 0.f;
 	int32 NextSkidIndex = 0;
 	int32 NextSparkIndex = 0;
 	int32 ActiveSmokeCount = 0;

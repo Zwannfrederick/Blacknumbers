@@ -3,8 +3,10 @@
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
 #include "UI/BNMenuWidget.h"
+#include "UI/BNRaceBriefingWidget.h"
 #include "UI/BNResultsOverlayWidget.h"
 #include "UI/BNTitleScreenWidget.h"
+#include "UI/BNWorldMapWidget.h"
 #include "BNHUD.generated.h"
 
 class ABNRaceEvent;
@@ -52,15 +54,29 @@ public:
 	void DismissTitleScreen(bool bStartDriving);
 	void ShowRaceResults(const FBNRaceResultSummary& Summary);
 	void ShowPursuitResults(const FBNPursuitResultSummary& Summary);
+	void ShowFreeRoamTotaledOverlay();
 	void DismissResultsOverlay(bool bRestoreControl = true);
 	void RestartRaceFromResults(const FBNRaceResultSummary& Summary);
 
+	// Pre-Race Briefing confirmation modal & [M] Interactive City Map
+	void OpenRaceBriefing(ABNRaceEvent* Event);
+	void CloseRaceBriefing(bool bRestoreControl = true);
+	bool TryOpenNearbyRaceBriefing();
+	void ToggleWorldMap();
+	void CloseWorldMap();
+
 	UFUNCTION(BlueprintPure, Category = "UI")
-	bool IsMenuOpen() const { return MenuWidget.IsValid() || TitleScreenWidget.IsValid() || ResultsOverlayWidget.IsValid(); }
+	bool IsMenuOpen() const
+	{
+		return MenuWidget.IsValid() || TitleScreenWidget.IsValid() || ResultsOverlayWidget.IsValid()
+			|| RaceBriefingWidget.IsValid() || WorldMapWidget.IsValid();
+	}
 
 	bool IsPauseMenuOpen() const { return MenuWidget.IsValid(); }
 	bool IsTitleScreenOpen() const { return TitleScreenWidget.IsValid(); }
 	bool IsResultsOverlayOpen() const { return ResultsOverlayWidget.IsValid(); }
+	bool IsWorldMapOpen() const { return WorldMapWidget.IsValid(); }
+	bool IsRaceBriefingOpen() const { return RaceBriefingWidget.IsValid(); }
 	bool HasStoryCardOpen() const { return StoryCardWidget.IsValid(); }
 	bool HandleMenuCloseOrAdvanceCard();
 
@@ -92,10 +108,12 @@ private:
 	};
 
 	void DrawRace(const ABNRaceEvent& Race);
+	void DrawDragShiftBar(const ABNVehiclePawn& Car);
 	void DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsystem* Story, bool bRaceActive);
-	void DrawEconomyPill(const UBNProgressionSubsystem& Progression);
-	void DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNPursuitSubsystem* Pursuit, const UBNStorySubsystem* Story);
+	void DrawEconomyPill(const UBNProgressionSubsystem& Progression, const UBNStorySubsystem* Story, bool bRaceActive);
+	void DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNPursuitSubsystem* Pursuit, UBNStorySubsystem* Story);
 	void DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNStorySubsystem* Story);
+	void DrawLiveCommsAndPrompts(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNStorySubsystem* Story);
 	void DrawDashboard(const ABNVehiclePawn& Car, const FBNDashReadout& Dash, bool bMenuBlocking);
 	void DrawGaugeBar(const TCHAR* Label, float X, float Y, float Width, float Height, float Fraction, const FLinearColor& FillColour, bool bActive);
 	void DrawActionBanners(const ABNVehiclePawn& Car, const UBNPursuitSubsystem* Pursuit, float BaseY);
@@ -116,7 +134,12 @@ private:
 	TSharedPtr<SWidget> MenuHost;
 	TSharedPtr<SBNStoryCardWidget> StoryCardWidget;
 	TSharedPtr<SWidget> StoryCardHost;
+	TSharedPtr<SBNRaceBriefingWidget> RaceBriefingWidget;
+	TSharedPtr<SWidget> RaceBriefingHost;
+	TSharedPtr<SBNWorldMapWidget> WorldMapWidget;
+	TSharedPtr<SWidget> WorldMapHost;
 	FString LastShownCardKey;
+	double GpsArrivalBannerUntil = 0.0;
 
 	FTrackedRaceState TrackedRace;
 	bool bTrackedPursuitActive = false;

@@ -90,24 +90,45 @@ void ABNVehiclePawn::UpdateCamera(float DeltaSeconds, float RealDt, float SpeedK
 
 	const float SpeedFov = FMath::GetMappedRangeValueClamped(
 		FVector2f(0.f, FovMaxSpeedKmh), FVector2f(BaseFov, MaxFov), FMath::Abs(SpeedKmh));
-	const float NosFovScale = bHood ? 0.55f : 1.f;
+	const float NosFovScale = bHood ? 0.62f : 1.f;
 	const float DriftBoostFov = (DriftExitBoostRemaining > 0.f ? 3.5f : 0.f) * NosFovScale;
+	const float ShiftFovKick = GearShiftKick * (bHood ? 1.6f : 3.2f);
 	const float ImpactFovKick = -CameraImpactShake * 2.8f;
-	Camera->SetFieldOfView(SpeedFov + BoostState.NosBlend * Boost.NosFovBonus * NosFovScale + DriftBoostFov
-		+ ImpactFovKick - BoostState.SpeedbreakerBlend * 6.f);
-	Camera->PostProcessBlendWeight = BoostState.SpeedbreakerBlend;
+	Camera->SetFieldOfView(SpeedFov + BoostState.NosBlend * (Boost.NosFovBonus + 5.f) * NosFovScale + DriftBoostFov
+		+ ShiftFovKick + ImpactFovKick - BoostState.SpeedbreakerBlend * 6.f);
+
+	// Blend dynamic NFS camera post-process for NOS (tunnel motion blur + chromatic fringe + vignette) and Speedbreaker.
+	const float NosP = BoostState.NosBlend;
+	const float SpdP = BoostState.SpeedbreakerBlend;
+	const float CombinedPost = FMath::Clamp(FMath::Max(NosP, SpdP), 0.f, 1.f);
+	Camera->PostProcessBlendWeight = CombinedPost;
+	if (CombinedPost > 0.01f)
+	{
+		FPostProcessSettings& PP = Camera->PostProcessSettings;
+		PP.bOverride_MotionBlurAmount = true;
+		PP.MotionBlurAmount = FMath::Lerp(0.10f, 0.42f, NosP) * (1.f - 0.55f * SpdP);
+		PP.bOverride_SceneFringeIntensity = true;
+		PP.SceneFringeIntensity = NosP * 1.05f + SpdP * 0.45f + GearShiftKick * 0.55f;
+		PP.bOverride_VignetteIntensity = true;
+		PP.VignetteIntensity = FMath::Lerp(0.28f, 0.56f, FMath::Max(NosP, SpdP));
+		PP.bOverride_ColorSaturation = true;
+		PP.ColorSaturation = FMath::Lerp(
+			FVector4(1.0f + NosP * 0.16f, 1.0f + NosP * 0.12f, 1.0f + NosP * 0.22f, 1.f),
+			FVector4(0.62f, 0.72f, 0.88f, 1.f), SpdP);
+	}
 
 	const float BaseDistance = ChaseDistances.IsValidIndex(ChaseDistanceIndex) ? ChaseDistances[ChaseDistanceIndex] : 650.f;
-	const float TargetArm = bHood ? 0.f : (BaseDistance + BoostState.NosBlend * Boost.NosArmPullback + GearShiftKick * 28.f);
-	const float NewArm = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArm, RealDt, bHood ? 16.f : 12.f);
+	const float TargetArm = bHood ? 0.f : (BaseDistance + BoostState.NosBlend * (Boost.NosArmPullback + 34.f) + GearShiftKick * 44.f);
+	const float NewArm = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetArm, RealDt, bHood ? 16.f : 11.f);
 	CameraBoom->TargetArmLength = (bHood && NewArm < 2.f) ? 0.f : NewArm;
 
-	const float ShakeScale = (BoostState.bSpeedbreakerActive ? 0.f : (bHood ? 0.35f : 1.f))
-		* FMath::GetMappedRangeValueClamped(FVector2f(SpeedShakeMinKmh, SpeedShakeFullKmh), FVector2f(0.f, MaxSpeedShakeAmplitude), FMath::Abs(SpeedKmh));
+	const float ShakeScale = (BoostState.bSpeedbreakerActive ? 0.f : (bHood ? 0.38f : 1.f))
+		* (FMath::GetMappedRangeValueClamped(FVector2f(SpeedShakeMinKmh, SpeedShakeFullKmh), FVector2f(0.f, MaxSpeedShakeAmplitude), FMath::Abs(SpeedKmh))
+			+ BoostState.NosBlend * 1.65f + GearShiftKick * 1.85f);
 	const float ImpactAmp = CameraImpactShake * (bHood ? 4.5f : 11.5f);
-	const float ShakeX = ImpactAmp * 0.6f * FMath::Sin(RealTimeSeconds * 79.f);
-	const float ShakeY = ShakeScale * FMath::Sin(RealTimeSeconds * 37.f) + ImpactAmp * FMath::Sin(RealTimeSeconds * 67.f + 0.7f);
-	const float ShakeZ = ShakeScale * 0.7f * FMath::Sin(RealTimeSeconds * 53.f + 1.1f) + ImpactAmp * 0.8f * FMath::Cos(RealTimeSeconds * 89.f);
+	const float ShakeX = ImpactAmp * 0.6f * FMath::Sin(RealTimeSeconds * 79.f) - GearShiftKick * 5.f;
+	const float ShakeY = ShakeScale * FMath::Sin(RealTimeSeconds * 43.f) + ImpactAmp * FMath::Sin(RealTimeSeconds * 67.f + 0.7f);
+	const float ShakeZ = ShakeScale * 0.7f * FMath::Sin(RealTimeSeconds * 59.f + 1.1f) + ImpactAmp * 0.8f * FMath::Cos(RealTimeSeconds * 89.f);
 	CurrentSocketBaseZ = FMath::FInterpTo(CurrentSocketBaseZ, bHood ? 0.f : BaseSocketZ, RealDt, 16.f);
 	CameraBoom->SocketOffset = FVector(ShakeX, ShakeY, CurrentSocketBaseZ + ShakeZ);
 }

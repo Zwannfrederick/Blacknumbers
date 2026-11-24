@@ -499,6 +499,130 @@ void UBNStorySubsystem::ReadFromSaveGame(const UBNSaveGame& SaveObj)
 	SyncWorldSystems(nullptr);
 }
 
+void UBNStorySubsystem::PostComms(const FString& Speaker, const FString& Message, float DurationSeconds, const FLinearColor& AccentColor)
+{
+	if (!IsInteractiveUIEnabled() || Speaker.IsEmpty() || Message.IsEmpty())
+	{
+		return;
+	}
+	// Cap queue length to prevent spam piling up during intense driving.
+	if (CommsQueue.Num() >= 3)
+	{
+		CommsQueue.RemoveAt(0);
+	}
+	FBNLiveComms Entry;
+	Entry.Speaker = Speaker;
+	Entry.Message = Message;
+	Entry.AccentColor = AccentColor;
+	Entry.RemainingSeconds = FMath::Clamp(DurationSeconds, 2.5f, 9.f);
+	CommsQueue.Add(MoveTemp(Entry));
+}
+
+void UBNStorySubsystem::TickComms(float DeltaSeconds)
+{
+	if (CommsQueue.Num() == 0)
+	{
+		return;
+	}
+	CommsQueue[0].RemainingSeconds -= FMath::Clamp(DeltaSeconds, 0.f, 0.25f);
+	if (CommsQueue[0].RemainingSeconds <= 0.f)
+	{
+		CommsQueue.RemoveAt(0);
+	}
+}
+
+void UBNStorySubsystem::NotifyDistrictEntered(int32 DistrictId)
+{
+	if (DistrictId < 0 || DistrictId >= 6)
+	{
+		return;
+	}
+	const uint32 Bit = 1u << static_cast<uint32>(DistrictId);
+	if ((VisitedDistrictMask & Bit) != 0)
+	{
+		return;
+	}
+	VisitedDistrictMask |= Bit;
+
+	const FLinearColor SelinCol(0.28f, 0.86f, 1.0f, 1.f);
+	const FLinearColor TarikCol(0.96f, 0.68f, 0.14f, 1.f);
+	const FLinearColor ArdaCol(0.22f, 0.90f, 0.48f, 1.f);
+	const FLinearColor DemirCol(0.96f, 0.26f, 0.20f, 1.f);
+
+	switch (DistrictId)
+	{
+	case 0:
+		PostComms(TEXT("SELİN"), TEXT("Merkez Bulvar temiz görünüyor ama devriye sıklığı arttı. [M] ile haritadan rota çiz."), 5.5f, SelinCol);
+		break;
+	case 1:
+		PostComms(TEXT("TARIK"), TEXT("Doğu Sanayi'ye hoş geldin. Konteyner avlusu drift için birebir — sakın gövdeyi dağıtma."), 5.5f, TarikCol);
+		break;
+	case 2:
+		PostComms(TEXT("ARDA"), TEXT("Eski Liman Köprüsü geceleri Black Numbers'ın hız testi hattı. Köprü üstünde gaz kesme."), 5.5f, ArdaCol);
+		break;
+	case 3:
+		PostComms(TEXT("ARDA"), TEXT("Kuzey Viyadüğü O-5 düzlüğü tam bir Drag cenneti. Vites zamanlamanı kaçırırsan motoru eline alırsın!"), 6.0f, ArdaCol);
+		break;
+	case 4:
+		PostComms(TEXT("SELİN"), TEXT("Yamaç Mahallesi'ndeyiz. Garaj hemen tepede — parça yükseltmek istersen [G] ile uğra."), 5.5f, SelinCol);
+		break;
+	case 5:
+		PostComms(TEXT("BAŞKOMİSER DEMİR"), TEXT("Tüm birimlere: Kuzey Geçidi dağ yolunda yasa dışı araç tespit edildi. Yolu kesin!"), 5.8f, DemirCol);
+		break;
+	default:
+		break;
+	}
+}
+
+void UBNStorySubsystem::NotifyReputationUpdated(int32 CurrentReputation)
+{
+	if (State.NextBossRank <= 0 || State.NextBossRank == AnnouncedReadyBossRank || CurrentReputation < 0)
+	{
+		return;
+	}
+	const FBNBossSpec* Boss = FBNStoryState::FindBossByRank(State.NextBossRank);
+	if (Boss && State.CanChallengeBoss(State.NextBossRank))
+	{
+		AnnouncedReadyBossRank = State.NextBossRank;
+		PostComms(TEXT("ARDA"),
+			FString::Printf(TEXT("Sıradaki Black Numbers hedefi: #%02d %s (%s). Hazır olduğunda [B] dosyasından meydan oku!"),
+				Boss->Rank, *Boss->Name, *Boss->DisciplineLabel),
+			6.2f, FLinearColor(0.22f, 0.90f, 0.48f, 1.f));
+	}
+}
+
+void UBNStorySubsystem::NotifyTotaledOrBlown(bool bBlownEngine)
+{
+	if (bBlownEngine)
+	{
+		PostComms(TEXT("TARIK"), TEXT("Pistonu fırlattın! Kırmızı bölgede o kadar tutma, yeşil bölgede [E] ile vites at!"),
+			6.0f, FLinearColor(0.96f, 0.34f, 0.18f, 1.f));
+	}
+	else
+	{
+		PostComms(TEXT("SELİN"), TEXT("Şasi dağıldı! Çekiciyi gönderdim, aracı garajda hemen topluyoruz."),
+			5.5f, FLinearColor(0.96f, 0.28f, 0.22f, 1.f));
+	}
+}
+
+void UBNStorySubsystem::NotifyRaceOutcome(bool bWon, bool bDrag, const FString& RaceName)
+{
+	if (bWon)
+	{
+		PostComms(bDrag ? TEXT("TARIK") : TEXT("SELİN"),
+			bDrag
+				? FString::Printf(TEXT("Temiz vites geçişleri! %s düzlüğünde tozunu attırdın."), *RaceName)
+				: FString::Printf(TEXT("%s cebinde! Şehirde adın kulaktan kulağa yayılıyor."), *RaceName),
+			5.0f, FLinearColor(0.28f, 0.86f, 1.0f, 1.f));
+	}
+	else
+	{
+		PostComms(TEXT("ARDA"),
+			FString::Printf(TEXT("%s kolay lokma değil. Garajda turbo ve lastik yükseltip tekrar dene."), *RaceName),
+			5.0f, FLinearColor(0.96f, 0.72f, 0.16f, 1.f));
+	}
+}
+
 static FAutoConsoleCommandWithWorldAndArgs GBNStorySkipToCmd(
 	TEXT("bn.StorySkipTo"),
 	TEXT("bn.StorySkipTo <1-16 | 0>  Advances story campaign cleanly to boss rank (or 0 for Perde 5)."),

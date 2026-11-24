@@ -27,6 +27,7 @@
 #include "UI/BNHUD.h"
 #include "Vehicle/BNVehiclePawn.h"
 #include "World/BNDayNightCycle.h"
+#include "World/BNRoadGraph.h"
 #if WITH_EDITOR
 #include "ShaderCompiler.h"
 #endif
@@ -472,10 +473,54 @@ namespace
 						Advance(12);
 					}
 					break;
-				case 12:
+				case 12: // Setup Shot 6: Car on Eski Liman Koprusu West Entry Ramp with active NOS flames & post-process!
 					if (Elapsed >= 1.5)
 					{
-						UE_LOG(LogTemp, Display, TEXT("bn.VisualShots: captured all 6 Karamara verification screenshots."));
+						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>(); HUD && HUD->IsMenuOpen())
+						{
+							HUD->CloseMenu();
+						}
+						SetHour(17.5f);
+						Car->SetActorLocationAndRotation(FVector(61000.f, -14000.f, 1525.f), FRotator(2.f, 0.f, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+						Car->GetMesh()->SetPhysicsLinearVelocity(FVector(2600.f, 0.f, 0.f));
+						Car->SetNosWanted(true);
+						PC->SetViewTarget(Car);
+						Advance(13);
+					}
+					break;
+				case 13:
+					if (Elapsed >= 0.45)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(14);
+					}
+					break;
+				case 14: // Setup Shot 7: [M] Interactive Karamara City Map with active A* GPS route!
+					if (Elapsed >= 1.2)
+					{
+						Car->SetNosWanted(false);
+						if (UBNRoadGraphSubsystem* RG = W->GetSubsystem<UBNRoadGraphSubsystem>())
+						{
+							RG->SetGpsDestination(FVector(-54000.f, 36000.f, 1600.f), TEXT("SELİN'İN GARAJI"), Car->GetActorLocation());
+						}
+						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>())
+						{
+							HUD->ToggleWorldMap();
+						}
+						Advance(15);
+					}
+					break;
+				case 15:
+					if (Elapsed >= 1.4)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(16);
+					}
+					break;
+				case 16:
+					if (Elapsed >= 1.2)
+					{
+						UE_LOG(LogTemp, Display, TEXT("bn.VisualShots: captured all 8 Karamara verification screenshots."));
 						FPlatformMisc::RequestExit(false);
 						return false;
 					}

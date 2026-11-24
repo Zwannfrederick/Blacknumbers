@@ -34,6 +34,9 @@ enum class EBNSfxId : uint8
 	RadioSquelch,
 	NosIgnite,
 	NearMissWhoosh,
+	ShiftPop,
+	EngineBlown,
+	GpsArrive,
 	Count UMETA(Hidden)
 };
 

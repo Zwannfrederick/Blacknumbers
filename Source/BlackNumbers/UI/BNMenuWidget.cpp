@@ -661,11 +661,15 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 				continue;
 			}
 			const FString Tag = Def->Discipline == EBNRaceDiscipline::Drift ? TEXT("DRİFT")
+				: Def->Discipline == EBNRaceDiscipline::Drag ? TEXT("DRAG")
 				: Def->Discipline == EBNRaceDiscipline::Circuit ? TEXT("PİST TURU") : TEXT("SPRINT");
 			const FLinearColor TagCol = Def->Discipline == EBNRaceDiscipline::Drift ? BNUITheme::NosCyan
+				: Def->Discipline == EBNRaceDiscipline::Drag ? BNUITheme::CrimsonRed
 				: Def->Discipline == EBNRaceDiscipline::Circuit ? BNUITheme::AmberGold : BNUITheme::EmeraldGreen;
 			const FString Meta = Def->Discipline == EBNRaceDiscipline::Drift
 				? FString::Printf(TEXT("Süre: %.0f sn  •  Serbest Drift Puanı"), Def->TimeLimitSeconds)
+				: Def->Discipline == EBNRaceDiscipline::Drag
+					? TEXT("Manuel Vites ([E]/[Q])  •  1/2 Mil Düzlük  •  Motor Patlama Riski")
 				: Def->Discipline == EBNRaceDiscipline::Circuit
 					? FString::Printf(TEXT("%d Tur  •  %d Rakip  •  GPS Rota Aktif"), Def->Laps, Def->RivalSkills.Num())
 					: FString::Printf(TEXT("%d Rakip  •  Noktadan Noktaya GPS Rota"), Def->RivalSkills.Num());
@@ -873,6 +877,9 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildControlsTab()
 		{ TEXT("W / A / S / D  (Ok Tuşları)"), TEXT("Gaz, yönlendirme, fren ve geri vites") },
 		{ TEXT("SPACE  (Alt Gamepad)"), TEXT("El freni — viraj girişinde A/D ile basılı tutarak drift başlat") },
 		{ TEXT("SOL SHIFT / SOL ALT / N"), TEXT("NOS Nitro Takviyesi (kendiliğinden dolar; drift ve yakın geçişlerle hızlanır)") },
+		{ TEXT("E / Q  (Drag Yarışı)"), TEXT("Drag yarışında manuel vites yükselt [E] / düşür [Q] (kırmızı bölgede motor patlar!)") },
+		{ TEXT("M / TAB"), TEXT("Karamara Şehir Haritası & A* GPS Navigasyon (tıklayıp rota çiz)") },
+		{ TEXT("ENTER"), TEXT("Yarış halkasındayken Yarış Özeti ve onay ekranını aç") },
 		{ TEXT("X / LEFT CTRL"), TEXT("Speedbreaker — zaman yavaşlatma ve yüksek hızlı manevra kontrolü") },
 		{ TEXT("C"), TEXT("Kamera modunu değiştir (Yakın Takip / Uzak Takip / Kaput)") },
 		{ TEXT("R"), TEXT("Aracı yolda düzelt") },
