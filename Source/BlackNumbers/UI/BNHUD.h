@@ -120,6 +120,7 @@ private:
 
 	FTrackedRaceState TrackedRace;
 	bool bTrackedPursuitActive = false;
+	bool bPausedForRaceMenu = false;
 	int32 TrackedPursuitPreRep = 0;
 	bool bAppliedAudioGainToCar = false;
 	int32 LastDistrictId = -1;

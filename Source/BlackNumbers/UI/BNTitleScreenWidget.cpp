@@ -7,7 +7,9 @@
 #include "GameFramework/PlayerController.h"
 #include "Garage/BNGarageSubsystem.h"
 #include "Garage/BNGarageTypes.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Race/BNRaceEvent.h"
 #include "Story/BNStorySubsystem.h"
 #include "Story/BNStoryTypes.h"
 #include "UI/BNHUD.h"
@@ -383,6 +385,15 @@ void ABNHUD::OpenTitleScreen()
 	if (!CanUseViewportSlate())
 	{
 		return;
+	}
+	if (bPausedForRaceMenu)
+	{
+		UGameplayStatics::SetGamePaused(GetWorld(), false);
+		bPausedForRaceMenu = false;
+	}
+	if (ABNRaceEvent* ActiveRace = ABNRaceEvent::FindActiveRace(GetWorld()))
+	{
+		ActiveRace->EndRace();
 	}
 	const bool bWasGarageTab = MenuWidget.IsValid() && MenuWidget->GetActiveTab() == EBNMenuTab::Garage;
 	if (MenuHost.IsValid())

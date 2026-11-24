@@ -109,6 +109,7 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	UInputAction* GarageToggle = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* DossierToggle = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* PauseMenuToggle = MakeAction(EInputActionValueType::Boolean);
+	PauseMenuToggle->bTriggerWhenPaused = true;
 	UInputAction* StoryCardAdvance = MakeAction(EInputActionValueType::Boolean);
 
 	InputContext->MapKey(Steering, EKeys::D);
@@ -130,6 +131,8 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
 	InputContext->MapKey(Nos, EKeys::LeftShift);
 	InputContext->MapKey(Nos, EKeys::RightShift);
+	InputContext->MapKey(Nos, EKeys::LeftAlt);
+	InputContext->MapKey(Nos, EKeys::N);
 	InputContext->MapKey(Nos, EKeys::Gamepad_FaceButton_Right);
 
 	InputContext->MapKey(Speedbreaker, EKeys::X);

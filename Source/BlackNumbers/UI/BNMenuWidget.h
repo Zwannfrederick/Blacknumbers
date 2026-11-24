@@ -5,6 +5,7 @@
 #include "Widgets/SCompoundWidget.h"
 
 class ABNHUD;
+class ABNRaceEvent;
 class ABNVehiclePawn;
 class SBorder;
 class SVerticalBox;
@@ -37,6 +38,8 @@ public:
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
+	virtual bool SupportsKeyboardFocus() const override { return true; }
+	virtual FReply OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent) override;
 	void SetActiveTab(EBNMenuTab NewTab);
 	EBNMenuTab GetActiveTab() const { return ActiveTab; }
 	void Refresh();
@@ -60,6 +63,7 @@ public:
 
 private:
 	TSharedRef<SWidget> BuildHeaderBar();
+	TSharedRef<SWidget> BuildRacePauseView(ABNRaceEvent& ActiveRace);
 	TSharedRef<SWidget> BuildRacesTab();
 	TSharedRef<SWidget> BuildGarageTab();
 	TSharedRef<SWidget> BuildBlackNumbersTab();

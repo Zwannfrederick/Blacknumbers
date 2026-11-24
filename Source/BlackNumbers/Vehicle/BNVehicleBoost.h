@@ -28,7 +28,11 @@ struct BLACKNUMBERS_API FBNBoostTuning
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "NOS", meta = (ClampMin = "50"))
 	float NosMaxSpeedKmh = 275.f;
 
-	/** Tank fraction recharged per second while drifting. */
+	/** Passive tank fraction recharged per second whenever NOS is not firing (classic NFS auto-refill). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "NOS", meta = (ClampMin = "0"))
+	float NosRechargePassivePerSecond = 0.11f;
+
+	/** Extra tank fraction recharged per second while drifting. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "NOS", meta = (ClampMin = "0"))
 	float NosRechargeDriftPerSecond = 0.16f;
 

@@ -23,6 +23,12 @@ bool FBNBoostLogicTest::RunTest(const FString& Parameters)
 	State.UpdateNos(0.5f, true, false, true, 90.f, false, Tuning);
 	TestFalse(TEXT("NOS refuses to fire below minimum tank threshold"), State.bNosActive);
 
+	// Passive NFS-style NOS auto-recharge fills tank even at low cruising speed without drifting.
+	FBNBoostState PassiveState;
+	PassiveState.NosFraction = 0.2f;
+	PassiveState.UpdateNos(1.0f, false, false, true, 50.f, false, Tuning);
+	TestTrue(TEXT("NOS recharges passively on its own while driving"), PassiveState.NosFraction > 0.25f);
+
 	// Drift recharge outpaces high-speed straight recharge.
 	FBNBoostState DriftState;
 	DriftState.NosFraction = 0.2f;

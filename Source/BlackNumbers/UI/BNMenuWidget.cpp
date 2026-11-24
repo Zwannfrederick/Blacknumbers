@@ -18,6 +18,7 @@
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/Layout/SScrollBox.h"
+#include "Widgets/Layout/SSpacer.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
@@ -71,6 +72,16 @@ void SBNGameMenuWidget::Construct(const FArguments& InArgs)
 	Refresh();
 }
 
+FReply SBNGameMenuWidget::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
+{
+	if (InKeyEvent.GetKey() == EKeys::Escape && OwnerHUD.IsValid())
+	{
+		OwnerHUD->CloseMenu();
+		return FReply::Handled();
+	}
+	return SCompoundWidget::OnKeyDown(MyGeometry, InKeyEvent);
+}
+
 void SBNGameMenuWidget::SetActiveTab(EBNMenuTab NewTab)
 {
 	if (ActiveTab == EBNMenuTab::Garage && NewTab != EBNMenuTab::Garage && PreviewedCar.IsSet())
@@ -97,6 +108,12 @@ void SBNGameMenuWidget::Refresh()
 	}
 	RootSlot->ClearChildren();
 
+	ABNRaceEvent* ActiveRace = ABNRaceEvent::FindActiveRace(GetHUDWorld(OwnerHUD));
+	if (ActiveRace && (ActiveTab == EBNMenuTab::Garage || ActiveTab == EBNMenuTab::BlackNumbers))
+	{
+		ActiveTab = EBNMenuTab::Races;
+	}
+
 	TSharedRef<SWidget> TabBody = SNullWidget::NullWidget;
 	switch (ActiveTab)
 	{
@@ -113,11 +130,11 @@ void SBNGameMenuWidget::Refresh()
 		TabBody = BuildControlsTab();
 		break;
 	default:
-		TabBody = BuildRacesTab();
+		TabBody = ActiveRace ? BuildRacePauseView(*ActiveRace) : BuildRacesTab();
 		break;
 	}
 
-	const bool bTransparentSafehouse = (ActiveTab == EBNMenuTab::Garage);
+	const bool bTransparentSafehouse = (!ActiveRace && ActiveTab == EBNMenuTab::Garage);
 	const FSlateBrush* VigFull = BNUITheme::GetVignetteFullBrush();
 	const bool bHasVig = VigFull != BNUITheme::WhiteBrush();
 
@@ -264,6 +281,55 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 			true, 11, FMargin(16.f, 9.f));
 	};
 
+	const ABNRaceEvent* ActiveRace = ABNRaceEvent::FindActiveRace(GetHUDWorld(OwnerHUD));
+	if (ActiveRace)
+	{
+		const FString RaceTitle = ActiveRace->Definition
+			? ActiveRace->Definition->DisplayName.ToString().ToUpper() : TEXT("AKTİF YARIŞ");
+		return SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+			[
+				SNew(SVerticalBox)
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(TEXT("YARIŞ DURAKLATILDI")))
+					.Font(BNUITheme::Font(20, true))
+					.ColorAndOpacity(BNUITheme::ChalkWhite)
+				]
+				+ SVerticalBox::Slot().AutoHeight()
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(FString::Printf(TEXT("BLACK NUMBERS  //  %s"), *RaceTitle)))
+					.Font(BNUITheme::Font(9, true))
+					.ColorAndOpacity(BNUITheme::AmberGold)
+				]
+			]
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				BNUITheme::MakeMWButton(FText::FromString(TEXT("YARIŞA DEVAM ET [ESC]")), EBNButtonVariant::PrimaryAmber,
+					FOnClicked::CreateLambda([this]()
+					{
+						if (OwnerHUD.IsValid())
+						{
+							OwnerHUD->CloseMenu();
+						}
+						return FReply::Handled();
+					}))
+			]
+		]
+		+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 10.f, 0.f, 0.f))
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 8.f, 0.f))[TabBtn(EBNMenuTab::Races, TEXT("DURAKLAT"))]
+			+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 8.f, 0.f))[TabBtn(EBNMenuTab::Settings, TEXT("AYARLAR"))]
+			+ SHorizontalBox::Slot().AutoWidth()[TabBtn(EBNMenuTab::Controls, TEXT("KONTROLLER"))]
+		];
+	}
+
 	return SNew(SVerticalBox)
 	+ SVerticalBox::Slot().AutoHeight()
 	[
@@ -350,6 +416,142 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 	];
 }
 
+TSharedRef<SWidget> SBNGameMenuWidget::BuildRacePauseView(ABNRaceEvent& ActiveRace)
+{
+	const UBNRaceDefinition* Def = ActiveRace.Definition;
+	const FString RaceTitle = Def ? Def->DisplayName.ToString() : TEXT("Karamara Yarışı");
+	const bool bDrift = Def && Def->Discipline == EBNRaceDiscipline::Drift;
+	const FString StatusLine = bDrift
+		? FString::Printf(TEXT("DRİFT SKORU: %d PTS   •   KALAN SÜRE: %s"),
+			ActiveRace.GetDriftScore().Total(), *ABNHUD::FormatRaceTime(ActiveRace.GetTimeLeft()))
+		: FString::Printf(TEXT("SIRA: %d/%d   •   KAPI: %d/%d   •   SÜRE: %s"),
+			ActiveRace.GetPlayerPosition(), ActiveRace.GetNumRivals() + 1,
+			FMath::Min(ActiveRace.GetProgress().NextCheckpoint() + 1, Def ? FMath::Max(1, Def->Checkpoints.Num()) : 1),
+			Def ? FMath::Max(1, Def->Checkpoints.Num()) : 1,
+			*ABNHUD::FormatRaceTime(ActiveRace.GetRaceTime()));
+
+	const TWeakObjectPtr<ABNRaceEvent> WeakRace = &ActiveRace;
+
+	auto PauseBtn = [](const TCHAR* Title, const TCHAR* Sub, bool bPrimary, bool bDanger, FOnClicked OnClick) -> TSharedRef<SWidget>
+	{
+		return SNew(SBox)
+			.HeightOverride(58.f)
+			[
+				BNUITheme::MakeNavBladeButton(FText::FromString(Title), FText::FromString(Sub), bPrimary, OnClick, bDanger)
+			];
+	};
+
+	return SNew(SHorizontalBox)
+	+ SHorizontalBox::Slot().FillWidth(1.f)[SNew(SSpacer)]
+	+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+	[
+		SNew(SBox)
+		.WidthOverride(520.f)
+		[
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				BNUITheme::MakeHazardBar(5.f)
+			]
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(SBorder)
+				.BorderImage(BNUITheme::GetPanelBevelBrush())
+				.BorderBackgroundColor(FLinearColor(0.95f, 0.95f, 0.95f, 0.96f))
+				.Padding(FMargin(24.f, 20.f))
+				[
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(RaceTitle.ToUpper()))
+						.Font(BNUITheme::Font(18, true))
+						.ColorAndOpacity(BNUITheme::ChalkWhite)
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 16.f))
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(StatusLine))
+						.Font(BNUITheme::Font(11, true))
+						.ColorAndOpacity(BNUITheme::NosCyan)
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 8.f))
+					[
+						PauseBtn(TEXT("YARIŞA DEVAM ET"), TEXT("Kaldığın yerden sürüşe dön  [ESC]"), true, false,
+							FOnClicked::CreateLambda([this]()
+							{
+								if (OwnerHUD.IsValid())
+								{
+									OwnerHUD->CloseMenu();
+								}
+								return FReply::Handled();
+							}))
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 8.f))
+					[
+						PauseBtn(TEXT("YARIŞI YENİDEN BAŞLAT"), TEXT("Başlangıç çizgisinden sıfırdan başla"), false, false,
+							FOnClicked::CreateLambda([this, WeakRace]()
+							{
+								if (OwnerHUD.IsValid())
+								{
+									OwnerHUD->CloseMenu();
+								}
+								if (WeakRace.IsValid())
+								{
+									WeakRace->RestartActiveRace();
+								}
+								return FReply::Handled();
+							}))
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 8.f))
+					[
+						PauseBtn(TEXT("YARIŞTAN ÇIK"), TEXT("Yarışı terk et ve Karamara serbest sürüşe dön"), false, true,
+							FOnClicked::CreateLambda([this, WeakRace]()
+							{
+								if (OwnerHUD.IsValid())
+								{
+									OwnerHUD->CloseMenu();
+								}
+								if (WeakRace.IsValid())
+								{
+									WeakRace->EndRace();
+								}
+								return FReply::Handled();
+							}))
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))
+					[
+						SNew(SHorizontalBox)
+						+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 8.f, 0.f))
+						[
+							BNUITheme::MakeMWButton(FText::FromString(TEXT("AYARLAR")), EBNButtonVariant::SecondarySteel,
+								FOnClicked::CreateLambda([this]() { SetActiveTab(EBNMenuTab::Settings); return FReply::Handled(); }))
+						]
+						+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 8.f, 0.f))
+						[
+							BNUITheme::MakeMWButton(FText::FromString(TEXT("KONTROLLER")), EBNButtonVariant::SecondarySteel,
+								FOnClicked::CreateLambda([this]() { SetActiveTab(EBNMenuTab::Controls); return FReply::Handled(); }))
+						]
+						+ SHorizontalBox::Slot().FillWidth(1.f)
+						[
+							BNUITheme::MakeMWButton(FText::FromString(TEXT("ANA EKRAN")), EBNButtonVariant::SecondarySteel,
+								FOnClicked::CreateLambda([this]()
+								{
+									if (OwnerHUD.IsValid())
+									{
+										OwnerHUD->OpenTitleScreen();
+									}
+									return FReply::Handled();
+								}))
+						]
+					]
+				]
+			]
+		]
+	]
+	+ SHorizontalBox::Slot().FillWidth(1.f)[SNew(SSpacer)];
+}
+
 TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 {
 	UWorld* World = GetHUDWorld(OwnerHUD);
@@ -358,49 +560,6 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 	UBNPursuitSubsystem* Pursuit = World ? World->GetSubsystem<UBNPursuitSubsystem>() : nullptr;
 
 	TSharedRef<SVerticalBox> RaceList = SNew(SVerticalBox);
-	ABNRaceEvent* ActiveRace = ABNRaceEvent::FindActiveRace(World);
-	const bool bHasActiveRace = ActiveRace != nullptr;
-
-	if (bHasActiveRace)
-	{
-		const FString ActiveName = ActiveRace->Definition
-			? ActiveRace->Definition->DisplayName.ToString() : TEXT("Aktif Yarış");
-		const TWeakObjectPtr<ABNRaceEvent> WeakActive = ActiveRace;
-		RaceList->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 12.f))
-		[
-			SNew(SBorder)
-			.BorderImage(WhiteBrush())
-			.BorderBackgroundColor(BNUITheme::CrimsonDarkCard)
-			.Padding(FMargin(16.f, 12.f))
-			[
-				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(FString::Printf(TEXT("AKTİF YARIŞ SÜRÜYOR: %s  —  Başka yarış başlatmak için önce bu yarıştan çık."), *ActiveName)))
-					.Font(BNUITheme::Font(11, true))
-					.ColorAndOpacity(BNUITheme::ChalkWhite)
-					.AutoWrapText(true)
-				]
-				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(12.f, 0.f, 0.f, 0.f))
-				[
-					BNUITheme::MakeMWButton(FText::FromString(TEXT("YARIŞTAN ÇIK")), EBNButtonVariant::DangerCrimson,
-						FOnClicked::CreateLambda([this, WeakActive]()
-						{
-							if (WeakActive.IsValid())
-							{
-								WeakActive->EndRace();
-							}
-							if (OwnerHUD.IsValid())
-							{
-								OwnerHUD->CloseMenu();
-							}
-							return FReply::Handled();
-						}))
-				]
-			]
-		];
-	}
 
 	if (Story)
 	{
@@ -478,7 +637,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 										St->ChallengeSelectedBoss(Car);
 									}
 									return FReply::Handled();
-								}), bCanFight && !bHasActiveRace, 12, FMargin(18.f, 11.f))
+								}), bCanFight, 12, FMargin(18.f, 11.f))
 						]
 					]
 				]
@@ -550,7 +709,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
 							BNUITheme::MakeMWButton(
-								FText::FromString(bHasActiveRace ? TEXT("YARIŞ AKTİF") : TEXT("YARIŞA BAŞLA")),
+								FText::FromString(TEXT("YARIŞA BAŞLA")),
 								EBNButtonVariant::CyanIntel,
 								FOnClicked::CreateLambda([this, WeakRace]()
 								{
@@ -561,7 +720,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 										WeakRace->StartRace(Car);
 									}
 									return FReply::Handled();
-								}), !bHasActiveRace)
+								}))
 						]
 					]
 				]
@@ -713,7 +872,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildControlsTab()
 	static const FBind Binds[] = {
 		{ TEXT("W / A / S / D  (Ok Tuşları)"), TEXT("Gaz, yönlendirme, fren ve geri vites") },
 		{ TEXT("SPACE  (Alt Gamepad)"), TEXT("El freni — viraj girişinde A/D ile basılı tutarak drift başlat") },
-		{ TEXT("LEFT SHIFT / RIGHT SHIFT"), TEXT("NOS Nitro Takviyesi (drift ve yakın geçişlerle dolar)") },
+		{ TEXT("SOL SHIFT / SOL ALT / N"), TEXT("NOS Nitro Takviyesi (kendiliğinden dolar; drift ve yakın geçişlerle hızlanır)") },
 		{ TEXT("X / LEFT CTRL"), TEXT("Speedbreaker — zaman yavaşlatma ve yüksek hızlı manevra kontrolü") },
 		{ TEXT("C"), TEXT("Kamera modunu değiştir (Yakın Takip / Uzak Takip / Kaput)") },
 		{ TEXT("R"), TEXT("Aracı yolda düzelt") },

@@ -31,7 +31,7 @@ void FBNBoostState::UpdateNos(float RealDt, bool bWanted, bool bInputLocked, boo
 	bNosActive = false;
 	if (!bInputLocked && bOnGround)
 	{
-		float Recharge = 0.f;
+		float Recharge = Tuning.NosRechargePassivePerSecond;
 		if (bDrifting)
 		{
 			Recharge += Tuning.NosRechargeDriftPerSecond;

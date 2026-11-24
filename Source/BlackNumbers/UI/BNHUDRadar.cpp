@@ -579,7 +579,7 @@ void ABNHUD::DrawActionBanners(const ABNVehiclePawn& Car, const UBNPursuitSubsys
 		const bool bFlash = GetWorld() && FMath::Fmod(GetWorld()->GetTimeSeconds() * 7.0, 1.0) < 0.55;
 		const int32 DistM = FMath::Max(10, FMath::RoundToInt(RbDistM / 5.f) * 5);
 		const FString Alert = bRbSpikes
-			? FString::Printf(TEXT("DİKENLİ BARİKAT ÖNÜNDE — %dm  [B] SPEEDBREAKER"), DistM)
+			? FString::Printf(TEXT("DİKENLİ BARİKAT ÖNÜNDE — %dm  [X] SPEEDBREAKER"), DistM)
 			: FString::Printf(TEXT("POLİS BARİKATI ÖNÜNDE — %dm"), DistM);
 		DrawCentred(Alert, BaseY, BNRadar::BannerScale * 0.85f, bFlash ? BNRadar::BlipPoliceRed : BNRadar::DashColour);
 		BaseY += 32.f;

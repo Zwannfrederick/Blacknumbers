@@ -509,6 +509,35 @@ void ABNRaceEvent::EndRace()
 	}
 }
 
+void ABNRaceEvent::RestartActiveRace()
+{
+	ABNVehiclePawn* Car = Player.Car.Get();
+	if (!Car || !Definition)
+	{
+		return;
+	}
+	const int32 BossRank = ActiveBossRank;
+	const float BossSkill = ActiveBossSkill;
+	const FBNComputedVehicleStats BossStats = ActiveBossStats;
+	const FLinearColor BossTint = ActiveBossTint;
+	const int32 BossDriftTarget = ActiveBossDriftTarget;
+	const EBNCarId BossCarId = ActiveBossCarId;
+
+	Car->GetMesh()->OnComponentHit.RemoveDynamic(this, &ABNRaceEvent::OnCarHit);
+	ClearRivals();
+	State = EBNRaceState::Idle;
+	bArmed = false;
+
+	if (BossRank > 0)
+	{
+		StartBossRace(Car, BossRank, BossSkill, BossStats, BossTint, BossDriftTarget, BossCarId);
+	}
+	else
+	{
+		StartRace(Car);
+	}
+}
+
 void ABNRaceEvent::Finish()
 {
 	const float RaceTime = State == EBNRaceState::Racing ? GetRaceTime() : 0.f;

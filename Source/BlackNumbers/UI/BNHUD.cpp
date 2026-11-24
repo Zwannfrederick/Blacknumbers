@@ -10,6 +10,7 @@
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Garage/BNGarageSubsystem.h"
+#include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
 #include "Police/BNPursuitSubsystem.h"
 #include "Race/BNRaceDefinition.h"
@@ -145,6 +146,11 @@ void ABNHUD::RemoveAllSlateOverlays()
 	StoryCardHost.Reset();
 	StoryCardWidget.Reset();
 	LastShownCardKey.Reset();
+	if (bPausedForRaceMenu)
+	{
+		UGameplayStatics::SetGamePaused(GetWorld(), false);
+		bPausedForRaceMenu = false;
+	}
 	if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn()))
 	{
 		Car->SetShowcaseMode(false, 0.f);
@@ -157,6 +163,11 @@ void ABNHUD::OpenMenu(EBNMenuTab Tab)
 	if (!CanUseViewportSlate())
 	{
 		return;
+	}
+	const bool bRaceActive = ABNRaceEvent::FindActiveRace(GetWorld()) != nullptr;
+	if (bRaceActive && Tab != EBNMenuTab::Settings && Tab != EBNMenuTab::Controls)
+	{
+		Tab = EBNMenuTab::Races;
 	}
 	if (TitleScreenHost.IsValid())
 	{
@@ -179,7 +190,13 @@ void ABNHUD::OpenMenu(EBNMenuTab Tab)
 	MenuHost = SNew(SWeakWidget).PossiblyNullContent(MenuWidget.ToSharedRef());
 	GEngine->GameViewport->AddViewportWidgetContent(MenuHost.ToSharedRef(), 20);
 
-	if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn()))
+	if (bRaceActive)
+	{
+		// Freeze rivals, physics & race clock cleanly during the Race Pause Menu without altering countdown input lock.
+		UGameplayStatics::SetGamePaused(GetWorld(), true);
+		bPausedForRaceMenu = true;
+	}
+	else if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn()))
 	{
 		Car->SetInputLocked(true);
 		SyncShowcaseCamera(Car);
@@ -191,6 +208,12 @@ void ABNHUD::OpenMenu(EBNMenuTab Tab)
 void ABNHUD::CloseMenu()
 {
 	const bool bWasGarageTab = MenuWidget.IsValid() && MenuWidget->GetActiveTab() == EBNMenuTab::Garage;
+	const bool bWasPausedForRace = bPausedForRaceMenu;
+	if (bPausedForRaceMenu)
+	{
+		UGameplayStatics::SetGamePaused(GetWorld(), false);
+		bPausedForRaceMenu = false;
+	}
 	if (GEngine && GEngine->GameViewport && MenuHost.IsValid())
 	{
 		GEngine->GameViewport->RemoveViewportWidgetContent(MenuHost.ToSharedRef());
@@ -225,7 +248,7 @@ void ABNHUD::CloseMenu()
 	SyncStoryCardOverlay();
 	if (!HasStoryCardOpen() && !IsMenuOpen())
 	{
-		if (Car)
+		if (Car && !bWasPausedForRace)
 		{
 			Car->SetInputLocked(false);
 		}
@@ -432,10 +455,10 @@ FBNDashReadout ABNHUD::MakeReadout(const ABNVehiclePawn& Car)
 void ABNHUD::DrawGaugeBar(const TCHAR* Label, float X, float Y, float Width, float Height, float Fraction, const FLinearColor& FillColour, bool bActive)
 {
 	UFont* Font = GEngine->GetLargeFont();
-	const float LabelW = 40.f;
+	const float LabelW = 74.f;
 	const float BarX = X + LabelW;
 	const float BarW = Width - LabelW;
-	DrawText(Label, bActive ? FillColour : LegendColour, X, Y - 3.f, Font, 0.78f);
+	DrawText(Label, bActive ? FillColour : LegendColour, X, Y - 3.f, Font, 0.70f);
 	DrawRect(BarBackground, BarX, Y, BarW, Height);
 	const float Clamped = FMath::Clamp(Fraction, 0.f, 1.f);
 	if (Clamped > 0.f)
@@ -527,9 +550,9 @@ void ABNHUD::DrawDashboard(const ABNVehiclePawn& Car, const FBNDashReadout& Dash
 	const float DockY = Cy + TachRadius + 4.f;
 	DrawRect(SmokedPanelBg, DockX, DockY, DockW, 38.f);
 	DrawRect(FrameTrimColour, DockX, DockY, 3.f, 38.f);
-	DrawGaugeBar(TEXT("NOS"), DockX + 10.f, DockY + 6.f, DockW - 18.f, 9.f, Car.GetNosFraction(),
+	DrawGaugeBar(TEXT("NOS [SHF]"), DockX + 8.f, DockY + 6.f, DockW - 14.f, 9.f, Car.GetNosFraction(),
 		Car.IsNosActive() ? NosActiveColour : NosColour, Car.IsNosActive());
-	DrawGaugeBar(TEXT("SPD"), DockX + 10.f, DockY + 22.f, DockW - 18.f, 9.f, Car.GetSpeedbreakerFraction(),
+	DrawGaugeBar(TEXT("SPD [X]"), DockX + 8.f, DockY + 22.f, DockW - 14.f, 9.f, Car.GetSpeedbreakerFraction(),
 		Car.IsSpeedbreakerActive() ? SpeedbreakerActiveColour : SpeedbreakerColour, Car.IsSpeedbreakerActive());
 }
 

@@ -67,6 +67,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Race")
 	void EndRace();
 
+	/** Cleanly restarts this currently running race (preserving boss showdown settings if active). */
+	UFUNCTION(BlueprintCallable, Category = "Race")
+	void RestartActiveRace();
+
 	/** Returns any race currently in Countdown or Racing in World (optionally ignoring one event). */
 	static ABNRaceEvent* FindActiveRace(const UWorld* World, const ABNRaceEvent* IgnoreEvent = nullptr);
 
