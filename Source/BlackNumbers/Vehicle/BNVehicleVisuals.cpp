@@ -25,8 +25,8 @@ namespace
 	constexpr float TargetCarLengthCm = 468.f;
 	constexpr float TargetCarCenterXCm = 12.f;
 	constexpr float SportsCarDefaultTopZ = 128.f;
-	constexpr float NosFlameCandelas = 120.f;
-	constexpr float BackfireFlameCandelas = 180.f;
+	constexpr float NosFlameCandelas = 4.f;
+	constexpr float BackfireFlameCandelas = 6.f;
 	const FLinearColor NosFlameColour(0.2f, 0.75f, 1.f);
 	const FLinearColor BackfireFlameColour(1.f, 0.42f, 0.08f);
 

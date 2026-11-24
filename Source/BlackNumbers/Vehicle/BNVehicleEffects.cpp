@@ -37,10 +37,10 @@ namespace
 	const FLinearColor SmokeTint(0.76f, 0.77f, 0.79f, 1.f);
 	const FLinearColor DamageSmokeTint(0.14f, 0.14f, 0.16f, 1.f);
 	const FLinearColor SkidTint(0.015f, 0.015f, 0.018f, 1.f);
-	const FLinearColor NosOuterTint(0.12f, 2.40f, 7.50f, 0.72f);
-	const FLinearColor NosCoreTint(5.20f, 8.20f, 12.00f, 0.96f);
-	const FLinearColor BackfireOuterTint(8.00f, 2.20f, 0.22f, 0.85f);
-	const FLinearColor BackfireCoreTint(11.00f, 7.40f, 2.60f, 0.98f);
+	const FLinearColor NosOuterTint(0.10f, 0.95f, 3.20f, 0.58f);
+	const FLinearColor NosCoreTint(1.80f, 3.00f, 4.60f, 0.88f);
+	const FLinearColor BackfireOuterTint(3.80f, 1.05f, 0.14f, 0.72f);
+	const FLinearColor BackfireCoreTint(5.20f, 3.10f, 0.95f, 0.90f);
 	const FLinearColor SparkHotTint(3.2f, 2.0f, 0.55f, 0.96f);
 	const FLinearColor SparkCoolTint(1.65f, 0.42f, 0.06f, 0.0f);
 }
@@ -187,22 +187,18 @@ void UBNVehicleEffectsComponent::EnsureFlameVisuals()
 		return;
 	}
 	bFlameVisualsInitialized = true;
-	// 3 volumetric elements per tailpipe (6 total): outer 3D jet cone, white-hot inner 3D jet cone,
-	// and a rear-facing additive radial muzzle flare disc so chase camera ALWAYS sees blazing afterburners!
+	// 2 sleek volumetric 3D jet cones per tailpipe (4 total: slim outer flame + tight bright inner core, no round flare blob).
 	UMaterialInterface* ConeMat = FlameBaseMaterial ? FlameBaseMaterial.Get() : UnlitTranslucentMaterial.Get();
-	UMaterialInterface* FlareMat = SparkBaseMaterial ? SparkBaseMaterial.Get() : ConeMat;
-	FlameMeshes.SetNum(6);
-	FlameMids.SetNum(6);
-	for (int32 i = 0; i < 6; ++i)
+	UStaticMesh* MeshToUse = ConeMesh ? ConeMesh.Get() : PlaneMesh.Get();
+	FlameMeshes.SetNum(4);
+	FlameMids.SetNum(4);
+	for (int32 i = 0; i < 4; ++i)
 	{
-		const int32 Sub = i % 3;
-		UStaticMesh* MeshToUse = (Sub == 2) ? PlaneMesh.Get() : (ConeMesh ? ConeMesh.Get() : PlaneMesh.Get());
-		UMaterialInterface* MatToUse = (Sub == 2) ? FlareMat : ConeMat;
 		UMaterialInstanceDynamic* Mid = nullptr;
-		UStaticMeshComponent* Comp = CreatePooledVisual(MeshToUse, MatToUse, false, Mid);
+		UStaticMeshComponent* Comp = CreatePooledVisual(MeshToUse, ConeMat, false, Mid);
 		if (Comp)
 		{
-			// +90 deg Pitch maps local +Z (Cone apex & Plane normal) straight backward along -X behind the bumper!
+			// +90 deg Pitch maps local +Z (Cone apex) straight backward along -X behind the tailpipes!
 			Comp->SetRelativeRotation(FRotator(90.f, 0.f, 0.f));
 		}
 		FlameMeshes[i] = Comp;
@@ -785,7 +781,7 @@ void UBNVehicleEffectsComponent::UpdateExhaustFlames(bool bNosActive, bool bBack
 	EnsureFlameVisuals();
 	const FLinearColor OuterCol = bNosActive ? NosOuterTint : BackfireOuterTint;
 	const FLinearColor CoreCol = bNosActive ? NosCoreTint : BackfireCoreTint;
-	const float SpeedStretch = FMath::GetMappedRangeValueClamped(FVector2f(40.f, 260.f), FVector2f(0.95f, 1.38f), SpeedKmh);
+	const float SpeedStretch = FMath::GetMappedRangeValueClamped(FVector2f(40.f, 260.f), FVector2f(0.90f, 1.22f), SpeedKmh);
 
 	for (int32 i = 0; i < FlameMeshes.Num(); ++i)
 	{
@@ -794,33 +790,23 @@ void UBNVehicleEffectsComponent::UpdateExhaustFlames(bool bNosActive, bool bBack
 		{
 			continue;
 		}
-		const float Side = (i < 3) ? -1.f : 1.f;
-		const int32 Sub = i % 3; // 0 = outer 3D jet cone, 1 = white-hot inner 3D core cone, 2 = rear-facing muzzle flare
+		const float Side = (i < 2) ? -1.f : 1.f;
+		const bool bCore = (i % 2) == 1;
 		const float Flicker = 0.86f
-			+ 0.14f * FMath::Sin(EffectTime * 78.f + Side * 1.9f + Sub * 0.7f)
+			+ 0.14f * FMath::Sin(EffectTime * 78.f + Side * 1.9f + (bCore ? 0.7f : 0.f))
 			+ 0.08f * FMath::Sin(EffectTime * 155.f + i * 0.8f);
 
-		if (Sub == 2)
-		{
-			const float FlareR = (bNosActive ? 0.85f : 0.95f) * Flicker;
-			Comp->SetRelativeLocation(FVector(-262.f, Side * 62.f, 48.f));
-			Comp->SetRelativeScale3D(FVector(FlareR, FlareR, 1.f));
-		}
-		else
-		{
-			const bool bCore = (Sub == 1);
-			const float LenZ = (bNosActive ? (bCore ? 1.05f : 1.85f) * SpeedStretch : (bCore ? 0.60f : 1.10f)) * Flicker;
-			const float RadXY = (bNosActive ? (bCore ? 0.16f : 0.30f) : (bCore ? 0.20f : 0.38f)) * (0.90f + 0.12f * Flicker);
-			// Cone spans -50..+50 cm along local Z; pitched +90 deg maps base (-Z) to +X (nozzle at -254 cm) and tip (+Z) to -X!
-			Comp->SetRelativeLocation(FVector(-254.f - 48.f * LenZ, Side * 62.f, 48.f));
-			Comp->SetRelativeScale3D(FVector(RadXY, RadXY, LenZ));
-		}
+		const float LenZ = (bNosActive ? (bCore ? 0.44f : 0.78f) * SpeedStretch : (bCore ? 0.34f : 0.58f)) * Flicker;
+		const float RadXY = (bNosActive ? (bCore ? 0.075f : 0.145f) : (bCore ? 0.095f : 0.18f)) * (0.92f + 0.10f * Flicker);
+		// Cone spans -50..+50 cm along local Z; pitched +90 deg maps base (-Z) flush inside exhaust tip (-252 cm) and tip (+Z) backward (-X).
+		Comp->SetRelativeLocation(FVector(-252.f - 46.f * LenZ, Side * 62.f, 48.f));
+		Comp->SetRelativeScale3D(FVector(RadXY, RadXY, LenZ));
 		Comp->SetVisibility(true, true);
 
 		if (FlameMids.IsValidIndex(i) && IsValid(FlameMids[i]))
 		{
-			const FLinearColor& Picked = (Sub == 0) ? OuterCol : CoreCol;
-			FLinearColor Color = Picked * FMath::Clamp(Flicker, 0.86f, 1.28f);
+			const FLinearColor& Picked = bCore ? CoreCol : OuterCol;
+			FLinearColor Color = Picked * FMath::Clamp(Flicker, 0.86f, 1.20f);
 			Color.A = Picked.A;
 			FlameMids[i]->SetVectorParameterValue(ColorParam, Color);
 		}

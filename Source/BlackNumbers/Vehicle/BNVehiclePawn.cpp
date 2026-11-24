@@ -56,8 +56,8 @@ namespace
 	constexpr float TaillightRange = 300.f;
 	const FLinearColor TaillightColour(1.f, 0.05f, 0.02f);
 
-	constexpr float ExhaustFlameRange = 180.f;
-	constexpr float NosFlameCandelas = 120.f;
+	constexpr float ExhaustFlameRange = 70.f;
+	constexpr float NosFlameCandelas = 4.f;
 	const FLinearColor NosFlameColour(0.2f, 0.75f, 1.f);
 
 	constexpr float BaseSocketZ = 150.f;
@@ -214,7 +214,7 @@ ABNVehiclePawn::ABNVehiclePawn()
 
 		UPointLightComponent* Exhaust = CreateDefaultSubobject<UPointLightComponent>(Side < 0.f ? TEXT("ExhaustL") : TEXT("ExhaustR"));
 		Exhaust->SetupAttachment(Body);
-		Exhaust->SetRelativeLocation(FVector(-255.f, Side * 42.f, 45.f));
+		Exhaust->SetRelativeLocation(FVector(-262.f, Side * 62.f, 50.f));
 		Exhaust->SetIntensityUnits(ELightUnits::Candelas);
 		Exhaust->SetIntensity(NosFlameCandelas);
 		Exhaust->SetLightColor(NosFlameColour);
