@@ -402,6 +402,8 @@ private:
 	float PlayerSteeringSmoothed = 0.f;
 	bool bHasPlayerSteeringInput = false;
 	int32 LastGear = 0;
+	float LastThrottleInput = 0.f;
+	float BlowoffCooldown = 0.f;
 	float GearShiftKick = 0.f;
 	float ShiftFlashRemaining = 0.f;
 	float CameraImpactShake = 0.f;

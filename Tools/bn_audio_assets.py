@@ -44,6 +44,8 @@ SFX_NAMES = [
     "SFX_Garage_Repair",
     "SFX_New_Record",
     "SFX_Rain_Ambient",
+    "SFX_Turbo_Blowoff",
+    "SFX_Radio_Chatter",
 ]
 
 MUSIC_NAMES = [
@@ -292,6 +294,29 @@ def _make_sfx():
     t = t_arr(2.0)
     rain = _bandpass(rng.normal(0.0, 1.0, len(t)), 550.0, 5400.0) * 0.65 + _lowpass(rng.normal(0.0, 1.0, len(t)), 420.0) * 0.25
     _write_wav(os.path.join(SFX_DIR, "SFX_Rain_Ambient.wav"), _fade_edges(rain, 0.08, 0.08), peak=0.52)
+
+    # 22. SFX_Turbo_Blowoff (throttle-lift "pssh-tutu": valve hiss with descending whistle + flutter)
+    t = t_arr(0.55)
+    hiss = _bandpass(rng.normal(0.0, 1.0, len(t)), 2200.0, 7800.0) * np.minimum(t / 0.012, 1.0) * np.exp(-t * 6.5)
+    whistle_f = 2600.0 * np.exp(-t * 3.2) + 900.0
+    whistle = np.sin(2 * np.pi * np.cumsum(whistle_f) / SR) * 0.22 * np.exp(-t * 7.0)
+    flutter = _bandpass(rng.normal(0.0, 1.0, len(t)), 700.0, 2400.0) * (0.5 + 0.5 * np.sign(np.sin(2 * np.pi * 19.0 * t))) \
+        * np.exp(-np.maximum(t - 0.12, 0.0) * 9.0) * (t > 0.12) * 0.55
+    _write_wav(os.path.join(SFX_DIR, "SFX_Turbo_Blowoff.wav"), _fade_edges(hiss + whistle + flutter, 0.003, 0.05), peak=0.74)
+
+    # 23. SFX_Radio_Chatter (wordless scanner voice: vowel formants on a syllable rhythm, VHF band-limited)
+    t = t_arr(1.6)
+    syll_rate = 6.2
+    syll = np.maximum(np.sin(2 * np.pi * syll_rate * t + 1.3 * np.sin(2 * np.pi * 1.7 * t)), 0.0) ** 1.5
+    pitch = 135.0 + 22.0 * np.sin(2 * np.pi * 0.9 * t) + 10.0 * np.sin(2 * np.pi * 3.1 * t)
+    glottal = _saw(np.cumsum(pitch) / SR)
+    vowel = 0.5 + 0.5 * np.sin(2 * np.pi * 2.3 * t)
+    formants = _bandpass(glottal, 500.0 + 300.0 * vowel.mean(), 1300.0) + 0.6 * _bandpass(glottal, 1700.0, 2600.0)
+    fric = _bandpass(rng.normal(0.0, 1.0, len(t)), 2500.0, 3300.0) * 0.18
+    voice = _bandpass((formants + fric) * syll, 320.0, 3000.0)
+    radio = np.tanh(2.2 * voice) + _bandpass(rng.normal(0.0, 1.0, len(t)), 900.0, 3200.0) * 0.06
+    gate = np.minimum(t / 0.05, 1.0) * np.minimum((t[-1] - t) / 0.12, 1.0)
+    _write_wav(os.path.join(SFX_DIR, "SFX_Radio_Chatter.wav"), _fade_edges(radio * gate, 0.01, 0.05), peak=0.55)
 
 
 def _midi_hz(midi_note):

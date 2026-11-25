@@ -75,6 +75,8 @@ const TCHAR* UBNAudioSubsystem::GetSfxAssetPath(EBNSfxId Id)
 	case EBNSfxId::GarageRepair: return TEXT("/Game/Audio/SFX/SFX_Garage_Repair.SFX_Garage_Repair");
 	case EBNSfxId::NewRecord: return TEXT("/Game/Audio/SFX/SFX_New_Record.SFX_New_Record");
 	case EBNSfxId::RainAmbient: return TEXT("/Game/Audio/SFX/SFX_Rain_Ambient.SFX_Rain_Ambient");
+	case EBNSfxId::TurboBlowoff: return TEXT("/Game/Audio/SFX/SFX_Turbo_Blowoff.SFX_Turbo_Blowoff");
+	case EBNSfxId::RadioChatter: return TEXT("/Game/Audio/SFX/SFX_Radio_Chatter.SFX_Radio_Chatter");
 	default: return TEXT("");
 	}
 }

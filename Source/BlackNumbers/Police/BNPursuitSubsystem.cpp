@@ -586,6 +586,8 @@ void UBNPursuitSubsystem::Tick(float DeltaTime)
 		if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
 		{
 			Audio->PlaySfx2D(EBNSfxId::RadioSquelch, 0.85f);
+			// Garbled scanner voice under the text line; pitch varies per speaker so units sound different.
+			Audio->PlaySfx2D(EBNSfxId::RadioChatter, 0.5f, 0.88f + 0.06f * static_cast<float>(State.DispatchSerial % 5));
 		}
 	}
 

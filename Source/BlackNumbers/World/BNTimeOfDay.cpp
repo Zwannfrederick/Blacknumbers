@@ -125,12 +125,13 @@ namespace BNTimeOfDay
 			// Morning
 			Key(8.f, 8.f, FLinearColor(1.f, 0.88f, 0.72f), 0.f, 0.9f,
 				FLinearColor(0.76f, 0.71f, 0.56f), 0.025f, FLinearColor(1.07f, 1.f, 0.86f), 1.06f, 0.f),
-			// Noon: Karamara autumn-amber haze (nostalgic mid-2000s warmth, crisp contrast).
-			Key(13.f, 10.f, FLinearColor(1.f, 0.92f, 0.78f), 0.f, 1.f,
-				FLinearColor(0.82f, 0.75f, 0.58f), 0.022f, FLinearColor(1.12f, 1.02f, 0.80f), 1.12f, 0.f),
+			// Noon: Karamara autumn-amber haze (nostalgic mid-2000s warmth, crisp contrast). Thin haze keeps
+			// the far city readable; a stronger sky light lifts shadowed facades and car bodies.
+			Key(13.f, 10.f, FLinearColor(1.f, 0.92f, 0.78f), 0.f, 1.25f,
+				FLinearColor(0.82f, 0.75f, 0.58f), 0.014f, FLinearColor(1.10f, 1.03f, 0.84f), 1.06f, 0.15f),
 			// Golden hour: deep burnt-amber late afternoon.
-			Key(18.f, 5.2f, FLinearColor(1.f, 0.58f, 0.26f), 0.f, 0.6f,
-				FLinearColor(0.92f, 0.58f, 0.36f), 0.032f, FLinearColor(1.16f, 0.98f, 0.74f), 1.18f, 0.3f),
+			Key(18.f, 5.2f, FLinearColor(1.f, 0.62f, 0.30f), 0.f, 1.0f,
+				FLinearColor(0.88f, 0.60f, 0.40f), 0.019f, FLinearColor(1.12f, 1.0f, 0.82f), 1.06f, 0.55f),
 			// Dusk
 			Key(20.f, 0.3f, FLinearColor(0.92f, 0.42f, 0.30f), 0.2f, 0.25f,
 				FLinearColor(0.28f, 0.25f, 0.36f), 0.035f, FLinearColor(0.95f, 0.92f, 1.06f), 0.9f, 1.f),

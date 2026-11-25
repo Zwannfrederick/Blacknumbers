@@ -269,9 +269,12 @@ void ABNDayNightCycle::ApplyLook()
 		Settings.bOverride_AutoExposureSpeedDown = true;
 		Settings.AutoExposureSpeedDown = 1.2f;
 		Settings.bOverride_BloomIntensity = true;
-		Settings.BloomIntensity = FMath::Lerp(0.15f, 0.24f, CurrentWetness);
+		// Mid-2000s street-racer glow: bright lamps, sky and chrome bloom softly, shadows stay crisp.
+		Settings.BloomIntensity = FMath::Lerp(0.42f, 0.55f, CurrentWetness);
 		Settings.bOverride_BloomThreshold = true;
-		Settings.BloomThreshold = 1.85f;
+		Settings.BloomThreshold = 0.95f;
+		Settings.bOverride_ColorContrast = true;
+		Settings.ColorContrast = FVector4(1.08f, 1.08f, 1.08f, 1.f);
 		Settings.bOverride_LensFlareIntensity = true;
 		Settings.LensFlareIntensity = 0.f;
 		Settings.bOverride_MotionBlurAmount = true;

@@ -41,6 +41,8 @@ enum class EBNSfxId : uint8
 	GarageRepair,
 	NewRecord,
 	RainAmbient,
+	TurboBlowoff,
+	RadioChatter,
 	Count UMETA(Hidden)
 };
 

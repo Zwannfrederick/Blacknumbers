@@ -477,6 +477,20 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 	LastGear = Gear;
 	GearShiftKick = FMath::FInterpTo(GearShiftKick, 0.f, RealDt, 7.5f);
 
+	// Turbo blow-off "pssh" when the player lifts off the throttle at high revs.
+	const float Throttle = Move->GetThrottleInput();
+	BlowoffCooldown = FMath::Max(0.f, BlowoffCooldown - RealDt);
+	if (IsPlayerControlled() && BlowoffCooldown <= 0.f && LastThrottleInput >= 0.75f && Throttle <= 0.15f
+		&& Move->GetEngineRotationSpeed() > Move->EngineSetup.MaxRPM * 0.55f)
+	{
+		BlowoffCooldown = 0.8f;
+		if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
+		{
+			Audio->PlaySfx2D(EBNSfxId::TurboBlowoff, 0.55f, FMath::FRandRange(0.94f, 1.1f));
+		}
+	}
+	LastThrottleInput = Throttle;
+
 	const float SpeedKmh = GetSpeedKmh();
 	const bool bOnGround = IsOnGround();
 	const UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr;
