@@ -78,6 +78,7 @@ class HismBatcher:
 
     def __init__(self, actor_label, folder):
         self.actor = spawn(unreal.Actor, actor_label, (0.0, 0.0, 0.0), folder=folder)
+        self.solid_boxes = []
         self.sds = unreal.get_engine_subsystem(unreal.SubobjectDataSubsystem)
         self.root_handle = None
         actor_handle = None
@@ -136,6 +137,10 @@ class HismBatcher:
     def add(self, name_hint, loc, scale, mat_name=None, phys_name=None, collision=True,
             yaw=0.0, pitch=0.0, mesh=CUBE, cast_shadow=True, cull_cm=0):
         comp = self._get_comp(name_hint, mesh, mat_name, phys_name, collision, cast_shadow, cull_cm)
+        if collision and mesh == CUBE:
+            # ponytail: axis-aligned footprint (yaw ignored); enough to keep later props out of buildings.
+            hx, hy = abs(scale[0]) * 50.0, abs(scale[1]) * 50.0
+            self.solid_boxes.append((loc[0] - hx, loc[0] + hx, loc[1] - hy, loc[1] + hy))
         xf = unreal.Transform(
             location=unreal.Vector(*loc),
             rotation=unreal.Rotator(roll=0.0, pitch=pitch, yaw=yaw),
@@ -590,6 +595,7 @@ build_road_geometry(nodes, edges)
 kscene.build_landmarks(ctx)
 kscene.build_buildings_and_storefronts(ctx, clearance)
 kscene.build_street_furniture_and_foliage(ctx, nodes, edges, clearance)
+kscene.build_parked_cars(ctx, edges, clearance)
 export_road_graph_asset(nodes, edges)
 build_gameplay_actors(edges)
 build_races(nodes, edges, lookup)

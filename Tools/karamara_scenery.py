@@ -747,3 +747,50 @@ def build_street_furniture_and_foliage(ctx, nodes, edges, clearance):
                           collision=False, folder="Police/CooldownSpots")
         ring.static_mesh_component.set_material(0, MI["MI_RaceHolo_Cooldown"])
         ring.set_actor_scale3d(unreal.Vector(1.4, 1.4, 0.65))
+
+
+def build_parked_cars(ctx, edges, clearance):
+    """Parked cars in kerbside lots just off city streets: fills empty pavements without touching any lane."""
+    meshes = ctx["meshes"]
+    hism = ctx["hism"]
+    car_keys = [k for k in ("SM_BN_Traffic_Sedan", "SM_BN_Traffic_Hatchback", "SM_BN_Traffic_SUV", "SM_BN_Traffic_Van") if k in meshes]
+    if not car_keys:
+        return 0
+    solid = getattr(hism, "solid_boxes", [])
+    rng = random.Random(2031)
+    city = (knet.DIST_MERKEZ, knet.DIST_SANAYI, knet.DIST_LIMAN, knet.DIST_YAMAC)
+    car_half = (260.0, 120.0)
+    placed = []
+    for e in edges:
+        if e["highway"] or e["dirt"] or e["district"] not in city:
+            continue
+        pts = e["points"]
+        hw = e["width"] * 0.5
+        for i in range(0, len(pts) - 1):
+            if rng.random() > 0.45:
+                continue
+            a, b = pts[i], pts[i + 1]
+            seg = math.hypot(b[0] - a[0], b[1] - a[1])
+            if seg < 900.0:
+                continue
+            dx, dy = (b[0] - a[0]) / seg, (b[1] - a[1]) / seg
+            side = rng.choice((-1.0, 1.0))
+            t = rng.uniform(0.25, 0.75)
+            off = hw + rng.uniform(520.0, 700.0)  # beyond the kerb and sidewalk furniture line (hw + 185)
+            px = a[0] + dx * seg * t - dy * off * side
+            py = a[1] + dy * seg * t + dx * off * side
+            clr, _ = clearance(px, py)
+            if clr < 420.0:
+                continue  # too close to some other road (junctions, parallel streets)
+            r = max(car_half) + 80.0
+            if any(x0 - r < px < x1 + r and y0 - r < py < y1 + r for x0, x1, y0, y1 in solid):
+                continue
+            if any(math.hypot(px - qx, py - qy) < 700.0 for qx, qy in placed):
+                continue
+            placed.append((px, py))
+            key = car_keys[rng.randrange(len(car_keys))]
+            yaw = math.degrees(math.atan2(dy, dx)) + (180.0 if rng.random() < 0.5 else 0.0) + rng.uniform(-6.0, 6.0)
+            hism.add("Parked_" + key, (px, py, a[2] + 2.0), (1.0, 1.0, 1.0), None, None, collision=True,
+                     yaw=yaw, mesh=meshes[key], cast_shadow=True, cull_cm=24000)
+    unreal.log("BN: placed %d parked cars" % len(placed))
+    return len(placed)

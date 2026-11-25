@@ -919,8 +919,11 @@ bool UBNPursuitSubsystem::TickHelicopter(ABNVehiclePawn& Player, float DeltaTime
 		{
 			return false;
 		}
-		const FVector Back = -Player.GetActorForwardVector().GetSafeNormal2D() * 7000.f;
-		const FVector SpawnLoc = Player.GetActorLocation() + Back + FVector(0.f, 0.f, BNPoliceTactics::HeliHoverHeightCm + 1500.f);
+		// Sweep in from ahead and to the side so the player sees it arrive over the street.
+		const FVector Fwd = Player.GetActorForwardVector().GetSafeNormal2D();
+		const FVector Side = FVector(-Fwd.Y, Fwd.X, 0.f);
+		const FVector SpawnLoc = Player.GetActorLocation() + Fwd * 6500.f + Side * 3000.f
+			+ FVector(0.f, 0.f, BNPoliceTactics::HeliHoverHeightCm + 1500.f);
 		FActorSpawnParameters Params;
 		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 		Heli = GetWorld()->SpawnActor<ABNPoliceHelicopter>(ABNPoliceHelicopter::StaticClass(), FTransform(Player.GetActorRotation(), SpawnLoc), Params);
