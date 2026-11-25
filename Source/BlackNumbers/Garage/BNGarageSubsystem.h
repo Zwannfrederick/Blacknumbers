@@ -170,6 +170,8 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Garage")
 	void GrantStoryReward(int32 CashGain, int32 RepGain, const FString& Headline);
+	/** Pink slip from a District Ruler; returns true when the car is new to the garage. */
+	bool GrantPinkSlip(EBNCarId CarId);
 
 	const UBNSaveGame* GetLoadedSaveForStory() const { return LoadedSaveSnapshot.Get(); }
 

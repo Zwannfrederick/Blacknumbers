@@ -98,6 +98,22 @@ bool FBNProgressionLogicTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNPinkSlipTest, "BlackNumbers.Garage.PinkSlip",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNPinkSlipTest::RunTest(const FString& Parameters)
+{
+	FBNPlayerProfile Profile;
+	const int32 CashBefore = Profile.Cash;
+	TestFalse(TEXT("rival car not owned before the race"), Profile.IsCarOwned(EBNCarId::DracoRST));
+	TestTrue(TEXT("pink slip hands over the rival's car"), Profile.AwardPinkSlip(EBNCarId::DracoRST));
+	TestTrue(TEXT("car is now in the garage"), Profile.IsCarOwned(EBNCarId::DracoRST));
+	TestEqual(TEXT("pink slip costs nothing"), Profile.Cash, CashBefore);
+	TestFalse(TEXT("winning an already owned car is not a new pink slip"), Profile.AwardPinkSlip(EBNCarId::DracoRST));
+	TestFalse(TEXT("invalid car id rejected"), Profile.AwardPinkSlip(static_cast<EBNCarId>(250)));
+	return true;
+}
+
 #endif
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR

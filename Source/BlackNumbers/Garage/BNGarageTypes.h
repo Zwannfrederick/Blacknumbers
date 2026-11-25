@@ -171,6 +171,8 @@ struct BLACKNUMBERS_API FBNPlayerProfile
 	bool IsCarOwned(EBNCarId CarId) const;
 	bool CanBuyCar(EBNCarId CarId) const;
 	bool BuyOrSelectCar(EBNCarId CarId);
+	/** District Ruler pink slip: the beaten rival's car joins the garage for free. False if already owned/invalid. */
+	bool AwardPinkSlip(EBNCarId CarId);
 	bool CanBuyUpgrade(EBNUpgradeSlot Slot) const;
 	bool BuyUpgrade(EBNUpgradeSlot Slot);
 	static void EstimateRacePayout(bool bDrift, int32 Place, int32 TotalRacers, int32 DriftPoints, int32& OutCash, int32& OutRep);

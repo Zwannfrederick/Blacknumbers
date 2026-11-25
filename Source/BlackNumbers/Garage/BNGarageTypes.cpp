@@ -360,6 +360,17 @@ bool FBNPlayerProfile::IsCarOwned(EBNCarId CarId) const
 	return Idx >= 0 && Idx < FBNUpgradeSpec::NumCars && OwnedCars[Idx];
 }
 
+bool FBNPlayerProfile::AwardPinkSlip(EBNCarId CarId)
+{
+	const int32 Idx = static_cast<int32>(CarId);
+	if (Idx < 0 || Idx >= FBNUpgradeSpec::NumCars || OwnedCars[Idx])
+	{
+		return false;
+	}
+	OwnedCars[Idx] = true;
+	return true;
+}
+
 bool FBNPlayerProfile::CanBuyCar(EBNCarId CarId) const
 {
 	if (IsCarOwned(CarId))

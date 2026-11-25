@@ -234,7 +234,7 @@ void UBNStorySubsystem::OnBossRaceFinished(int32 BossRank, bool bPlayerWon, ABNV
 
 	if (!bPlayerWon)
 	{
-		StatusFeedback = FString::Printf(TEXT("#%02d %s karsisinda kaybettin! [B] Dosya ile tekrar dene."),
+		StatusFeedback = FString::Printf(TEXT("#%02d %s karşısında kaybettin! [B] Dosya ile tekrar dene."),
 			BossRank, *Spec->Name);
 		return;
 	}
@@ -248,8 +248,12 @@ void UBNStorySubsystem::OnBossRaceFinished(int32 BossRank, bool bPlayerWon, ABNV
 	if (UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
 	{
 		Prog->GrantStoryReward(Spec->RewardCash, Spec->RewardRep,
-			FString::Printf(TEXT("BLACK NUMBERS #%02d YENILDI: +$%s   +%d ITIBAR"),
+			FString::Printf(TEXT("BLACK NUMBERS #%02d YENİLDİ: +$%s   +%d İTİBAR"),
 				BossRank, *FString::FormatAsNumber(Spec->RewardCash), Spec->RewardRep));
+		if (FBNStoryState::IsDistrictRulerRank(BossRank))
+		{
+			Prog->GrantPinkSlip(Spec->BaseCar); // overrides the cash banner when the car is new
+		}
 	}
 
 	UWorld* World = PlayerCar ? PlayerCar->GetWorld() : (GetGameInstance() ? GetGameInstance()->GetWorld() : nullptr);

@@ -303,6 +303,21 @@ void UBNProgressionSubsystem::GrantStoryReward(int32 CashGain, int32 RepGain, co
 	}
 }
 
+bool UBNProgressionSubsystem::GrantPinkSlip(EBNCarId CarId)
+{
+	if (!Profile.AwardPinkSlip(CarId))
+	{
+		return false;
+	}
+	RewardBanner = FString::Printf(TEXT("PEMBE KAĞIT: %s artık senin! Garajda seni bekliyor."), *FBNVehicleSpec::ForCar(CarId).DisplayName);
+	RewardBannerRemaining = RewardBannerDuration;
+	if (ShouldAutoPersist())
+	{
+		SaveProfile();
+	}
+	return true;
+}
+
 bool UBNProgressionSubsystem::SaveProfile(const FString& SlotName) const
 {
 	UBNSaveGame* SaveObj = Cast<UBNSaveGame>(UGameplayStatics::CreateSaveGameObject(UBNSaveGame::StaticClass()));
