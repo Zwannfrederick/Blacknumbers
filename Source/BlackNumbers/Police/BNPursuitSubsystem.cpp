@@ -14,6 +14,8 @@
 #include "Materials/MaterialInterface.h"
 #include "Misc/PackageName.h"
 #include "Police/BNPoliceController.h"
+#include "Police/BNPoliceHelicopter.h"
+#include "Police/BNPoliceTactics.h"
 #include "Police/BNPursuitBreaker.h"
 #include "Race/BNRaceEvent.h"
 #include "Story/BNStorySubsystem.h"
@@ -599,6 +601,10 @@ void UBNPursuitSubsystem::Tick(float DeltaTime)
 
 	if (!State.IsPursuitRunning())
 	{
+		if (ABNPoliceHelicopter* Heli = Helicopter.Get(); Heli && !Heli->IsLeaving())
+		{
+			Heli->Leave(); // escaped/busted: fly off instead of popping out of the sky
+		}
 		State.Update(DeltaTime, 0.f, BIG_NUMBER, 0, false);
 		if (State.Phase == EBNPursuitPhase::None)
 		{
@@ -649,7 +655,8 @@ void UBNPursuitSubsystem::Tick(float DeltaTime)
 
 	const int32 PrevHeat = State.HeatLevel;
 	const EBNPursuitPhase PrevPhase = State.Phase;
-	State.Update(DeltaTime, Player->GetSpeedKmh(), NearestDist, TotalActive, bInCooldownSpot);
+	const bool bAirSight = TickHelicopter(*Player, DeltaTime);
+	State.Update(DeltaTime, Player->GetSpeedKmh(), NearestDist, TotalActive, bInCooldownSpot, bAirSight);
 
 	if (PrevPhase != EBNPursuitPhase::Escaped && State.Phase == EBNPursuitPhase::Escaped)
 	{
@@ -900,8 +907,59 @@ void UBNPursuitSubsystem::PruneUnits()
 	}
 }
 
+bool UBNPursuitSubsystem::TickHelicopter(ABNVehiclePawn& Player, float DeltaTime)
+{
+	HeliCooldownSeconds = FMath::Max(0.f, HeliCooldownSeconds - DeltaTime);
+	ABNPoliceHelicopter* Heli = Helicopter.Get();
+	if (!Heli)
+	{
+		if (State.Phase != EBNPursuitPhase::Pursuit || State.HeatLevel < BNPoliceTactics::HeliMinHeat || HeliCooldownSeconds > 0.f)
+		{
+			return false;
+		}
+		const FVector Back = -Player.GetActorForwardVector().GetSafeNormal2D() * 7000.f;
+		const FVector SpawnLoc = Player.GetActorLocation() + Back + FVector(0.f, 0.f, BNPoliceTactics::HeliHoverHeightCm + 1500.f);
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		Heli = GetWorld()->SpawnActor<ABNPoliceHelicopter>(ABNPoliceHelicopter::StaticClass(), FTransform(Player.GetActorRotation(), SpawnLoc), Params);
+		if (!Heli)
+		{
+			return false;
+		}
+		Heli->SetTarget(&Player);
+		Helicopter = Heli;
+		HeliStationSeconds = 0.f;
+		State.PostDispatch(TEXT("HAVA-1"), TEXT("Hava birimi bölgede. Şüpheliyi yukarıdan görüyorum, ışığı tutuyorum."), 4.f);
+		return false;
+	}
+	if (Heli->IsLeaving())
+	{
+		return false;
+	}
+	HeliStationSeconds += DeltaTime;
+	if (HeliStationSeconds >= BNPoliceTactics::HeliOnStationSeconds)
+	{
+		Heli->Leave();
+		HeliCooldownSeconds = BNPoliceTactics::HeliRespawnCooldownSeconds;
+		State.PostDispatch(TEXT("HAVA-1"), TEXT("Yakıt kritik, üsse dönüyorum. Yer ekipleri devralsın."), 4.f);
+		return false;
+	}
+	return Heli->HasSightOfTarget();
+}
+
+void UBNPursuitSubsystem::DestroyHelicopter()
+{
+	if (ABNPoliceHelicopter* Heli = Helicopter.Get())
+	{
+		Heli->Destroy();
+	}
+	Helicopter.Reset();
+	HeliStationSeconds = 0.f;
+}
+
 void UBNPursuitSubsystem::ClearAllUnits()
 {
+	DestroyHelicopter();
 	for (FPoliceUnit& Unit : Units)
 	{
 		DestroyUnit(Unit.Car, Unit.Controller);

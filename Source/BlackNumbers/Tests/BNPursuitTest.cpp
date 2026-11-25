@@ -99,6 +99,43 @@ bool FBNPoliceTacticsTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNPoliceHelicopterLogicTest, "BlackNumbers.Police.HelicopterLogic",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNPoliceHelicopterLogicTest::RunTest(const FString& Parameters)
+{
+	using namespace BNPoliceTactics;
+	const FVector Player(1000.f, 2000.f, 100.f);
+	const FVector Goal = HeliHoverGoal(Player, FVector(3000.f, 0.f, 0.f));
+	TestTrue(TEXT("heli hovers well above the suspect"), Goal.Z >= Player.Z + HeliHoverHeightCm - 1.f);
+	TestTrue(TEXT("heli leads a moving suspect"), Goal.X > Player.X);
+
+	const FVector Start(0.f, 0.f, 5000.f);
+	const FVector Far(100000.f, 0.f, 5000.f);
+	const FVector Stepped = HeliStep(Start, Far, 1.f);
+	TestTrue(TEXT("heli speed is capped"), FVector::Dist(Start, Stepped) <= HeliMaxSpeedCms + 1.f);
+	TestTrue(TEXT("heli closes on its goal"), Stepped.X > 0.f);
+	TestTrue(TEXT("heli arrives without overshoot"), FVector::Dist(HeliStep(Start, Start + FVector(10.f, 0.f, 0.f), 1.f), Start + FVector(10.f, 0.f, 0.f)) < 1.f);
+
+	const FVector Above = Player + FVector(500.f, 0.f, HeliHoverHeightCm);
+	TestTrue(TEXT("heli spots suspect in clear view"), HeliCanSpot(Above, Player, true));
+	TestFalse(TEXT("cover (tunnel/bridge) hides the suspect"), HeliCanSpot(Above, Player, false));
+	TestFalse(TEXT("heli loses a suspect far away"), HeliCanSpot(Player + FVector(HeliSpotRangeCm + 2000.f, 0.f, HeliHoverHeightCm), Player, true));
+
+	// Air sight keeps a pursuit alive even with no ground unit nearby, but never busts.
+	FBNPursuitState Air;
+	Air.StartPursuit(4);
+	Air.Update(1.f, 120.f, 20000.f, 0, false, true);
+	TestEqual(TEXT("air unit sight prevents Evade"), Air.Phase, EBNPursuitPhase::Pursuit);
+	Air.Update(10.f, 0.f, 20000.f, 0, false, true);
+	TestEqual(TEXT("air unit alone cannot bust"), Air.Phase, EBNPursuitPhase::Pursuit);
+	Air.Update(1.f, 120.f, 20000.f, 0, false, false);
+	TestEqual(TEXT("hiding from the heli enters Evade"), Air.Phase, EBNPursuitPhase::Evade);
+	Air.Update(1.f, 120.f, 20000.f, 0, false, true);
+	TestEqual(TEXT("heli re-spotting resumes the pursuit"), Air.Phase, EBNPursuitPhase::Pursuit);
+	return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNPursuitChatterAndRapSheetTest, "BlackNumbers.Police.ChatterAndRapSheet",
 	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
 

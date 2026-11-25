@@ -33,4 +33,17 @@ namespace BNPoliceTactics
 
 	/** Yaw rate to add to the suspect: rear swings away from the unit; faster suspects spin harder (capped). */
 	BLACKNUMBERS_API float PitSpinYawRate(float SideSign, float TargetSpeedKmh);
+
+	// Police helicopter (Heat 4+): hovers above/ahead of the suspect; spots only with clear line of sight.
+	constexpr int32 HeliMinHeat = 4;
+	constexpr float HeliHoverHeightCm = 4200.f;
+	constexpr float HeliMaxSpeedCms = 6400.f; // ~230 km/h: a flat-out suspect on NOS can outrun it
+	constexpr float HeliLeadSeconds = 1.1f;
+	constexpr float HeliSpotRangeCm = 7500.f;
+	constexpr float HeliOnStationSeconds = 70.f;
+	constexpr float HeliRespawnCooldownSeconds = 60.f;
+
+	BLACKNUMBERS_API FVector HeliHoverGoal(const FVector& PlayerLoc, const FVector& PlayerVel);
+	BLACKNUMBERS_API FVector HeliStep(const FVector& Current, const FVector& Goal, float DeltaSeconds);
+	BLACKNUMBERS_API bool HeliCanSpot(const FVector& HeliLoc, const FVector& PlayerLoc, bool bClearLineOfSight);
 }

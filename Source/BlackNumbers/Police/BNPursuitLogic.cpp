@@ -360,7 +360,8 @@ void FBNPursuitState::RecordPursuitBreaker(int32 CollateralDollars, int32 Disabl
 		TEXT("Şüpheli kamu yapısını yıktı! Şehir hasarı artıyor, destek ekip sevk edin!"), 4.5f);
 }
 
-void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float NearestActiveUnitDistCm, int32 ActiveUnitCount, bool bInCooldownSpot)
+void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float NearestActiveUnitDistCm, int32 ActiveUnitCount,
+	bool bInCooldownSpot, bool bAirUnitHasSight)
 {
 	const float Dt = FMath::Max(DeltaSeconds, 0.f);
 	bInsideCooldownSpot = bInCooldownSpot && Phase == EBNPursuitPhase::Cooldown;
@@ -427,7 +428,7 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 			BustMeter = FMath::Max(0.f, BustMeter - Dt * BustDecayPerSecond);
 		}
 
-		if (!bAnyUnitNear || NearestActiveUnitDistCm > BreakSightDistanceCm)
+		if (!bAirUnitHasSight && (!bAnyUnitNear || NearestActiveUnitDistCm > BreakSightDistanceCm))
 		{
 			Phase = EBNPursuitPhase::Evade;
 			EvadeMeter = 0.f;
@@ -437,7 +438,7 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 
 	case EBNPursuitPhase::Evade:
 		BustMeter = FMath::Max(0.f, BustMeter - Dt * BustDecayPerSecond);
-		if (bAnyUnitNear && NearestActiveUnitDistCm < RegainSightDistanceCm)
+		if (bAirUnitHasSight || (bAnyUnitNear && NearestActiveUnitDistCm < RegainSightDistanceCm))
 		{
 			Phase = EBNPursuitPhase::Pursuit;
 			EvadeMeter = 0.f;
@@ -458,7 +459,7 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 
 	case EBNPursuitPhase::Cooldown:
 		BustMeter = 0.f;
-		if (bAnyUnitNear && NearestActiveUnitDistCm < CooldownBreakDistanceCm)
+		if (bAirUnitHasSight || (bAnyUnitNear && NearestActiveUnitDistCm < CooldownBreakDistanceCm))
 		{
 			Phase = EBNPursuitPhase::Pursuit;
 			PhaseProgress = 0.f;

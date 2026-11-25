@@ -108,6 +108,12 @@ private:
 
 	FBNPursuitState State;
 	TArray<FPoliceUnit> Units;
+	TWeakObjectPtr<class ABNPoliceHelicopter> Helicopter;
+	float HeliStationSeconds = 0.f;
+	float HeliCooldownSeconds = 0.f;
+	/** Spawns, retires and despawns the Heat 4+ helicopter; returns true while it sees the player. */
+	bool TickHelicopter(ABNVehiclePawn& Player, float DeltaTime);
+	void DestroyHelicopter();
 	TArray<FPoliceUnit> PatrolUnits;
 	TArray<FSpikeStripHazard> SpikeStrips;
 	float SpawnCooldown = 0.f;

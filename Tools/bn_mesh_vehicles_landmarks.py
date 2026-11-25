@@ -738,3 +738,36 @@ def build_jump_ramp(b):
     x_end = x_start + length
     b.add_quad(2, (x_end, -half_w, -0.2), (x_end, +half_w, -0.2), (x_end, +half_w, max_h), (x_end, -half_w, max_h))
     b.add_quad(2, (x_start, +half_w, -0.2), (x_end, +half_w, -0.2), (x_end, -half_w, -0.2), (x_start, -half_w, -0.2))
+
+
+def build_police_heli_body(b):
+    """Karamara police helicopter fuselage (~11 m long, origin at rotor hub base, X forward)."""
+    # Slots: 0=Body, 1=Canopy glass, 2=Skids/trim, 3=Red beacon, 4=Blue beacon
+    # Cabin: tapered nose + main cabin + engine hump
+    b.add_frustum_box(0, (0.6, 0.0, -2.1), (3.4, 1.9), (3.0, 1.6), 1.55)
+    b.add_frustum_box(1, (2.55, 0.0, -1.95), (1.1, 1.6), (0.5, 1.2), 1.15)
+    b.add_frustum_box(0, (-0.4, 0.0, -0.55), (2.2, 1.2), (1.6, 0.9), 0.45)
+    # Tail boom tapering aft + fin + horizontal stabilizer
+    b.add_frustum_cyl(0, (-1.0, 0.0, -1.2), 0.42, 0.18, 0.1, segments=8)
+    b.add_beam(0, (-1.0, 0.0, -1.15), (-6.4, 0.0, -0.85), 0.36)
+    b.add_box(0, (-6.3, 0.0, -0.25), (0.9, 0.12, 1.3))
+    b.add_box(0, (-5.6, 0.0, -0.9), (0.6, 1.9, 0.08))
+    # Skids
+    for s in (-1.0, 1.0):
+        b.add_beam(2, (1.6, s * 1.05, -2.55), (-1.6, s * 1.05, -2.55), 0.1)
+        b.add_beam(2, (1.6, s * 1.05, -2.55), (2.0, s * 1.05, -2.35), 0.1)
+        b.add_beam(2, (0.9, s * 0.8, -2.1), (0.9, s * 1.05, -2.55), 0.08)
+        b.add_beam(2, (-0.9, s * 0.8, -2.1), (-0.9, s * 1.05, -2.55), 0.08)
+    # Rotor mast + belly beacons
+    b.add_frustum_cyl(2, (0.0, 0.0, -0.15), 0.14, 0.1, 0.15, segments=8)
+    b.add_box(3, (0.2, -0.45, -2.15), (0.3, 0.22, 0.1))
+    b.add_box(4, (0.2, 0.45, -2.15), (0.3, 0.22, 0.1))
+
+
+def build_police_heli_rotor(b):
+    """Main rotor: 4 blades, 11 m disc, hub at origin (spun in code around Z)."""
+    b.add_frustum_cyl(0, (0.0, 0.0, -0.06), 0.28, 0.2, 0.14, segments=10)
+    for i in range(4):
+        a = i * math.pi * 0.5
+        tip = (math.cos(a) * 5.5, math.sin(a) * 5.5, 0.02)
+        b.add_beam(0, (0.0, 0.0, 0.02), tip, 0.16)
