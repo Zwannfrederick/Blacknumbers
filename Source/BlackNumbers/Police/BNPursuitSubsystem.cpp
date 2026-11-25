@@ -275,6 +275,22 @@ void UBNPursuitSubsystem::DisablePoliceNear(const FVector& Origin, float RadiusC
 	}
 }
 
+void UBNPursuitSubsystem::NotifyPitEvent(bool bSuccess)
+{
+	if (!State.IsPursuitRunning())
+	{
+		return;
+	}
+	if (bSuccess)
+	{
+		State.PostDispatch(TEXT("BİRİM-05"), TEXT("PIT tuttu! Şüpheli savruldu, etrafını sarın!"), 3.5f);
+	}
+	else if (State.ActiveRadio.RemainingSeconds <= 0.5f)
+	{
+		State.PostDispatch(TEXT("BİRİM-05"), TEXT("Arka çeyreğine girdim, PIT deniyorum!"), 2.5f);
+	}
+}
+
 void UBNPursuitSubsystem::OnPlayerRammedPolice(ABNVehiclePawn* PoliceCar, float PlayerSpeedKmh)
 {
 	if (!PoliceCar || !State.IsPursuitRunning())
@@ -676,7 +692,8 @@ void UBNPursuitSubsystem::Tick(float DeltaTime)
 		}
 	}
 
-	// Clean out old roadblocks once passed or far behind.
+	// Clean out old roadblocks once passed or far behind; driving past one counts on the rap sheet.
+	bool bRoadblockPassed = false;
 	for (int32 i = Units.Num() - 1; i >= 0; --i)
 	{
 		ABNVehiclePawn* Car = Units[i].Car.Get();
@@ -687,10 +704,19 @@ void UBNPursuitSubsystem::Tick(float DeltaTime)
 			const float Along = FVector::DotProduct(ToBlock, PlayerFwd);
 			if (ToBlock.Size2D() > RoadblockDespawnDistCm || Along < -RoadblockPassedDistCm)
 			{
+				bRoadblockPassed |= Along < -RoadblockPassedDistCm;
 				DestroyUnit(Units[i].Car, Units[i].Controller);
 				Units.RemoveAtSwap(i);
 				--ActiveRoadblocks;
 			}
+		}
+	}
+	if (bRoadblockPassed && ActiveRoadblocks == 0 && State.IsPursuitRunning()) // both units of the block gone -> count once
+	{
+		State.RecordRoadblockDodged();
+		if (SpikeStrips.ContainsByPredicate([](const FSpikeStripHazard& Strip) { return !Strip.bTriggered; }))
+		{
+			State.RecordSpikeStripDodged();
 		}
 	}
 	if (ActiveRoadblocks == 0 && SpikeStrips.Num() > 0)

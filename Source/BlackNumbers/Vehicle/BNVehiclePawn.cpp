@@ -722,6 +722,13 @@ void ABNVehiclePawn::OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* Oth
 			Audio->PlaySfxAtLocation(CrashId, SparkLoc, FMath::Clamp(0.45f + Intensity * 0.6f, 0.4f, 1.f));
 		}
 		ApplyCollisionDamage(ImpulseMag, GetSpeedKmh(), FMath::Abs(Hit.ImpactNormal.Z) < 0.65f || OtherCar != nullptr);
+		if (IsPlayerControlled() && OtherCar)
+		{
+			if (ABNPoliceController* PitCtrl = Cast<ABNPoliceController>(OtherCar->GetController()); PitCtrl && PitCtrl->IsAttemptingPit())
+			{
+				PitCtrl->ApplyPitContact(*this);
+			}
+		}
 		// High-speed player slam against an active police cruiser can damage or disable the pursuing unit!
 		if (IsPlayerControlled() && OtherCar && ImpulseMag > 280000.f && FMath::Abs(GetSpeedKmh()) >= 100.f)
 		{

@@ -111,8 +111,25 @@ void ABNVehiclePawn::UpdateDrift(float DeltaSeconds)
 	SetRearGrip(bDrifting ? 0.f : FMath::Min(1.f, RearGripBlend + DeltaSeconds / Drift.GripRecoverSeconds));
 }
 
+void ABNVehiclePawn::ApplyExternalSpin(float YawRateDeg, float SuppressAssistSeconds)
+{
+	USkeletalMeshComponent* Body = GetMesh();
+	if (!Body || !Body->IsSimulatingPhysics())
+	{
+		return;
+	}
+	const FVector Spin = Body->GetPhysicsAngularVelocityInDegrees();
+	Body->SetPhysicsAngularVelocityInDegrees(FVector(Spin.X, Spin.Y, Spin.Z + YawRateDeg));
+	AssistSuppressedRemaining = FMath::Max(AssistSuppressedRemaining, SuppressAssistSeconds);
+}
+
 void ABNVehiclePawn::UpdateNormalGripAssist(float DeltaSeconds)
 {
+	if (AssistSuppressedRemaining > 0.f)
+	{
+		AssistSuppressedRemaining = FMath::Max(0.f, AssistSuppressedRemaining - DeltaSeconds);
+		return;
+	}
 	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
 	const float SpeedKmh = FMath::Abs(GetSpeedKmh());
 	if (bDrifting || bInputLocked || !IsPlayerControlled() || !IsOnGround()

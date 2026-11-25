@@ -1,6 +1,7 @@
 #include "Misc/AutomationTest.h"
 #include "Police/BNPoliceSirenComponent.h"
 #include "Police/BNPursuitLogic.h"
+#include "Police/BNPoliceTactics.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -69,6 +70,32 @@ bool FBNPursuitLogicTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Wail pitch stays in expected band"), WailHz >= 600.f && WailHz <= 1250.f);
 	TestTrue(TEXT("Yelp peaks higher than Wail"), YelpHz > 1200.f);
 	TestTrue(TEXT("Speedbreaker lowers siren pitch"), SlowYelpHz < YelpHz * 0.75f);
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNPoliceTacticsTest, "BlackNumbers.Police.PitTactics",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNPoliceTacticsTest::RunTest(const FString& Parameters)
+{
+	using namespace BNPoliceTactics;
+	const FVector RearRight(-250.f, 250.f, 0.f);
+	TestTrue(TEXT("Heat 2 unit at the rear-right quarter can PIT"), CanAttemptPit(0.48f, RearRight, 120.f));
+	TestFalse(TEXT("Heat 1 units never PIT"), CanAttemptPit(0.35f, RearRight, 120.f));
+	TestFalse(TEXT("no PIT directly behind (would just rear-end)"), CanAttemptPit(0.6f, FVector(-400.f, 20.f, 0.f), 120.f));
+	TestFalse(TEXT("no PIT from in front"), CanAttemptPit(0.6f, FVector(300.f, 250.f, 0.f), 120.f));
+	TestFalse(TEXT("no PIT when too far"), CanAttemptPit(0.6f, FVector(-900.f, 400.f, 0.f), 120.f));
+	TestFalse(TEXT("no PIT on a crawling suspect (bust instead)"), CanAttemptPit(0.6f, RearRight, 30.f));
+	TestFalse(TEXT("no PIT above the safe speed"), CanAttemptPit(0.6f, RearRight, 230.f));
+
+	const FVector AimRight = PitAimLocal(1.f);
+	TestTrue(TEXT("PIT aims behind the rear axle"), AimRight.X < -100.f);
+	TestTrue(TEXT("PIT aims into the body on the unit's side"), AimRight.Y > 0.f && AimRight.Y < 120.f);
+	TestTrue(TEXT("left-side PIT mirrors the aim"), PitAimLocal(-1.f).Y < 0.f);
+
+	TestTrue(TEXT("spin direction follows the side"), PitSpinYawRate(1.f, 120.f) > 0.f && PitSpinYawRate(-1.f, 120.f) < 0.f);
+	TestTrue(TEXT("faster suspects spin harder"), PitSpinYawRate(1.f, 160.f) > PitSpinYawRate(1.f, 60.f));
+	TestTrue(TEXT("spin is capped"), FMath::Abs(PitSpinYawRate(1.f, 400.f)) <= PitSpinYawRateDeg);
 	return true;
 }
 

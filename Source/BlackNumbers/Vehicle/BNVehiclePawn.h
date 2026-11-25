@@ -84,6 +84,8 @@ class BLACKNUMBERS_API ABNVehiclePawn : public AWheeledVehiclePawn
 public:
 	/** Wheel setups are ordered FL, FR, BL, BR; rear wheels start at this index. */
 	static constexpr int32 FirstRearWheelIndex = 2;
+	/** Kick a yaw spin into the car (police PIT) and mute the grip assist so it is not instantly corrected. */
+	void ApplyExternalSpin(float YawRateDeg, float SuppressAssistSeconds);
 	ABNVehiclePawn();
 
 	virtual void Tick(float DeltaSeconds) override;
@@ -411,6 +413,8 @@ private:
 	FBNDragState DragState;
 	float DriftHoldSeconds = 0.f;
 	float DriftExitBoostRemaining = 0.f;
+	/** Seconds the player grip assist stays off after an external spin (police PIT). */
+	float AssistSuppressedRemaining = 0.f;
 	float DriftExitBannerRemaining = 0.f;
 	int32 NearMissStreak = 0;
 	float NearMissStreakTimer = 0.f;

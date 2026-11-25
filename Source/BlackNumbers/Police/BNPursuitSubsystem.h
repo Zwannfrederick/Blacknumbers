@@ -55,6 +55,8 @@ public:
 	void OnPursuitBreakerTriggered(ABNPursuitBreaker* Breaker, ABNVehiclePawn* PlayerCar);
 	void DisablePoliceNear(const FVector& Origin, float RadiusCm);
 	void OnPlayerRammedPolice(ABNVehiclePawn* PoliceCar, float PlayerSpeedKmh);
+	/** Radio call-outs for a police PIT attempt (bSuccess=false) or a landed PIT (true). */
+	void NotifyPitEvent(bool bSuccess);
 	bool GetNearestRoadblockAhead(const ABNVehiclePawn& Player, float& OutDistanceMeters, bool& bOutHasSpikes, FVector* OutWorldLoc = nullptr) const;
 
 	const FBNPursuitState& GetState() const { return State; }

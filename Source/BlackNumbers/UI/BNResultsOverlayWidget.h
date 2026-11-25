@@ -50,6 +50,11 @@ struct FBNPursuitResultSummary
 	int32 Bounty = 0;
 	int32 RepEarned = 0;
 	float DurationSeconds = 0.f;
+	/** EBNInfraction bitmask (rap sheet). */
+	uint8 Infractions = 0;
+	float TopSpeedKmh = 0.f;
+	int32 RoadblocksDodged = 0;
+	int32 SpikeStripsDodged = 0;
 };
 
 /**

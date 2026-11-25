@@ -43,12 +43,16 @@ public:
 	bool IsReadyForCleanup() const { return bDisabled && DisabledSeconds >= 8.f; }
 	bool HasVisualLightbar() const { return RedLight != nullptr && BlueLight != nullptr; }
 	bool IsSirenActive() const;
+	bool IsAttemptingPit() const { return bPitActive; }
+	/** Called when this unit touches the suspect; spins the suspect if a PIT is in progress. */
+	void ApplyPitContact(ABNVehiclePawn& Suspect);
 
 private:
 	void AttachPoliceGear(ABNVehiclePawn& Car);
 	void CleanupPoliceGear();
 	void DriveChase(ABNVehiclePawn& Car, float DeltaSeconds);
 	void DrivePatrol(ABNVehiclePawn& Car, float DeltaSeconds);
+	void UpdatePit(const ABNVehiclePawn& Target, const FVector& MyLoc, float DeltaSeconds, FVector& InOutAimPoint);
 	void SteerTowardPoint(ABNVehiclePawn& Car, const FVector& AimPoint, float DesiredSpeedKmh, float DeltaSeconds) const;
 	void ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds) const;
 	void UpdateLightsAndSiren();
@@ -67,6 +71,10 @@ private:
 	FVector SearchPoint = FVector::ZeroVector;
 	float DisabledSeconds = 0.f;
 	float StuckSeconds = 0.f;
+	bool bPitActive = false;
+	float PitSide = 1.f;
+	float PitTimer = 0.f;
+	float PitCooldown = 0.f;
 
 	// A* road-graph navigation cache
 	TArray<FVector> NavWaypoints;

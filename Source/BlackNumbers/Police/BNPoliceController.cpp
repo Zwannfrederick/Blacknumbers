@@ -13,6 +13,8 @@
 #include "Garage/BNGarageTypes.h"
 #include "Misc/PackageName.h"
 #include "Police/BNPoliceSirenComponent.h"
+#include "Police/BNPoliceTactics.h"
+#include "Police/BNPursuitSubsystem.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Vehicle/BNVehiclePawn.h"
 #include "World/BNRoadGraph.h"
@@ -476,6 +478,7 @@ void ABNPoliceController::DriveChase(ABNVehiclePawn& Car, float DeltaSeconds)
 
 	const FVector TargetLoc = Target->GetActorLocation();
 	const float DistToTarget = FVector::Dist2D(MyLoc, TargetLoc);
+	PitCooldown = FMath::Max(0.f, PitCooldown - DeltaSeconds);
 	const FVector GoalPos = bSearchMode ? SearchPoint : TargetLoc;
 
 	FVector AimPoint = GoalPos;
@@ -534,12 +537,21 @@ void ABNPoliceController::DriveChase(ABNVehiclePawn& Car, float DeltaSeconds)
 
 			const float LeadSeconds = FMath::Clamp(DistToTarget / 3500.f, 0.15f, 0.7f);
 			AimPoint = TargetLoc + TargetVel * LeadSeconds + TargetForward * LongitudinalOffset + TargetRight * LateralOffset;
+			UpdatePit(*Target, MyLoc, DeltaSeconds, AimPoint);
+		}
+		else
+		{
+			bPitActive = false;
 		}
 
 		const float PlayerSpeedKmh = FMath::Abs(Target->GetSpeedKmh());
 		const float CatchupBonus = DistToTarget > 2500.f ? 46.f : (DistToTarget > 900.f ? 24.f : 8.f);
 		DesiredSpeedKmh = FMath::Clamp(PlayerSpeedKmh + CatchupBonus, MinChaseSpeedKmh, HeatSpec.MaxPursuitSpeedKmh);
-		if (DistToTarget < 650.f && HeatSpec.Aggression < 0.6f && !bHeavyRhino)
+		if (bPitActive)
+		{
+			DesiredSpeedKmh = FMath::Min(PlayerSpeedKmh + 16.f, HeatSpec.MaxPursuitSpeedKmh);
+		}
+		else if (DistToTarget < 650.f && HeatSpec.Aggression < 0.6f && !bHeavyRhino)
 		{
 			DesiredSpeedKmh = FMath::Min(DesiredSpeedKmh, PlayerSpeedKmh + 5.f);
 		}
@@ -556,6 +568,50 @@ void ABNPoliceController::DriveChase(ABNVehiclePawn& Car, float DeltaSeconds)
 	}
 
 	SteerTowardPoint(Car, AimPoint, DesiredSpeedKmh, DeltaSeconds);
+}
+
+void ABNPoliceController::UpdatePit(const ABNVehiclePawn& Target, const FVector& MyLoc, float DeltaSeconds, FVector& InOutAimPoint)
+{
+	const FTransform& TargetXf = Target.GetActorTransform();
+	if (!bPitActive)
+	{
+		const FVector LocalMe = TargetXf.InverseTransformPosition(MyLoc);
+		if (PitCooldown > 0.f || bHeavyRhino || bRoadblockUnit
+			|| !BNPoliceTactics::CanAttemptPit(HeatSpec.Aggression, LocalMe, Target.GetSpeedKmh()))
+		{
+			return;
+		}
+		bPitActive = true;
+		PitSide = LocalMe.Y >= 0.f ? 1.f : -1.f;
+		PitTimer = BNPoliceTactics::PitAttemptSeconds;
+		if (UBNPursuitSubsystem* Pursuit = GetWorld() ? GetWorld()->GetSubsystem<UBNPursuitSubsystem>() : nullptr)
+		{
+			Pursuit->NotifyPitEvent(false);
+		}
+	}
+	PitTimer -= DeltaSeconds;
+	if (PitTimer <= 0.f)
+	{
+		bPitActive = false;
+		PitCooldown = BNPoliceTactics::PitCooldownSeconds;
+		return;
+	}
+	InOutAimPoint = TargetXf.TransformPosition(BNPoliceTactics::PitAimLocal(PitSide));
+}
+
+void ABNPoliceController::ApplyPitContact(ABNVehiclePawn& Suspect)
+{
+	if (!bPitActive || bDisabled)
+	{
+		return;
+	}
+	bPitActive = false;
+	PitCooldown = BNPoliceTactics::PitCooldownSeconds;
+	Suspect.ApplyExternalSpin(BNPoliceTactics::PitSpinYawRate(PitSide, Suspect.GetSpeedKmh()), 0.9f);
+	if (UBNPursuitSubsystem* Pursuit = GetWorld() ? GetWorld()->GetSubsystem<UBNPursuitSubsystem>() : nullptr)
+	{
+		Pursuit->NotifyPitEvent(true);
+	}
 }
 
 void ABNPoliceController::SteerTowardPoint(ABNVehiclePawn& Car, const FVector& AimPoint, float DesiredSpeedKmh, float DeltaSeconds) const

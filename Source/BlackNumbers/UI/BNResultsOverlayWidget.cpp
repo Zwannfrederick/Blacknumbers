@@ -342,6 +342,31 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildPursuitSummary()
 		]
 	];
 
+	{
+		// Rap sheet: infractions + pursuit milestones.
+		TArray<FString> Charges;
+		for (uint8 Bit = 1; Bit != 0 && Bit <= static_cast<uint8>(EBNInfraction::Evading); Bit <<= 1)
+		{
+			if (P.Infractions & Bit)
+			{
+				Charges.Add(FBNPursuitState::InfractionLabel(static_cast<EBNInfraction>(Bit)));
+			}
+		}
+		const FString ChargeLine = Charges.Num() > 0
+			? FString::Printf(TEXT("SİCİL (%d):  %s"), Charges.Num(), *FString::Join(Charges, TEXT("  •  ")))
+			: FString(TEXT("SİCİL:  temiz"));
+		const FString MilestoneLine = FString::Printf(TEXT("EN YÜKSEK HIZ %d km/h   •   AŞILAN BARİKAT %d   •   KAÇIRILAN DİKENLİ ŞERİT %d   •   YIKILAN YAPI %d"),
+			FMath::RoundToInt(P.TopSpeedKmh), P.RoadblocksDodged, P.SpikeStripsDodged, P.BreakersTriggered);
+		Inner->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 6.f))
+		[
+			SNew(STextBlock).Text(FText::FromString(ChargeLine)).Font(BNUITheme::Font(11, true)).ColorAndOpacity(BNUITheme::CrimsonRed).AutoWrapText(true)
+		];
+		Inner->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 16.f))
+		[
+			SNew(STextBlock).Text(FText::FromString(MilestoneLine)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::ChalkWhite)
+		];
+	}
+
 	if (P.bEscaped && (P.RepEarned > 0 || P.Bounty > 0))
 	{
 		Inner->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 16.f))
@@ -646,6 +671,10 @@ void ABNHUD::UpdateRaceAndPursuitTracking(const UBNProgressionSubsystem* Prog, c
 				PSum.TotalCityDamageDollars = PS.CostToStateDollars;
 				PSum.Bounty = PS.Bounty;
 				PSum.DurationSeconds = PS.PursuitTimeSeconds;
+				PSum.Infractions = PS.Infractions;
+				PSum.TopSpeedKmh = PS.TopSpeedKmh;
+				PSum.RoadblocksDodged = PS.RoadblocksDodged;
+				PSum.SpikeStripsDodged = PS.SpikeStripsDodged;
 				PSum.RepEarned = (PSum.bEscaped && Prog) ? FMath::Max(0, Prog->GetProfile().Reputation - TrackedPursuitPreRep) : 0;
 				ShowPursuitResults(PSum);
 			}
