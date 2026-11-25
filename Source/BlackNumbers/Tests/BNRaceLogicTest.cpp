@@ -144,4 +144,23 @@ bool FBNRivalSafeSpeedTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNRivalCatchUpTest, "BlackNumbers.Race.RivalCatchUp",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNRivalCatchUpTest::RunTest(const FString& Parameters)
+{
+	// Gap > 0: rival ahead of the player along the racing line (cm).
+	TestEqual(TEXT("close racing is untouched"), ABNRivalController::CatchUpScale(2000.f, 0.5f), 1.f);
+	TestEqual(TEXT("close racing behind is untouched"), ABNRivalController::CatchUpScale(-2000.f, 0.5f), 1.f);
+	const float FarBehind = ABNRivalController::CatchUpScale(-40000.f, 0.5f);
+	const float FarAhead = ABNRivalController::CatchUpScale(60000.f, 0.5f);
+	TestTrue(TEXT("a rival far behind speeds up"), FarBehind > 1.05f);
+	TestTrue(TEXT("a rival far ahead eases off"), FarAhead < 0.95f);
+	TestTrue(TEXT("catch-up is bounded"), FarBehind <= 1.17f && ABNRivalController::CatchUpScale(-1.0e7f, 1.f) <= 1.17f);
+	TestTrue(TEXT("ease-off is bounded"), ABNRivalController::CatchUpScale(1.0e7f, 0.f) >= 0.85f);
+	TestTrue(TEXT("skilled rivals ease off less"), ABNRivalController::CatchUpScale(60000.f, 1.f) > ABNRivalController::CatchUpScale(60000.f, 0.f));
+	TestTrue(TEXT("more behind -> more catch-up"), ABNRivalController::CatchUpScale(-20000.f, 0.5f) < FarBehind);
+	return true;
+}
+
 #endif

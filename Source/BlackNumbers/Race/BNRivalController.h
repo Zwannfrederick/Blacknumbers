@@ -35,9 +35,16 @@ public:
 	 * made at GripG lateral grip, braking at BrakeG. An open line's end counts as a stop.
 	 */
 	static float SafeSpeed(const USplineComponent& Line, float Distance, float GripG, float BrakeG);
+	/**
+	 * Arcade rubber band: >1 when the rival trails the player (GapCm < 0), <1 when it runs far ahead.
+	 * Skilled rivals ease off less. Scales planned grip/target speed.
+	 */
+	static float CatchUpScale(float GapCm, float Skill);
 
 private:
 	void Drive(ABNVehiclePawn& Car, const USplineComponent& Line, float DeltaSeconds);
+	/** Signed gap to the player along the racing line (cm, + = rival ahead). 0 when unknown. */
+	float GapToPlayer(const USplineComponent& Line, float MyDistance) const;
 	/** Removes sideways slide (understeer) by turning the velocity toward where the car points. */
 	void ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds) const;
 	void Respawn(ABNVehiclePawn& Car, const USplineComponent& Line, float Distance);

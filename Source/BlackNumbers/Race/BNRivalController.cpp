@@ -3,7 +3,10 @@
 
 #include "ChaosVehicleWheel.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Components/SplineComponent.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "EngineUtils.h"
 #include "Race/BNRaceEvent.h"
 #include "Vehicle/BNVehiclePawn.h"
@@ -57,6 +60,14 @@ namespace
 	constexpr float MinGripAssistSpeed = 500.f;
 	const FVector2f LaunchDelayRange(0.7f, 0.1f);
 
+	// Rubber band. Inside the dead zone racing is untouched; beyond it the effect ramps over the span.
+	constexpr float CatchUpDeadZoneCm = 8000.f;
+	constexpr float CatchUpSpanCm = 25000.f;
+	constexpr float EaseOffDeadZoneCm = 12000.f;
+	constexpr float EaseOffSpanCm = 30000.f;
+	/** Extra forward acceleration (cm/s^2) at the full catch-up scale, so trailing rivals gain on straights. */
+	constexpr float CatchUpAccelCms2 = 900.f;
+
 	float WrapDistance(const USplineComponent& Line, float Distance)
 	{
 		const float Length = Line.GetSplineLength();
@@ -77,6 +88,41 @@ void ABNRivalController::Setup(ABNRaceEvent* InRace, float InSkill, float InLane
 	LaneOffset = InLaneOffset;
 	TargetLaneOffset = InLaneOffset;
 	LaunchDelay = FMath::Lerp(LaunchDelayRange.X, LaunchDelayRange.Y, Skill);
+}
+
+float ABNRivalController::CatchUpScale(float GapCm, float Skill)
+{
+	const float S = FMath::Clamp(Skill, 0.f, 1.f);
+	if (GapCm < -CatchUpDeadZoneCm)
+	{
+		const float T = FMath::Clamp((-GapCm - CatchUpDeadZoneCm) / CatchUpSpanCm, 0.f, 1.f);
+		return 1.f + T * (0.10f + 0.06f * S);
+	}
+	if (GapCm > EaseOffDeadZoneCm)
+	{
+		const float T = FMath::Clamp((GapCm - EaseOffDeadZoneCm) / EaseOffSpanCm, 0.f, 1.f);
+		return 1.f - T * (0.14f - 0.10f * S);
+	}
+	return 1.f;
+}
+
+float ABNRivalController::GapToPlayer(const USplineComponent& Line, float MyDistance) const
+{
+	const ABNRaceEvent* RaceEvent = Race.Get();
+	const APawn* PlayerPawn = GetWorld() && GetWorld()->GetFirstPlayerController() ? GetWorld()->GetFirstPlayerController()->GetPawn() : nullptr;
+	if (!RaceEvent || !PlayerPawn || !RaceEvent->IsRunningFor(Cast<ABNVehiclePawn>(PlayerPawn)))
+	{
+		return 0.f;
+	}
+	const float PlayerDistance = Line.GetDistanceAlongSplineAtLocation(PlayerPawn->GetActorLocation(), ESplineCoordinateSpace::World);
+	float Gap = MyDistance - PlayerDistance;
+	// ponytail: lap-agnostic on circuits (gap wrapped to +-half a lap); add lap counts if lapping becomes common.
+	const float Len = Line.GetSplineLength();
+	if (Line.IsClosedLoop() && Len > 1.f)
+	{
+		Gap = FMath::Fmod(Gap + 1.5f * Len, Len) - 0.5f * Len;
+	}
+	return Gap;
 }
 
 float ABNRivalController::SafeSpeed(const USplineComponent& Line, float Distance, float GripG, float BrakeG)
@@ -161,7 +207,8 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 		return;
 	}
 
-	const float GripG = FMath::Lerp(GripRange.X, GripRange.Y, Skill);
+	const float CatchUp = CatchUpScale(GapToPlayer(Line, Distance), Skill);
+	const float GripG = FMath::Lerp(GripRange.X, GripRange.Y, Skill) * FMath::Max(CatchUp, 1.f);
 	const float BrakeG = FMath::Lerp(BrakeRange.X, BrakeRange.Y, Skill);
 	const float Safe = SafeSpeed(Line, Distance, GripG, BrakeG * (Style == EBNRivalStyle::LateBrake ? 1.08f : 1.f));
 
@@ -207,7 +254,11 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 		LaneChangeCooldown = LaneChangeSeconds;
 	}
 	LaneOffset = FMath::FInterpConstantTo(LaneOffset, TargetLaneOffset, DeltaSeconds, LaneShiftSpeed);
-	const float Target = FMath::Min(Safe, Ahead);
+	const float Target = FMath::Min(Safe * FMath::Min(CatchUp, 1.f), Ahead);
+	if (CatchUp > 1.f && Car.IsOnGround())
+	{
+		Car.GetMesh()->AddForce(Car.GetActorForwardVector() * (CatchUp - 1.f) / 0.16f * CatchUpAccelCms2, NAME_None, true);
+	}
 	const float Error = Target - Speed;
 	const float ThrottleError = FullThrottleError * (Style == EBNRivalStyle::FastExit ? 0.72f : 1.f);
 	Move->SetThrottleInput(FMath::Clamp(Error / ThrottleError, 0.f, 1.f));
