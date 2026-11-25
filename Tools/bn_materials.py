@@ -71,12 +71,12 @@ SURFACES = {
     "MI_Building_Brick": dict(
         base_color=(0.94, 0.90, 0.88), albedo="T_Brick_D", normal="T_Brick_N", roughness_map="T_Brick_R",
         emissive_map="T_Brick_E", emissive_mask_color=(1.55, 1.12, 0.62),
-        tile_scale=0.075, roughness=0.90, roughness_min=0.14, specular=0.52, normal_strength=1.0, macro_var=0.12,
+        tile_scale=0.052, roughness=0.90, roughness_min=0.14, specular=0.52, normal_strength=1.0, macro_var=0.12,
     ),
     "MI_Building_Plaster": dict(
         base_color=(0.94, 0.91, 0.86), albedo="T_Plaster_D", normal="T_Plaster_N", roughness_map="T_Plaster_R",
         emissive_map="T_Plaster_E", emissive_mask_color=(1.60, 1.18, 0.68),
-        tile_scale=0.075, roughness=0.90, roughness_min=0.14, specular=0.50, normal_strength=0.90, macro_var=0.12,
+        tile_scale=0.052, roughness=0.90, roughness_min=0.14, specular=0.50, normal_strength=0.90, macro_var=0.12,
     ),
     "MI_Building_Steel": dict(
         base_color=(0.30, 0.34, 0.38), albedo="T_Container_D", normal="T_Container_N", roughness_map="T_Container_R",
@@ -119,7 +119,7 @@ SURFACES = {
     "MI_Building_Glass": dict(
         base_color=(0.90, 0.95, 1.00), albedo="T_GlassSteel_D", normal="T_GlassSteel_N", roughness_map="T_GlassSteel_R",
         emissive_map="T_GlassSteel_E", emissive_mask_color=(1.40, 1.25, 0.95),
-        tile_scale=0.072, roughness=0.62, roughness_min=0.08, specular=0.68, metallic=0.30,
+        tile_scale=0.033, roughness=0.62, roughness_min=0.08, specular=0.68, metallic=0.30,
         normal_strength=0.85, macro_var=0.08,
     ),
     "MI_Container_Blue": dict(
@@ -194,18 +194,18 @@ SURFACES = {
     "MI_Building_Modern": dict(
         base_color=(0.88, 0.92, 0.98), albedo="T_Cladding_D", normal="T_Cladding_N", roughness_map="T_Cladding_R",
         emissive_map="T_Cladding_E", emissive_mask_color=(1.25, 1.55, 1.85),
-        tile_scale=0.072, roughness=0.68, roughness_min=0.10, specular=0.62, metallic=0.32,
+        tile_scale=0.052, roughness=0.68, roughness_min=0.10, specular=0.62, metallic=0.32,
         normal_strength=0.90, macro_var=0.10,
     ),
     "MI_Building_ConcreteTower": dict(
         base_color=(0.94, 0.92, 0.88), albedo="T_ConcreteTower_D", normal="T_ConcreteTower_N", roughness_map="T_ConcreteTower_R",
         emissive_map="T_ConcreteTower_E", emissive_mask_color=(1.75, 1.32, 0.72),
-        tile_scale=0.075, roughness=0.82, roughness_min=0.12, specular=0.52, metallic=0.10,
+        tile_scale=0.046, roughness=0.82, roughness_min=0.12, specular=0.52, metallic=0.10,
         normal_strength=0.95, macro_var=0.12,
     ),
     "MI_Building_Terracotta": dict(
         base_color=(0.74, 0.30, 0.17), albedo="T_Brick_D", normal="T_Brick_N", roughness_map="T_Brick_R",
-        tile_scale=0.32, roughness=0.84, roughness_min=0.42, specular=0.44, normal_strength=0.95, macro_var=0.14,
+        tile_scale=0.06, roughness=0.84, roughness_min=0.42, specular=0.44, normal_strength=0.95, macro_var=0.14,
     ),
     "MI_CrownGlow_Amber": dict(
         base_color=(1.0, 0.68, 0.22), roughness=0.35, roughness_min=0.35,

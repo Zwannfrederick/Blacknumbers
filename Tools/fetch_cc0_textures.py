@@ -45,11 +45,23 @@ CC0_SURFACE_MAP = [
     ("MountainGrass", "aerial_grass_rock",        "direct"),
 ]
 
+# Photographic building facades (real window frames, sills, night-lit window emission), CC0 1.0 from
+# ambientCG (https://ambientcg.com/). These replace the composited window grids on city buildings.
+# Tuple: (target_prefix, ambientcg_id)
+AMBIENTCG_FACADES = [
+    ("Brick",         "Facade018B"),  # brick apartment block
+    ("Plaster",       "Facade018A"),  # brick/stone apartment block, darker glazing
+    ("Cladding",      "Facade019A"),  # modern banded office
+    ("ConcreteTower", "Facade020A"),  # brick-pier mid-rise tower
+    ("GlassSteel",    "Facade006"),   # glass curtain-wall office
+]
+AMBIENTCG_CACHE_DIR = os.path.join(CACHE_DIR, "ambientcg")
+
 UA = {"User-Agent": "BlackNumbers-UE5-CC0Fetcher/1.0"}
 
 
 def _manifest_signature():
-    payload = json.dumps(CC0_SURFACE_MAP, sort_keys=True) + "|v2_puresky"
+    payload = json.dumps([CC0_SURFACE_MAP, AMBIENTCG_FACADES], sort_keys=True) + "|v3_acg_facades"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
@@ -267,6 +279,75 @@ def _fetch_puresky_clouds():
     _save_rgb("T_SkyClouds_D", full)
 
 
+def _apply_ambientcg_facade(prefix, asset_id):
+    """Writes T_<prefix>_{D,N,R,E} from a cached/downloaded ambientCG 1K-JPG facade zip."""
+    import zipfile
+    import numpy as np
+
+    os.makedirs(AMBIENTCG_CACHE_DIR, exist_ok=True)
+    zip_path = os.path.join(AMBIENTCG_CACHE_DIR, asset_id + ".zip")
+    if not os.path.isfile(zip_path):
+        data = _download_bytes("https://ambientcg.com/get?file=%s_1K-JPG.zip" % asset_id, timeout=120)
+        with open(zip_path, "wb") as f:
+            f.write(data)
+    with zipfile.ZipFile(zip_path) as z:
+        names = z.namelist()
+
+        def member(suffix):
+            hit = [n for n in names if n.endswith("_%s.jpg" % suffix)]
+            return io.BytesIO(z.read(hit[0])) if hit else None
+
+        color, normal, rough, emission = member("Color"), member("NormalDX"), member("Roughness"), member("Emission")
+        if color is None or normal is None or rough is None:
+            raise RuntimeError("incomplete ambientCG zip: %s" % names)
+        diff = _load_rgb_f32(color)
+        rgh = _load_gray_f32(rough)
+        emis = _load_rgb_f32(emission) if emission is not None else np.zeros_like(diff)
+        if float((emis.max(axis=-1) > 0.2).mean()) < 0.05:
+            emis = _night_windows(diff, rgh, seed=sum(map(ord, asset_id)))
+        _save_rgb("T_%s_D" % prefix, diff)
+        _save_rgb("T_%s_N" % prefix, _load_rgb_f32(normal))
+        _save_gray("T_%s_R" % prefix, rgh)
+        _save_rgb("T_%s_E" % prefix, emis)
+
+
+def _intervals(profile, thresh):
+    """Runs of indices where profile > thresh, as (start, end) pairs (end exclusive)."""
+    runs, start = [], None
+    for i, v in enumerate(profile):
+        if v > thresh and start is None:
+            start = i
+        elif v <= thresh and start is not None:
+            runs.append((start, i))
+            start = None
+    if start is not None:
+        runs.append((start, len(profile)))
+    return [r for r in runs if r[1] - r[0] >= 4]
+
+
+def _night_windows(diff, rgh, seed, lit_fraction=0.42):
+    """Facade has no usable emission map: light ~42% of its window cells warm/cool at night.
+    Window cells come from the glass mask's row/column profiles (works for regular grids)."""
+    import numpy as np
+
+    lum = diff.mean(axis=-1)
+    glass = rgh < 0.3
+    if glass.mean() > 0.8:  # all-glass curtain wall: panes are the darker pixels
+        glass = lum < np.percentile(lum, 55)
+    rows = _intervals(glass.mean(axis=1), 0.25)
+    cols = _intervals(glass.mean(axis=0), 0.25)
+    rng = np.random.default_rng(seed)
+    emis = np.zeros_like(diff)
+    warm, cool = np.array([1.0, 0.78, 0.45]), np.array([0.72, 0.86, 1.0])
+    for r0, r1 in rows:
+        for c0, c1 in cols:
+            if rng.random() < lit_fraction:
+                tint = warm if rng.random() < 0.75 else cool
+                cell = glass[r0:r1, c0:c1, None] * tint * rng.uniform(0.55, 1.0)
+                emis[r0:r1, c0:c1] = np.maximum(emis[r0:r1, c0:c1], cell)
+    return emis
+
+
 def fetch_and_apply(force=False):
     """Downloads CC0 PolyHaven textures (or uses local cache) and updates Saved/GeneratedTextures/."""
     import numpy as np
@@ -318,6 +399,14 @@ def fetch_and_apply(force=False):
             failed += 1
             print("BN: CC0 fallback to procedural for %s (%s): %s" % (prefix, asset_id, exc), file=sys.stderr)
 
+    for prefix, asset_id in AMBIENTCG_FACADES:
+        try:
+            _apply_ambientcg_facade(prefix, asset_id)
+            applied += 1
+        except Exception as exc:
+            failed += 1
+            print("BN: ambientCG facade fallback for %s (%s): %s" % (prefix, asset_id, exc), file=sys.stderr)
+
     try:
         _fetch_puresky_clouds()
     except Exception as exc:
@@ -327,7 +416,7 @@ def fetch_and_apply(force=False):
     if failed == 0:
         with open(STAMP_PATH, "w", encoding="utf-8") as f:
             f.write(sig + "\n")
-    print("BN: applied %d/%d CC0 1.0 PolyHaven PBR texture sets + PureSky into %s" % (applied, len(CC0_SURFACE_MAP), OUT_DIR))
+    print("BN: applied %d/%d CC0 1.0 PolyHaven + ambientCG texture sets + PureSky into %s" % (applied, len(CC0_SURFACE_MAP) + len(AMBIENTCG_FACADES), OUT_DIR))
     return applied
 
 

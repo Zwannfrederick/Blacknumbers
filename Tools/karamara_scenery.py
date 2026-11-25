@@ -296,6 +296,19 @@ def build_buildings_and_storefronts(ctx, clearance):
                 mat = rng.choice(core_mats) if is_core else rng.choice(edge_mats)
                 hism.add("Bldg_Merkez", (px, py, h * 0.5), (w / 100.0, d / 100.0, h / 100.0),
                          mat, "PM_Concrete", collision=True, cast_shadow=True)
+                # Facade relief: dark ground-floor plinth, a slab ledge every 3 floors and corner pilasters break the
+                # flat box silhouette and cast shadow lines. No rng calls here, so the seeded layout stays identical.
+                hism.add("Bldg_Plinth", (px, py, 220.0), (w / 100.0 + 0.5, d / 100.0 + 0.5, 4.4),
+                         "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=40000)
+                ledge_z = 1000.0
+                while ledge_z < h - 250.0:
+                    hism.add("Bldg_Ledge", (px, py, ledge_z), (w / 100.0 + 0.36, d / 100.0 + 0.36, 0.3),
+                             "MI_Concrete", None, collision=False, cast_shadow=True, cull_cm=60000)
+                    ledge_z += 960.0
+                for sx in (-0.5, 0.5):
+                    for sy in (-0.5, 0.5):
+                        hism.add("Bldg_Pilaster", (px + sx * w, py + sy * d, h * 0.5), (0.9, 0.9, h / 100.0),
+                                 "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=60000)
                 # Rooftop parapet, stepped architectural setback penthouse on tall core towers, & water tanks
                 hism.add("RoofCap", (px, py, h + 40.0), (w / 100.0 + 0.4, d / 100.0 + 0.4, 0.8),
                          "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=55000)

@@ -11,6 +11,13 @@ BLACK NUMBERS uses strictly royalty-free **CC0 1.0 Public Domain**, **CC-BY 4.0*
 - **3D Street / Industrial / Garage / Nature Props (`Tools/fetch_cc0_models.py`):**
   `concrete_road_barrier`, `concrete_road_barrier_02`, `fire_hydrant`, `metal_trash_can`, `utility_box_01`, `utility_box_02`, `water_manhole_cover`, `modular_street_seating`, `security_camera_01`, `exterior_aircon_unit`, `modular_fire_escape`, `modular_chainlink_fence`, `rollershutter_door`, `flood_lights`, `covered_car`, `old_tyre`, `Barrel_01`, `metal_tool_chest`, `boulder_01`.
 
+## 1b. ambientCG Building Facades — CC0 1.0 Universal (Public Domain)
+
+- Source: https://ambientcg.com/ (license: https://docs.ambientcg.com/license/) — no attribution required.
+- Sets: `Facade006`, `Facade018A`, `Facade018B`, `Facade019A`, `Facade020A` (1K-JPG), fetched and cached by
+  `Tools/fetch_cc0_textures.py` (`AMBIENTCG_FACADES`) into `T_{Brick,Plaster,Cladding,ConcreteTower,GlassSteel}_*`.
+  Night window emission is synthesized from each facade's glass mask when the set has no usable emission map.
+
 ## 2. Khronos glTF Sample Asset — `CarConcept` — CC-BY 4.0
 - **Asset:** `CarConcept.glb` (`/Game/Vehicles/GrandTourer/SM_BN_GrandTourer`, powering `Draco RS-T`)
 - **Author / Copyright:** Eric Chadwick / Darmstadt Graphics Group GmbH (via [KhronosGroup/glTF-Sample-Assets](https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept))
