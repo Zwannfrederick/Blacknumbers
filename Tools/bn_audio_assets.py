@@ -40,6 +40,10 @@ SFX_NAMES = [
     "SFX_Shift_Pop",
     "SFX_Engine_Blown",
     "SFX_Gps_Arrive",
+    "SFX_Camera_Flash",
+    "SFX_Garage_Repair",
+    "SFX_New_Record",
+    "SFX_Rain_Ambient",
 ]
 
 MUSIC_NAMES = [
@@ -253,6 +257,41 @@ def _make_sfx():
         + 0.80 * (t >= 0.16) * np.sin(2 * np.pi * 1174.66 * np.maximum(t - 0.16, 0.0)) * np.exp(-np.maximum(t - 0.16, 0.0) * 8.5)
     )
     _write_wav(os.path.join(SFX_DIR, "SFX_Gps_Arrive.wav"), _fade_edges(chime, 0.002, 0.03), peak=0.74)
+
+    # 18. SFX_Camera_Flash (crisp speed-trap mechanical DSLR shutter + xenon strobe capacitor whine)
+    t = t_arr(0.36)
+    click1 = _bandpass(rng.normal(0.0, 1.0, len(t)), 1800.0, 7500.0) * np.exp(-t * 85.0)
+    dt2 = np.maximum(t - 0.042, 0.0)
+    click2 = (t >= 0.042) * _bandpass(rng.normal(0.0, 1.0, len(t)), 2200.0, 8200.0) * np.exp(-dt2 * 70.0) * 0.75
+    whine_f = np.linspace(1400.0, 4200.0, len(t))
+    whine = (t >= 0.05) * np.sin(2 * np.pi * np.cumsum(whine_f) / SR) * np.exp(-np.maximum(t - 0.05, 0.0) * 9.5) * 0.28
+    _write_wav(os.path.join(SFX_DIR, "SFX_Camera_Flash.wav"), _fade_edges(0.95 * click1 + 0.80 * click2 + whine, 0.001, 0.02), peak=0.84)
+
+    # 19. SFX_Garage_Repair (pneumatic impact wrench burst + hydraulic bay chime)
+    t = t_arr(0.68)
+    wrench = np.zeros_like(t)
+    for k in range(5):
+        off = 0.02 + k * 0.075
+        dt = np.maximum(t - off, 0.0)
+        m = (t >= off).astype(np.float64)
+        wrench += m * (np.sin(2 * np.pi * 320.0 * dt) * 0.55 + _bandpass(rng.normal(0.0, 1.0, len(t)), 1200.0, 4800.0) * 0.65) * np.exp(-dt * 42.0)
+    dt_c = np.maximum(t - 0.36, 0.0)
+    chime_r = (t >= 0.36) * (0.65 * np.sin(2 * np.pi * 523.25 * dt_c) + 0.55 * np.sin(2 * np.pi * 783.99 * dt_c)) * np.exp(-dt_c * 7.5)
+    _write_wav(os.path.join(SFX_DIR, "SFX_Garage_Repair.wav"), _fade_edges(0.78 * wrench + 0.72 * chime_r, 0.002, 0.04), peak=0.82)
+
+    # 20. SFX_New_Record (bright 4-note Most Wanted personal-best fanfare)
+    t = t_arr(0.62)
+    rec = np.zeros_like(t)
+    for off, hz in ((0.0, 587.33), (0.09, 739.99), (0.18, 880.0), (0.27, 1174.66)):
+        dt = np.maximum(t - off, 0.0)
+        m = (t >= off).astype(np.float64)
+        rec += m * (0.75 * np.sin(2 * np.pi * hz * dt) + 0.25 * np.sin(2 * np.pi * hz * 2.0 * dt)) * np.exp(-dt * 7.5)
+    _write_wav(os.path.join(SFX_DIR, "SFX_New_Record.wav"), _fade_edges(rec, 0.002, 0.05), peak=0.80)
+
+    # 21. SFX_Rain_Ambient (soft filtered rainfall noise bed)
+    t = t_arr(2.0)
+    rain = _bandpass(rng.normal(0.0, 1.0, len(t)), 550.0, 5400.0) * 0.65 + _lowpass(rng.normal(0.0, 1.0, len(t)), 420.0) * 0.25
+    _write_wav(os.path.join(SFX_DIR, "SFX_Rain_Ambient.wav"), _fade_edges(rain, 0.08, 0.08), peak=0.52)
 
 
 def _midi_hz(midi_note):

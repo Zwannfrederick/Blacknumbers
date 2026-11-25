@@ -65,6 +65,10 @@ public:
 	void ToggleWorldMap();
 	void CloseWorldMap();
 
+	/** Open-world activity telemetry notifications (Speed Trap strobe flash & Stunt Jump distance). */
+	void NotifySpeedTrapTriggered(const FString& TrapName, float SpeedKmh, bool bNewRecord, int32 CashGain);
+	void NotifyStuntJumpLanded(const FString& JumpName, float DistanceMeters, bool bNewRecord, int32 CashGain);
+
 	UFUNCTION(BlueprintPure, Category = "UI")
 	bool IsMenuOpen() const
 	{
@@ -110,7 +114,8 @@ private:
 	void DrawRace(const ABNRaceEvent& Race);
 	void DrawDragShiftBar(const ABNVehiclePawn& Car);
 	void DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsystem* Story, bool bRaceActive);
-	void DrawEconomyPill(const UBNProgressionSubsystem& Progression, const UBNStorySubsystem* Story, bool bRaceActive);
+	void DrawEconomyPill(const UBNProgressionSubsystem& Progression, const UBNStorySubsystem* Story, bool bRaceActive, bool bPursuitVisible);
+	void DrawProTelemetry(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, bool bPursuitVisible);
 	void DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNPursuitSubsystem* Pursuit, UBNStorySubsystem* Story);
 	void DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNStorySubsystem* Story);
 	void DrawLiveCommsAndPrompts(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNStorySubsystem* Story);
@@ -149,5 +154,14 @@ private:
 	int32 LastDistrictId = -1;
 	FString DistrictBannerName;
 	FString DistrictBannerSubtitle;
+	FString DistrictBannerRuler;
+	bool bDistrictBannerLiberated = false;
 	double DistrictBannerUntil = 0.0;
+
+	// Speed Trap & Stunt Jump HUD toast / strobe flash state (rendered in BNHUDTelemetry.cpp)
+	double SpeedTrapFlashUntil = 0.0;
+	double ActivityBannerUntil = 0.0;
+	FString ActivityBannerTitle;
+	FString ActivityBannerDetail;
+	bool bActivityBannerRecord = false;
 };

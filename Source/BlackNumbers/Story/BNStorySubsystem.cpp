@@ -227,7 +227,7 @@ bool UBNStorySubsystem::CheckFinalChaseEscape(ABNVehiclePawn* PlayerCar)
 void UBNStorySubsystem::OnBossRaceFinished(int32 BossRank, bool bPlayerWon, ABNVehiclePawn* PlayerCar)
 {
 	const FBNBossSpec* Spec = FBNStoryState::FindBossByRank(BossRank);
-	if (!Spec)
+	if (!Spec || !State.IsDuelUnlocked(BossRank))
 	{
 		return;
 	}
@@ -319,7 +319,7 @@ void UBNStorySubsystem::OpenDossier(ABNVehiclePawn* PlayerCar)
 	{
 		SelectedBossIndex = IndexFromRank(State.NextBossRank);
 	}
-	StatusFeedback = TEXT("W/S ile sec, TAB/A/D ile sekme degistir, ENTER ile boss yarisina cik.");
+	StatusFeedback = TEXT("W/S ile seç, ENTER ile programdaki sıradaki yarışa çık.");
 	if (PlayerCar)
 	{
 		PlayerCar->SetInputLocked(true);
@@ -383,7 +383,22 @@ void UBNStorySubsystem::DismissActiveCard(ABNVehiclePawn* PlayerCar)
 	}
 }
 
-bool UBNStorySubsystem::ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar)
+ABNRaceEvent* UBNStorySubsystem::FindProgramRace(UWorld* World, FName RaceAsset)
+{
+	if (World && !RaceAsset.IsNone())
+	{
+		for (TActorIterator<ABNRaceEvent> It(World); It; ++It)
+		{
+			if (It->Definition && It->Definition->GetFName() == RaceAsset)
+			{
+				return *It;
+			}
+		}
+	}
+	return nullptr;
+}
+
+bool UBNStorySubsystem::ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar, int32 RequestedRank)
 {
 	if (!PlayerCar || !PlayerCar->GetWorld())
 	{
@@ -403,7 +418,12 @@ bool UBNStorySubsystem::ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar)
 		return true;
 	}
 
-	const int32 Rank = RankFromIndex(SelectedBossIndex);
+	if (HasActiveCard() || ABNRaceEvent::FindActiveRace(PlayerCar->GetWorld()))
+	{
+		StatusFeedback = TEXT("Yeni yarışa geçmek için mevcut etkinliği bitir.");
+		return false;
+	}
+	const int32 Rank = RequestedRank == INDEX_NONE ? RankFromIndex(SelectedBossIndex) : RequestedRank;
 	if (State.IsBossDefeated(Rank))
 	{
 		StatusFeedback = FString::Printf(TEXT("#%02d zaten yenildi! Siradaki hedef: #%02d."), Rank, State.NextBossRank);
@@ -421,47 +441,43 @@ bool UBNStorySubsystem::ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar)
 		return false;
 	}
 
-	ABNRaceEvent* ExactEvent = nullptr;
-	ABNRaceEvent* DisciplineEvent = nullptr;
-	ABNRaceEvent* FallbackEvent = nullptr;
-	for (TActorIterator<ABNRaceEvent> It(PlayerCar->GetWorld()); It; ++It)
-	{
-		if (It->GetState() == EBNRaceState::Idle)
-		{
-			if (!FallbackEvent)
-			{
-				FallbackEvent = *It;
-			}
-			if (It->Definition)
-			{
-				if (!Spec->RaceAssetName.IsEmpty() && It->Definition->GetName().Equals(Spec->RaceAssetName, ESearchCase::IgnoreCase))
-				{
-					ExactEvent = *It;
-					break;
-				}
-				if (!DisciplineEvent && It->Definition->Discipline == Spec->Discipline)
-				{
-					DisciplineEvent = *It;
-				}
-			}
-		}
-	}
-
-	ABNRaceEvent* Chosen = ExactEvent ? ExactEvent : (DisciplineEvent ? DisciplineEvent : FallbackEvent);
+	const FName Qualifier = State.GetNextQualifier();
+	ABNRaceEvent* Chosen = FindProgramRace(PlayerCar->GetWorld(),
+		Qualifier.IsNone() ? FName(*Spec->RaceAssetName) : Qualifier);
 	if (!Chosen)
 	{
-		StatusFeedback = TEXT("Bu haritada uygun boş yarış etkinliği bulunamadı.");
+		StatusFeedback = TEXT("Bu yarış Karamara haritasında oynanır.");
 		return false;
 	}
 
 	CloseDossier(PlayerCar);
-	Chosen->StartBossRace(PlayerCar, Spec->Rank, Spec->RivalSkill, Spec->VehicleStats, Spec->VehicleTint, Spec->DriftTargetScore, Spec->BaseCar);
+	StatusFeedback.Reset();
+	if (Qualifier.IsNone())
+	{
+		Chosen->StartBossRace(PlayerCar, Spec->Rank, Spec->RivalSkill, Spec->VehicleStats, Spec->VehicleTint, Spec->DriftTargetScore, Spec->BaseCar);
+	}
+	else
+	{
+		Chosen->StartRace(PlayerCar);
+	}
 	return true;
+}
+
+void UBNStorySubsystem::NotifyStreetRaceWon(FName RaceAsset)
+{
+	if (State.RecordQualifierVictory(RaceAsset))
+	{
+		StatusFeedback = State.GetNextQualifier().IsNone()
+			? FString::Printf(TEXT("#%02d düellosu açıldı. [B] Black Numbers Listesi"), State.NextBossRank)
+			: TEXT("Eleme tamamlandı. Sıradaki yarış [B] Black Numbers Listesi'nde.");
+		PostComms(TEXT("SELİN"), StatusFeedback);
+	}
 }
 
 void UBNStorySubsystem::WriteToSaveGame(UBNSaveGame& SaveObj) const
 {
 	SaveObj.StoryNextBossRank = State.NextBossRank;
+	SaveObj.StoryQualifiersWon = State.QualifiersWon;
 	SaveObj.StoryDefeatedMask = static_cast<int32>(State.DefeatedMask);
 	SaveObj.StoryAct = static_cast<uint8>(State.Act);
 	SaveObj.StoryTarikAttitude = static_cast<uint8>(State.TarikAttitude);
@@ -480,6 +496,8 @@ void UBNStorySubsystem::WriteToSaveGame(UBNSaveGame& SaveObj) const
 void UBNStorySubsystem::ReadFromSaveGame(const UBNSaveGame& SaveObj)
 {
 	State.NextBossRank = FMath::Clamp(SaveObj.StoryNextBossRank, 0, 16);
+	const FBNBossSpec* CurrentBoss = FBNStoryState::FindBossByRank(State.NextBossRank);
+	State.QualifiersWon = CurrentBoss ? FMath::Clamp(SaveObj.StoryQualifiersWon, 0, CurrentBoss->Qualifiers.Num()) : 0;
 	State.DefeatedMask = static_cast<uint32>(SaveObj.StoryDefeatedMask);
 	State.Act = static_cast<EBNStoryAct>(FMath::Clamp<int32>(SaveObj.StoryAct, 0, static_cast<int32>(EBNStoryAct::Epilog)));
 	State.TarikAttitude = static_cast<EBNTarikAttitude>(FMath::Clamp<int32>(SaveObj.StoryTarikAttitude, 0, static_cast<int32>(EBNTarikAttitude::Retired)));

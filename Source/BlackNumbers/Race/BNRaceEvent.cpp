@@ -71,6 +71,14 @@ ABNRaceEvent::ABNRaceEvent()
 		Post->SetVisibility(false);
 		GatePosts.Add(Post);
 	}
+	for (const TCHAR* Name : { TEXT("TurnBarrierA"), TEXT("TurnBarrierB") })
+	{
+		UStaticMeshComponent* Barrier = MakePillar(*this, Name, Cylinder.Object, 32.f, 360.f);
+		Barrier->SetUsingAbsoluteLocation(true);
+		Barrier->SetUsingAbsoluteRotation(true);
+		Barrier->SetVisibility(false);
+		TurnBarriers.Add(Barrier);
+	}
 }
 
 void ABNRaceEvent::OnConstruction(const FTransform& Transform)
@@ -101,6 +109,14 @@ void ABNRaceEvent::OnConstruction(const FTransform& Transform)
 			{
 				Post->SetStaticMesh(ChevronMesh);
 				Post->SetRelativeScale3D(FVector::OneVector);
+			}
+		}
+		for (UStaticMeshComponent* Barrier : TurnBarriers)
+		{
+			if (Barrier)
+			{
+				Barrier->SetStaticMesh(ChevronMesh);
+				Barrier->SetRelativeScale3D(FVector(1.2f, 1.8f, 0.85f));
 			}
 		}
 	}
@@ -306,6 +322,22 @@ void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float 
 	}
 	ActiveBossRank = BossRank;
 	ActiveBossDriftTarget = DriftTargetScore;
+	ActiveQualifierLayer = 0;
+	if (BossRank == 0)
+	{
+		if (const UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr;
+			Story && Story->GetState().GetNextQualifier() == Definition->GetFName())
+		{
+			if (const FBNBossSpec* Boss = FBNStoryState::FindBossByRank(Story->GetState().NextBossRank))
+			{
+				ActiveQualifierLayer = Boss->TierLayer;
+				if (Definition->Discipline == EBNRaceDiscipline::Drift)
+				{
+					ActiveBossDriftTarget = Story->GetState().GetQualifierDriftTarget();
+				}
+			}
+		}
+	}
 	ActiveBossSkill = BossSkill;
 	ActiveBossCarId = BossCarId;
 	ActiveBossStats = BossStats ? *BossStats : FBNComputedVehicleStats();
@@ -317,6 +349,20 @@ void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float 
 	bFailedTotaled = false;
 	bFailedBlownEngine = false;
 	LastDragPerfectShifts = 0;
+	bInRacePoliceSpawned = false;
+	TargetPbTime = 0.f;
+	LastSplitDeltaSeconds = 0.f;
+	SplitBannerRemaining = 0.f;
+	bHasSplitDelta = false;
+	bLastFinishWasNewRecord = false;
+	LastRecordBonusCash = 0;
+	if (const UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+	{
+		if (const float* ExistingPb = Prog->GetProfile().BestRaceTimes.Find(Definition->GetName()))
+		{
+			TargetPbTime = *ExistingPb;
+		}
+	}
 	ClearRivals();
 
 	// Never carry an active free-roam police chase into a race grid (teleporting away from cops would trigger phantom Evade).
@@ -357,6 +403,10 @@ void ABNRaceEvent::BeginRaceInternal(ABNVehiclePawn* Car, int32 BossRank, float 
 
 void ABNRaceEvent::TickRacing(ABNVehiclePawn& Car, float DeltaSeconds)
 {
+	if (SplitBannerRemaining > 0.f)
+	{
+		SplitBannerRemaining = FMath::Max(0.f, SplitBannerRemaining - DeltaSeconds);
+	}
 	if (Car.IsEngineBlown())
 	{
 		bFailedBlownEngine = true;
@@ -391,7 +441,39 @@ void ABNRaceEvent::TickRacing(ABNVehiclePawn& Car, float DeltaSeconds)
 	}
 	else if (Step != EBNRaceStep::None)
 	{
+		const int32 TotalNeeded = Player.Progress.NumCheckpoints() * FMath::Max(1, Player.Progress.TotalLaps());
+		const int32 PassedNow = Player.Progress.Passed();
+		if (TargetPbTime > 0.5f && TotalNeeded > 0 && PassedNow > 0 && PassedNow < TotalNeeded)
+		{
+			const float ExpectedAtGate = TargetPbTime * (static_cast<float>(PassedNow) / static_cast<float>(TotalNeeded));
+			LastSplitDeltaSeconds = GetRaceTime() - ExpectedAtGate;
+			SplitBannerRemaining = 2.6f;
+			bHasSplitDelta = true;
+		}
+
+		// Always-on Most Wanted-style in-race police intervention on Sprint & Circuit races past ~35% progress!
+		const bool bStreetChaseRace = Definition->Discipline == EBNRaceDiscipline::Sprint
+			|| Definition->Discipline == EBNRaceDiscipline::Circuit;
+		if (bStreetChaseRace && !bInRacePoliceSpawned && !GIsAutomationTesting && !FApp::IsUnattended()
+			&& TotalNeeded >= 3 && PassedNow >= FMath::Max(2, TotalNeeded / 3))
+		{
+			const int32 DesiredHeat = (ActiveBossRank > 0 && ActiveBossRank <= 8) ? 2 : 1;
+			TriggerInRacePoliceNow(DesiredHeat);
+		}
+
 		ShowGate(Player.Progress.NextCheckpoint());
+	}
+}
+
+void ABNRaceEvent::TriggerInRacePoliceNow(int32 InitialHeat)
+{
+	bInRacePoliceSpawned = true;
+	if (UWorld* World = GetWorld())
+	{
+		if (UBNPursuitSubsystem* Pursuit = World->GetSubsystem<UBNPursuitSubsystem>())
+		{
+			Pursuit->StartInRacePursuit(InitialHeat);
+		}
 	}
 }
 
@@ -473,12 +555,34 @@ void ABNRaceEvent::BuildRacingLine()
 	RacingLine->SetClosedLoop(bCircuit);
 }
 
+FBNComputedVehicleStats ABNRaceEvent::ComputeScaledRivalStats(EBNCarId RivalCar, int32 PlayerAvgTier,
+	EBNDifficulty Difficulty, float BaseSkill, float& OutScaledSkill)
+{
+	int32 TargetTier = FMath::Clamp(PlayerAvgTier, 0, 5);
+	if (Difficulty == EBNDifficulty::Easy)
+	{
+		TargetTier = FMath::Max(0, TargetTier - 1);
+	}
+	else if (Difficulty == EBNDifficulty::Legend)
+	{
+		TargetTier = FMath::Clamp(TargetTier + 1, 1, 6);
+	}
+	const int32 Tiers[FBNUpgradeSpec::NumSlots] = { TargetTier, TargetTier, TargetTier, TargetTier, TargetTier };
+	OutScaledSkill = FMath::Clamp(BaseSkill * FBNVehicleSpec::DifficultySkillScale(Difficulty), 0.55f, 1.05f);
+	return FBNComputedVehicleStats::Compute(RivalCar, Tiers);
+}
+
 void ABNRaceEvent::SpawnRivals()
 {
 	const bool bCircuit = Definition->Discipline == EBNRaceDiscipline::Circuit;
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
 	const int32 RivalCount = ActiveBossRank > 0 ? 1 : Definition->RivalSkills.Num();
+
+	const UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr;
+	const int32 PlayerAvgTier = Prog ? Prog->GetProfile().GetActiveAverageUpgradeTier() : 0;
+	const EBNDifficulty Difficulty = Prog ? Prog->GetProfile().Difficulty : EBNDifficulty::StreetAutoTier;
+	const FBNBossSpec* Boss = FBNStoryState::FindBossByRank(ActiveBossRank);
 
 	const bool bDrag = Definition->Discipline == EBNRaceDiscipline::Drag;
 	for (int32 i = 0; i < RivalCount; ++i)
@@ -493,6 +597,12 @@ void ABNRaceEvent::SpawnRivals()
 			UE_LOG(LogTemp, Error, TEXT("%s: could not spawn rival %d"), *GetName(), i);
 			continue;
 		}
+		float ScaledSkill = ActiveBossRank > 0 ? ActiveBossSkill : Definition->RivalSkills[i];
+		if (ActiveQualifierLayer > 0)
+		{
+			const float LayerProgress = (ActiveQualifierLayer - 1) / 3.f;
+			ScaledSkill = FMath::Lerp(ScaledSkill * 0.90f, 0.99f, LayerProgress * 0.85f);
+		}
 		if (ActiveBossRank > 0)
 		{
 			Car->ApplyVehicleSpec(ActiveBossCarId, ActiveBossStats);
@@ -500,11 +610,18 @@ void ABNRaceEvent::SpawnRivals()
 		}
 		else
 		{
-			// Give free-roam race rivals varied street body styles/paints & engine voices while keeping calibrated racing physics
 			static const EBNCarId RivalCars[] = { EBNCarId::ValkenRS4, EBNCarId::Vandal440R, EBNCarId::DracoRST };
 			const EBNCarId RivalId = RivalCars[i % UE_ARRAY_COUNT(RivalCars)];
-			const int32 StockTiers[FBNUpgradeSpec::NumSlots] = {};
-			Car->ApplyVehicleSpec(RivalId, FBNComputedVehicleStats::Compute(EBNCarId::KuroganeMSpec, StockTiers));
+			if (GIsAutomationTesting || FApp::IsUnattended())
+			{
+				const int32 StockTiers[FBNUpgradeSpec::NumSlots] = {};
+				Car->ApplyVehicleSpec(RivalId, FBNComputedVehicleStats::Compute(EBNCarId::KuroganeMSpec, StockTiers));
+			}
+			else
+			{
+				const FBNComputedVehicleStats RivalStats = ComputeScaledRivalStats(RivalId, PlayerAvgTier, Difficulty, ScaledSkill, ScaledSkill);
+				Car->ApplyVehicleSpec(RivalId, RivalStats);
+			}
 		}
 		Car->AIControllerClass = ABNRivalController::StaticClass();
 		Car->SpawnDefaultController();
@@ -515,8 +632,7 @@ void ABNRaceEvent::SpawnRivals()
 			Car->Destroy();
 			continue;
 		}
-		const float Skill = ActiveBossRank > 0 ? ActiveBossSkill : Definition->RivalSkills[i];
-		Driver->Setup(this, Skill, Lane);
+		Driver->Setup(this, ScaledSkill, Lane, Boss ? Boss->RivalStyle : EBNRivalStyle::Balanced);
 		Car->SetInputLocked(true);
 		FBNRacer& Rival = Rivals.AddDefaulted_GetRef();
 		Rival.Car = Car;
@@ -564,6 +680,100 @@ void ABNRaceEvent::ShowGate(int32 Index)
 			}
 		}
 	}
+
+	// Place holographic turn-chevron walls on the outside of sharp corners so blind intersections read cleanly at 250 km/h.
+	bool bShowBarriers = false;
+	if (bShow && bUsingHoloRaceMeshes && Definition->Checkpoints.Num() >= 2)
+	{
+		const bool bCircuit = Definition->Discipline == EBNRaceDiscipline::Circuit;
+		const int32 NextIdx = (Index + 1 < Definition->Checkpoints.Num()) ? (Index + 1) : (bCircuit ? 0 : INDEX_NONE);
+		if (NextIdx != INDEX_NONE && NextIdx != Index)
+		{
+			const FTransform& Cp = Definition->Checkpoints[Index];
+			const FVector FwdA = Cp.GetUnitAxis(EAxis::X).GetSafeNormal2D();
+			const FVector ToNext = (Definition->Checkpoints[NextIdx].GetLocation() - Cp.GetLocation()).GetSafeNormal2D();
+			if (!FwdA.IsNearlyZero() && !ToNext.IsNearlyZero())
+			{
+				const float TurnDeg = FMath::RadiansToDegrees(FMath::Atan2(
+					FVector::CrossProduct(FwdA, ToNext).Z, FVector::DotProduct(FwdA, ToNext)));
+				if (FMath::Abs(TurnDeg) >= 32.f && TurnBarriers.Num() >= 2)
+				{
+					bShowBarriers = true;
+					const float OutSign = TurnDeg > 0.f ? -1.f : 1.f; // outside of turn
+					const FRotator FacingTurn = ToNext.Rotation();
+					const float HalfW = Definition->GateWidth * 0.52f;
+					TurnBarriers[0]->SetWorldLocation(Cp.TransformPosition(FVector(550.f, OutSign * HalfW * 0.55f, 0.f)));
+					TurnBarriers[0]->SetWorldRotation(FacingTurn);
+					TurnBarriers[1]->SetWorldLocation(Cp.TransformPosition(FVector(950.f, OutSign * HalfW * 0.15f, 0.f)));
+					TurnBarriers[1]->SetWorldRotation(FacingTurn);
+				}
+			}
+		}
+	}
+	for (UStaticMeshComponent* Barrier : TurnBarriers)
+	{
+		if (Barrier)
+		{
+			Barrier->SetVisibility(bShowBarriers);
+		}
+	}
+}
+
+bool ABNRaceEvent::GetUpcomingTurnCue(const ABNVehiclePawn* Car, float& OutTurnAngleDeg, float& OutDistanceMeters) const
+{
+	OutTurnAngleDeg = 0.f;
+	OutDistanceMeters = 0.f;
+	if (!Car || State != EBNRaceState::Racing || !RacingLine || !Definition
+		|| Definition->Discipline == EBNRaceDiscipline::Drift || Definition->Discipline == EBNRaceDiscipline::Drag)
+	{
+		return false;
+	}
+	const float SplineLen = RacingLine->GetSplineLength();
+	if (SplineLen < 12000.f)
+	{
+		return false;
+	}
+	const float InputKey = RacingLine->FindInputKeyClosestToWorldLocation(Car->GetActorLocation());
+	const float CurDist = RacingLine->GetDistanceAlongSplineAtSplineInputKey(InputKey);
+	const bool bLoop = RacingLine->IsClosedLoop();
+
+	auto WrapDist = [&](float D)
+	{
+		return bLoop ? FMath::Fmod(FMath::Fmod(D, SplineLen) + SplineLen, SplineLen) : FMath::Clamp(D, 0.f, SplineLen);
+	};
+
+	const FVector TanNear = RacingLine->GetDirectionAtDistanceAlongSpline(WrapDist(CurDist + 3000.f), ESplineCoordinateSpace::World).GetSafeNormal2D();
+	if (TanNear.IsNearlyZero())
+	{
+		return false;
+	}
+	float PeakAngle = 0.f;
+	float PeakDistCm = 0.f;
+	for (const float AheadCm : { 8500.f, 13000.f, 17500.f })
+	{
+		if (!bLoop && CurDist + AheadCm > SplineLen)
+		{
+			break;
+		}
+		const FVector TanAhead = RacingLine->GetDirectionAtDistanceAlongSpline(WrapDist(CurDist + AheadCm), ESplineCoordinateSpace::World).GetSafeNormal2D();
+		if (!TanAhead.IsNearlyZero())
+		{
+			const float Deg = FMath::RadiansToDegrees(FMath::Atan2(
+				FVector::CrossProduct(TanNear, TanAhead).Z, FVector::DotProduct(TanNear, TanAhead)));
+			if (FMath::Abs(Deg) > FMath::Abs(PeakAngle))
+			{
+				PeakAngle = Deg;
+				PeakDistCm = AheadCm;
+			}
+		}
+	}
+	if (FMath::Abs(PeakAngle) < 30.f)
+	{
+		return false;
+	}
+	OutTurnAngleDeg = PeakAngle;
+	OutDistanceMeters = PeakDistCm * 0.01f;
+	return true;
 }
 
 void ABNRaceEvent::EndRace()
@@ -629,6 +839,28 @@ void ABNRaceEvent::Finish()
 	ActiveBossRank = 0;
 	ActiveBossDriftTarget = 0;
 
+	if (bCompleted && Definition)
+	{
+		if (UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+		{
+			const float BestCandidateTime = Progress.IsFinished() ? static_cast<float>(Progress.FinishTime()) : RaceTime;
+			bLastFinishWasNewRecord = Prog->RecordRacePersonalBest(Definition->GetName(), bDrift, BestCandidateTime, DriftScore.Total(), LastRecordBonusCash);
+			if (bLastFinishWasNewRecord)
+			{
+				if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
+				{
+					Audio->PlaySfx2D(EBNSfxId::NewRecord, 0.90f);
+				}
+			}
+		}
+	}
+
+	// Keep any active in-race police pursuit seamlessly chasing the player into free roam (Most Wanted signature!).
+	if (UBNPursuitSubsystem* Pursuit = GetWorld() ? GetWorld()->GetSubsystem<UBNPursuitSubsystem>() : nullptr)
+	{
+		Pursuit->NotifyRaceEndedKeepPursuit();
+	}
+
 	if (FinishedBossRank > 0)
 	{
 		if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
@@ -638,13 +870,21 @@ void ABNRaceEvent::Finish()
 	}
 	else if (bCompleted)
 	{
+		UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr;
+		const FName RaceAsset = Definition ? Definition->GetFName() : NAME_None;
+		const bool bQualifier = ActiveQualifierLayer > 0 && Story && Story->GetState().GetNextQualifier() == RaceAsset;
+		const int32 DriftTarget = bQualifier ? BossDriftTarget : 1500;
+		const bool bWon = bDrift ? (DriftScore.Total() >= DriftTarget) : (GetPlayerPosition() == 1);
+		if (bQualifier && bWon)
+		{
+			Story->NotifyStreetRaceWon(RaceAsset); // Update career before the race reward saves the profile.
+		}
 		if (UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
 		{
 			Prog->GrantRaceReward(GetPlayerPosition(), Rivals.Num() + 1, bDrift, DriftScore.Total());
 		}
-		if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
+		if (Story && !(bQualifier && bWon))
 		{
-			const bool bWon = bDrift ? (DriftScore.Total() >= 1500) : (GetPlayerPosition() == 1);
 			Story->NotifyRaceOutcome(bWon, bDrag, Definition ? Definition->DisplayName.ToString() : TEXT("Yarış"));
 		}
 	}

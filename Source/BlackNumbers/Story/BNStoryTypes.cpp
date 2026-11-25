@@ -2,6 +2,41 @@
 
 namespace
 {
+	const FName Bulvar(TEXT("RACE_KaramaraCircuit"));
+	const FName Viyaduk(TEXT("RACE_KuzeyViyadukSprint"));
+	const FName Sanayi(TEXT("RACE_SanayiDrift"));
+	const FName Liman(TEXT("RACE_LimanSprint"));
+	const FName Yamac(TEXT("RACE_YamacCircuit"));
+	const FName Dag(TEXT("RACE_KuzeyGecidiDrift"));
+	const FName O5(TEXT("RACE_CevreYoluSprint"));
+	const FName Rihtim(TEXT("RACE_LimanCircuit"));
+	const FName ViyadukDrag(TEXT("RACE_ViyadukDrag"));
+	const FName LimanDrag(TEXT("RACE_LimanDrag"));
+
+	struct FBossProgram
+	{
+		TArray<FName> Qualifiers;
+		EBNRivalStyle Style;
+	};
+	const FBossProgram Programs[] = {
+		{ { Bulvar },                        EBNRivalStyle::LateBrake  }, // #16 Berkay
+		{ { Viyaduk },                       EBNRivalStyle::FastExit   }, // #15 Nadia
+		{ { Rihtim },                        EBNRivalStyle::LateBrake  }, // #14 Cem
+		{ { LimanDrag },                     EBNRivalStyle::DefendLine }, // #13 Dario
+		{ { Bulvar, Liman },                 EBNRivalStyle::FastExit   }, // #12 Leyla
+		{ { LimanDrag, Viyaduk },            EBNRivalStyle::LateBrake  }, // #11 Ozan
+		{ { Sanayi, Yamac },                 EBNRivalStyle::FastExit   }, // #10 Sasha
+		{ { Liman, Sanayi },                 EBNRivalStyle::DefendLine }, // #09 Murat
+		{ { Bulvar, O5, Rihtim },            EBNRivalStyle::DefendLine }, // #08 Hakan
+		{ { Viyaduk, Dag, Bulvar },          EBNRivalStyle::FastExit   }, // #07 Sofia
+		{ { LimanDrag, Bulvar, ViyadukDrag }, EBNRivalStyle::FastExit   }, // #06 Miraç
+		{ { Liman, Yamac, Dag },             EBNRivalStyle::Balanced   }, // #05 Kaan
+		{ { Sanayi, LimanDrag, Liman, O5 },  EBNRivalStyle::DefendLine }, // #04 Rıza
+		{ { Yamac, Viyaduk, Sanayi, Rihtim }, EBNRivalStyle::LateBrake  }, // #03 İlhan
+		{ { ViyadukDrag, O5, Bulvar, Dag },  EBNRivalStyle::FastExit   }, // #02 Elena
+		{ { Yamac, ViyadukDrag, Rihtim, O5 }, EBNRivalStyle::LateBrake  }, // #01 Viktor
+	};
+
 	FBNComputedVehicleStats MakeBossVehicleStats(int32 Rank, EBNCarId BaseCar)
 	{
 		// Tier progresses smoothly from 0 (#16) to 5 (#02), then balanced Tier 6 for #01 Nocturne BN-01.
@@ -42,6 +77,8 @@ namespace
 		S.Discipline = Discipline;
 		S.DisciplineLabel = DisciplineLabel;
 		S.RaceAssetName = RaceAssetName;
+		S.Qualifiers = Programs[UE_ARRAY_COUNT(Programs) - Rank].Qualifiers;
+		S.RivalStyle = Programs[UE_ARRAY_COUNT(Programs) - Rank].Style;
 		S.BaseCar = BaseCar;
 		S.EvidenceCode = EvidenceCode;
 		S.EvidenceSummary = EvidenceSummary;
@@ -51,6 +88,7 @@ namespace
 		S.RivalSkill = RivalSkill;
 		S.VehicleStats = MakeBossVehicleStats(Rank, BaseCar);
 		S.VehicleTint = Tint;
+		S.HomeDistrict = FBNStoryState::GetDistrictForBoss(Rank);
 		return S;
 	}
 
@@ -208,6 +246,7 @@ void FBNStoryState::Reset()
 	Act = EBNStoryAct::Perde1_Donus;
 	TarikAttitude = EBNTarikAttitude::Hostile;
 	NextBossRank = 16;
+	QualifiersWon = 0;
 	DefeatedMask = 0;
 	bIntroShown = false;
 	bIdentityExposed = false;
@@ -278,6 +317,34 @@ bool FBNStoryState::CanChallengeBoss(int32 Rank) const
 	return true;
 }
 
+FName FBNStoryState::GetNextQualifier() const
+{
+	const FBNBossSpec* Boss = FindBossByRank(NextBossRank);
+	return Boss && CanChallengeBoss(Boss->Rank) && Boss->Qualifiers.IsValidIndex(QualifiersWon)
+		? Boss->Qualifiers[QualifiersWon] : NAME_None;
+}
+
+bool FBNStoryState::IsDuelUnlocked(int32 Rank) const
+{
+	return CanChallengeBoss(Rank) && GetNextQualifier().IsNone();
+}
+
+bool FBNStoryState::RecordQualifierVictory(FName RaceAsset)
+{
+	if (RaceAsset.IsNone() || RaceAsset != GetNextQualifier())
+	{
+		return false;
+	}
+	++QualifiersWon;
+	return true;
+}
+
+int32 FBNStoryState::GetQualifierDriftTarget() const
+{
+	const FBNBossSpec* Boss = FindBossByRank(NextBossRank);
+	return Boss ? 800 + 500 * Boss->TierLayer : 1500;
+}
+
 int32 FBNStoryState::GetMaxAllowedHeat() const
 {
 	if (bFinalChaseActive)
@@ -300,7 +367,8 @@ void FBNStoryState::BeginStory(TArray<FBNStoryCard>& OutCards)
 	bIntroShown = true;
 	OutCards.Add(MakeCard(TEXT("C03"), TEXT("C03 - BES YIL SONRA KARAMARA"), TEXT("SELIN KARAHAN"),
 		TEXT("5 yil once Emre'nin araci Kuzey Gecidi'nde patladi. Adli dosya hizla kapatildi.\n"
-			"Simdi 'K. Vance' sahte kimligiyle Yamac Mahallesi garajindasin. [B] ile 16'lik Listeyi ac.")));
+			"Şimdi 'K. Vance' kimliğiyle döndün. Black Numbers Listesi'nde ilk hedefin #16 Berkay. "
+			"Merkez Bulvarı elemesini kazan, sonra Kuzey Viyadüğü'nde ona meydan oku.")));
 	OutCards.Add(MakeCard(TEXT("C04"), TEXT("C04 - DOGU SANAYI UYARISI"), TEXT("TARIK KAYA"),
 		TEXT("\"Geri donmen kimsenin umurunda degil, Vance. Emre'yi korumak icin yanlis adamdin.\n"
 			"Atolyemden uzak dur. Eski cevre seni istemiyor.\" (Tier 6 kilitli)")));
@@ -316,6 +384,7 @@ bool FBNStoryState::RecordBossVictory(int32 Rank, TArray<FBNStoryCard>& OutCards
 	bIntroShown = true;
 	DefeatedMask |= (1u << Rank);
 	NextBossRank = Rank > 1 ? Rank - 1 : 0;
+	QualifiersWon = 0;
 
 	if (Rank == 16)
 	{
@@ -340,12 +409,18 @@ bool FBNStoryState::RecordBossVictory(int32 Rank, TArray<FBNStoryCard>& OutCards
 			TEXT("#08 Hakan 'Lens' Erturk yenilince yuz ve plaka eslesmesini polise sizdirdi.\n"
 				"Demir: \"K. Vance dedikleri 5 yildir aradigimiz Kerem Yalcin! CANLI yakalayin!\" (Heat 6-10 acildi)")));
 	}
+	else if (Rank == 7)
+	{
+		OutCards.Add(MakeCard(TEXT("TERR_YAMAC"), TEXT("BÖLGE ELE GEÇİRİLDİ — ESKİ KARAMARA"), TEXT("SELIN KARAHAN"),
+			TEXT("Bölge Hükümdarı #07 Sofia 'Krom' Lindqvist devrildi!\n"
+				"ESKİ KARAMARA (Yamaç Mahallesi) artık BLACK NUMBERS kontrolünden çıktı.")));
+	}
 	else if (Rank == 6)
 	{
 		bSelinExposed = true;
 		OutCards.Add(MakeCard(TEXT("C07"), TEXT("C07 - R5 SELIN'IN ROZETI"), TEXT("KEREM YALCIN"),
 			TEXT("#06 Mirac Alkan'in mali dosyalarindan Demir'in birimine ait gizli takip evraki cikti.\n"
-				"Selin, Baskomiser Demir'in ozel biriminde polis memuru! Guven catismasi derinlesiyor.")));
+				"Selin, Baskomiser Demir'in ozel biriminde polis memuru! ALTIN CEKIRDEK (Merkez) artik senin.")));
 	}
 	else if (Rank == 5)
 	{
@@ -353,8 +428,14 @@ bool FBNStoryState::RecordBossVictory(int32 Rank, TArray<FBNStoryCard>& OutCards
 		bTarikReconciled = true;
 		TarikAttitude = EBNTarikAttitude::Reconciled;
 		OutCards.Add(MakeCard(TEXT("C08"), TEXT("C08 - R6 TARIK ILE BARISMA (TIER 6)"), TEXT("TARIK KAYA"),
-			TEXT("#05 Kaan 'Kurye' Vural'in sevkiyat kaydi Kerem'in aletlerinin gece calindigini kanitladi.\n"
+			TEXT("#05 Kaan 'Kurye' Vural devrildi ve PASLI DEMIR (Dogu Sanayi) ele gecti!\n"
 				"Tarik: \"Seni 5 yil yanlis sucladim. Emre'nin yarim kalan Tier 6 projesini son kez aciyorum.\"")));
+	}
+	else if (Rank == 3)
+	{
+		OutCards.Add(MakeCard(TEXT("TERR_GECIT"), TEXT("BÖLGE ELE GEÇİRİLDİ — ÇAM ZİRVESİ"), TEXT("KEREM YALCIN"),
+			TEXT("Bölge Hükümdarı #03 İlhan 'Valf' Korkmaz devrildi!\n"
+				"ÇAM ZİRVESİ (Kuzey Geçidi) artık özgür. Sabotajın teknik kanıtı elimizde.")));
 	}
 	else if (Rank == 2)
 	{
@@ -436,8 +517,132 @@ FString FBNStoryState::GetCurrentObjectiveLine() const
 	}
 	if (const FBNBossSpec* Next = FindBossByRank(NextBossRank))
 	{
+		if (!GetNextQualifier().IsNone())
+		{
+			return FString::Printf(TEXT("#%02d %s  •  ELEME %d/%d   [B] PROGRAM"),
+				Next->Rank, *Next->Name, QualifiersWon + 1, Next->Qualifiers.Num());
+		}
 		return FString::Printf(TEXT("SIRADAKI HEDEF #%02d: %s (%s / %s)  -  [B] DOSYA"),
 			Next->Rank, *Next->Name, *Next->VehicleName, *Next->DisciplineLabel);
 	}
 	return TEXT("[B] BLACK NUMBERS DOSYASI");
+}
+
+EBNDistrict FBNStoryState::GetDistrictForBoss(int32 Rank)
+{
+	switch (Rank)
+	{
+	case 16:
+	case 8:  return EBNDistrict::KuzeyViyadugu;
+	case 15:
+	case 11:
+	case 6:  return EBNDistrict::MerkezBulvar;
+	case 14:
+	case 5:  return EBNDistrict::DoguSanayi;
+	case 12:
+	case 7:  return EBNDistrict::YamacMahallesi;
+	case 10:
+	case 3:  return EBNDistrict::KuzeyGecidi;
+	case 13:
+	case 9:
+	case 4:
+	case 2:
+	case 1:  return EBNDistrict::EskiLiman;
+	default: return EBNDistrict::MerkezBulvar;
+	}
+}
+
+bool FBNStoryState::IsDistrictRulerRank(int32 Rank)
+{
+	return Rank == 8 || Rank == 7 || Rank == 6 || Rank == 5 || Rank == 3 || Rank == 1;
+}
+
+FBNDistrictTerritoryInfo FBNStoryState::GetDistrictTerritory(EBNDistrict District) const
+{
+	FBNDistrictTerritoryInfo Info;
+	Info.District = District;
+	switch (District)
+	{
+	case EBNDistrict::MerkezBulvar:
+		Info.BoroughTitle = TEXT("ALTIN ÇEKİRDEK");
+		Info.BoroughTheme = TEXT("Finans Kuleleri & Gece Çarşısı");
+		Info.CrewName = TEXT("ALTIN KASA");
+		Info.RulerRank = 6;
+		Info.TerritoryColor = FLinearColor(0.95f, 0.65f, 0.14f, 1.f);
+		Info.CrewRanks = { 15, 11, 6 };
+		break;
+	case EBNDistrict::DoguSanayi:
+		Info.BoroughTitle = TEXT("PASLI DEMİR");
+		Info.BoroughTheme = TEXT("Tersane, Fabrika & Konteynerler");
+		Info.CrewName = TEXT("DEMİR DÖKÜM");
+		Info.RulerRank = 5;
+		Info.TerritoryColor = FLinearColor(0.92f, 0.36f, 0.12f, 1.f);
+		Info.CrewRanks = { 14, 5 };
+		break;
+	case EBNDistrict::EskiLiman:
+		Info.BoroughTitle = TEXT("MARA RIHTIMI");
+		Info.BoroughTheme = TEXT("Kıyı Vinçleri & Asma Köprü");
+		Info.CrewName = TEXT("SİYAH ÇAPA");
+		Info.RulerRank = 1;
+		Info.TerritoryColor = FLinearColor(0.90f, 0.16f, 0.24f, 1.f);
+		Info.CrewRanks = { 13, 9, 4, 2, 1 };
+		break;
+	case EBNDistrict::KuzeyViyadugu:
+		Info.BoroughTitle = TEXT("ÇELİK KUŞAK");
+		Info.BoroughTheme = TEXT("Çift Katlı O-5 Otoyol & Viyadük");
+		Info.CrewName = TEXT("SİNYAL HATTI");
+		Info.RulerRank = 8;
+		Info.TerritoryColor = FLinearColor(0.18f, 0.64f, 0.92f, 1.f);
+		Info.CrewRanks = { 16, 8 };
+		break;
+	case EBNDistrict::YamacMahallesi:
+		Info.BoroughTitle = TEXT("ESKİ KARAMARA");
+		Info.BoroughTheme = TEXT("Teraslı Kiremit Yokuşlar & Garaj");
+		Info.CrewName = TEXT("KROM VİRAJ");
+		Info.RulerRank = 7;
+		Info.TerritoryColor = FLinearColor(0.68f, 0.34f, 0.88f, 1.f);
+		Info.CrewRanks = { 12, 7 };
+		break;
+	case EBNDistrict::KuzeyGecidi:
+		Info.BoroughTitle = TEXT("ÇAM ZİRVESİ");
+		Info.BoroughTheme = TEXT("Dağ Geçidi, Kayalık & Çam Ormanı");
+		Info.CrewName = TEXT("ZİRVE EKİBİ");
+		Info.RulerRank = 3;
+		Info.TerritoryColor = FLinearColor(0.86f, 0.56f, 0.18f, 1.f);
+		Info.CrewRanks = { 10, 3 };
+		break;
+	default:
+		break;
+	}
+
+	if (const FBNBossSpec* Ruler = FindBossByRank(Info.RulerRank))
+	{
+		Info.RulerName = Ruler->Name;
+		Info.RulerVehicle = Ruler->VehicleName;
+	}
+	int32 Defeated = 0;
+	for (int32 Rank : Info.CrewRanks)
+	{
+		if (IsBossDefeated(Rank))
+		{
+			++Defeated;
+		}
+	}
+	Info.DefeatedInDistrict = Defeated;
+	Info.bRulerDefeated = IsBossDefeated(Info.RulerRank);
+	Info.bDistrictLiberated = Info.bRulerDefeated && Defeated == Info.CrewRanks.Num();
+	return Info;
+}
+
+int32 FBNStoryState::GetLiberatedDistrictCount() const
+{
+	int32 Count = 0;
+	for (int32 i = 0; i < static_cast<int32>(EBNDistrict::Count); ++i)
+	{
+		if (GetDistrictTerritory(static_cast<EBNDistrict>(i)).bDistrictLiberated)
+		{
+			++Count;
+		}
+	}
+	return Count;
 }

@@ -72,8 +72,8 @@ def build_terrain_and_sea(ctx):
     block("HarborSeawall_W", (62100.0, 2000.0, -140.0), (2.5, 880.0, 3.2),
           "MI_Concrete", "PM_Concrete", folder=folder)
 
-    # East Harbor Peninsula (bridge landing & Eski Liman Tunnel portal, top Z = +596 cm)
-    block("HarborPeninsula_East", (94000.0, -8000.0, -102.0), (260.0, 620.0, 14.0),
+    # Keep the quay below the south exit as it descends from node 22 toward Sanayi.
+    block("HarborPeninsula_East", (94000.0, -8000.0, -400.0), (260.0, 620.0, 14.0),
           "MI_Concrete", "PM_Concrete", folder=folder)
 
     # Wide open Sanayi Drift Asphalt Courtyard (flat smooth drift pad, X: +330..+550 m, Y: +450..+640 m)
@@ -81,8 +81,8 @@ def build_terrain_and_sea(ctx):
           "MI_Asphalt", "PM_Asphalt", folder="Districts/DoguSanayi")
 
     # Sculpted organic 3D mountain & hillside terrain under Kuzey Gecidi (+62..+88 m) and Yamac Mahallesi (+26 m)
-    place_mesh("Karamara_SculptedHills", "SM_BN_KaramaraHills", (0.0, 0.0, 0.0),
-               collision=False, folder=folder)
+    hills = place_mesh("Karamara_SculptedHills", "SM_BN_KaramaraHills", (0.0, 0.0, 0.0), folder=folder)
+    hills.static_mesh_component.set_phys_material_override(ctx["PM"]["PM_Grass"])
     # Seyir Tepesi flat paved overlook terrace at Z = +6200 cm
     block("SeyirTepesi_Overlook", (-60000.0, -86000.0, 6175.0), (46.0, 36.0, 0.5),
           "MI_Concrete", "PM_Concrete", folder="Districts/KuzeyGecidi")
@@ -118,7 +118,7 @@ def build_landmarks(ctx):
     for k in range(5):
         sx = 66000.0 + k * 4000.0
         place_mesh("EskiLimanBridge_Truss", "SM_BN_BridgeTruss", (sx, -14000.0, 1582.0),
-                   yaw=0.0, collision=False, folder=bf)
+                   yaw=0.0, folder=bf)
 
     # 2. Eski Liman Port Cranes & Berthed Container Freighter Ship
     hf = "Districts/EskiLiman"
@@ -195,10 +195,61 @@ def build_landmarks(ctx):
           "MI_Concrete", "PM_Concrete", folder=yf)
     block("SelinWorkshop_Main", (gx - 2800.0, gy - 2600.0, gz + 450.0), (14.0, 16.0, 9.0),
           "MI_Building_Brick", "PM_Concrete", folder=yf)
+    block("SelinWorkshop_Roof", (gx - 2800.0, gy - 2600.0, gz + 930.0), (14.8, 16.8, 0.7),
+          "MI_Building_Terracotta", None, collision=False, folder=yf)
     block("SelinWorkshop_Side", (gx + 2600.0, gy - 1800.0, gz + 350.0), (12.0, 10.0, 7.0),
           "MI_Building_Plaster", "PM_Concrete", folder=yf)
+    block("SelinWorkshop_SideRoof", (gx + 2600.0, gy - 1800.0, gz + 730.0), (12.8, 10.8, 0.65),
+          "MI_Building_Terracotta", None, collision=False, folder=yf)
     place_mesh("SelinWorkshop_Front", "SM_BN_Storefront", (gx - 2080.0, gy - 2600.0, gz),
                yaw=0.0, collision=False, folder=yf)
+
+    # Rich CC0 workshop & dockyard dressing (Poly Haven CC0 1.0 HISM-batched)
+    cc0 = ctx.get("cc0", {})
+    if "SM_CC0_RollershutterDoor" in cc0:
+        hism.add("CC0_Shutter", (gx - 2090.0, gy - 2100.0, gz), (1.1, 1.1, 1.1),
+                 None, None, collision=False, yaw=90.0, mesh=cc0["SM_CC0_RollershutterDoor"], cast_shadow=False, cull_cm=28000)
+        hism.add("CC0_Shutter", (27000.0, 41100.0, 0.0), (1.3, 1.3, 1.3),
+                 None, None, collision=False, yaw=0.0, mesh=cc0["SM_CC0_RollershutterDoor"], cast_shadow=False, cull_cm=32000)
+    if "SM_CC0_CoveredCar" in cc0:
+        hism.add("CC0_CoveredCar", (gx - 1550.0, gy - 1350.0, gz + 4.0), (1.0, 1.0, 1.0),
+                 None, None, collision=False, yaw=18.0, mesh=cc0["SM_CC0_CoveredCar"], cast_shadow=True, cull_cm=26000)
+    if "SM_CC0_ToolChest" in cc0:
+        hism.add("CC0_ToolChest", (gx - 1950.0, gy - 3150.0, gz + 4.0), (1.15, 1.15, 1.15),
+                 None, None, collision=False, yaw=-15.0, mesh=cc0["SM_CC0_ToolChest"], cast_shadow=False, cull_cm=20000)
+    if "SM_CC0_FloodLights" in cc0:
+        for fl_loc, fl_yaw in (
+            ((gx - 1200.0, gy - 1100.0, gz + 4.0), -135.0),
+            ((gx - 3100.0, gy - 1200.0, gz + 4.0), -45.0),
+            ((36000.0, 48000.0, 0.0), 45.0),
+            ((52000.0, 48000.0, 0.0), 135.0),
+            ((52000.0, 62000.0, 0.0), -135.0),
+            ((56500.0, -10000.0, 0.0), 180.0),
+            ((56500.0, 14000.0, 0.0), 180.0),
+        ):
+            hism.add("CC0_FloodLight", fl_loc, (1.15, 1.15, 1.15), None, None,
+                     collision=False, yaw=fl_yaw, mesh=cc0["SM_CC0_FloodLights"], cast_shadow=False, cull_cm=30000)
+    if "SM_CC0_OldTyre" in cc0:
+        for ty_loc in (
+            (gx - 1800.0, gy - 3350.0, gz + 4.0), (gx - 1720.0, gy - 3350.0, gz + 38.0),
+            (36200.0, 52000.0, 0.0), (36200.0, 52800.0, 0.0), (36200.0, 58000.0, 0.0),
+            (51800.0, 52000.0, 0.0), (51800.0, 58500.0, 0.0),
+        ):
+            hism.add("CC0_OldTyre", ty_loc, (1.2, 1.2, 1.2), None, None,
+                     collision=False, yaw=25.0, mesh=cc0["SM_CC0_OldTyre"], cast_shadow=False, cull_cm=22000)
+    if "SM_CC0_Barrel" in cc0:
+        for br_loc in (
+            (gx - 1650.0, gy - 3250.0, gz + 4.0), (gx - 1570.0, gy - 3180.0, gz + 4.0),
+            (35800.0, 50500.0, 0.0), (35920.0, 50640.0, 0.0), (52200.0, 50800.0, 0.0),
+            (57200.0, -24000.0, 0.0), (57340.0, -23880.0, 0.0), (57200.0, 4000.0, 0.0),
+            (57340.0, 4120.0, 0.0), (57200.0, 20000.0, 0.0),
+        ):
+            hism.add("CC0_Barrel", br_loc, (1.1, 1.1, 1.1), None, None,
+                     collision=False, yaw=0.0, mesh=cc0["SM_CC0_Barrel"], cast_shadow=False, cull_cm=24000)
+    if "SM_CC0_ChainlinkFence" in cc0:
+        for fx in range(36500, 51500, 320):
+            hism.add("CC0_Fence", (float(fx), 64200.0, 0.0), (1.0, 1.0, 1.0), None, None,
+                     collision=False, yaw=0.0, mesh=cc0["SM_CC0_ChainlinkFence"], cast_shadow=False, cull_cm=28000)
 
 
 def build_buildings_and_storefronts(ctx, clearance):
@@ -218,7 +269,10 @@ def build_buildings_and_storefronts(ctx, clearance):
         (-22000.0, -34000.0), (  2000.0, -34000.0), (19000.0, -34000.0),
         ( -4000.0,  29000.0), ( 22000.0,  28000.0), (-26000.0,  28000.0),
     ]
-    mats = ["MI_Building_Brick", "MI_Building_Plaster", "MI_Building_Glass"]
+    cc0 = ctx.get("cc0", {})
+    core_mats = ["MI_Building_Glass", "MI_Building_Modern", "MI_Building_ConcreteTower", "MI_Building_Brick", "MI_Building_Plaster"]
+    edge_mats = ["MI_Building_Brick", "MI_Building_Plaster", "MI_Building_ConcreteTower"]
+    crown_mats = ["MI_CrownGlow_Amber", "MI_CrownGlow_Cyan", "MI_CrownGlow_Crimson"]
     for bi, (bx, by) in enumerate(block_centers):
         # 2x2 sub-lots inside each downtown block for skyline height & facade rhythm
         for dx in (-4800.0, 4800.0):
@@ -236,17 +290,17 @@ def build_buildings_and_storefronts(ctx, clearance):
                 # Verify ALL 4 building footprint corners clear every adjacent road by >= 280 cm!
                 if any(clearance(px + sx * w, py + sy * d)[0] < 280.0 for sx in (-0.5, 0.5) for sy in (-0.5, 0.5)):
                     continue
-                # Tall modern glass towers near downtown core; mid-rise brick/plaster around edges
+                # Tall modern neon financial towers near downtown core; mid-rise brick/plaster around edges
                 is_core = (abs(px) < 22000.0 and abs(py) < 18000.0)
-                h = rng.uniform(2200.0, 4600.0) if is_core else rng.uniform(1200.0, 2600.0)
-                mat = rng.choice(mats) if is_core else rng.choice(mats[:2])
+                h = rng.uniform(2400.0, 5200.0) if is_core else rng.uniform(1200.0, 2700.0)
+                mat = rng.choice(core_mats) if is_core else rng.choice(edge_mats)
                 hism.add("Bldg_Merkez", (px, py, h * 0.5), (w / 100.0, d / 100.0, h / 100.0),
                          mat, "PM_Concrete", collision=True, cast_shadow=True)
                 # Rooftop parapet, stepped architectural setback penthouse on tall core towers, & water tanks
                 hism.add("RoofCap", (px, py, h + 40.0), (w / 100.0 + 0.4, d / 100.0 + 0.4, 0.8),
                          "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=55000)
                 if h >= 2800.0:
-                    ph = rng.uniform(550.0, 1050.0)
+                    ph = rng.uniform(580.0, 1150.0)
                     pw, pd = w * 0.62, d * 0.62
                     hism.add("Bldg_Penthouse", (px, py, h + 80.0 + ph * 0.5),
                              (pw / 100.0, pd / 100.0, ph / 100.0),
@@ -254,16 +308,32 @@ def build_buildings_and_storefronts(ctx, clearance):
                     hism.add("RoofCap", (px, py, h + 80.0 + ph + 35.0),
                              (pw / 100.0 + 0.3, pd / 100.0 + 0.3, 0.7),
                              "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=65000)
-                    if mat == "MI_Building_Glass":
-                        hism.add("RoofSpire", (px, py, h + ph + 450.0), (0.35, 0.35, 7.5),
+                    # Glowing financial-district penthouse neon crown band (Altin Cekirdek signature!)
+                    if mat in ("MI_Building_Glass", "MI_Building_Modern", "MI_Building_ConcreteTower"):
+                        crown = crown_mats[(bi + int(px > 0) + int(py > 0)) % len(crown_mats)]
+                        hism.add("CrownGlow", (px, py, h + 80.0 + ph + 6.0),
+                                 (pw / 100.0 + 0.45, pd / 100.0 + 0.45, 0.28),
+                                 crown, None, collision=False, cast_shadow=False, cull_cm=110000)
+                    if mat in ("MI_Building_Glass", "MI_Building_Modern"):
+                        hism.add("RoofSpire", (px, py, h + ph + 450.0), (0.35, 0.35, 7.8),
                                  "MI_Metal_Dark", None, collision=False, cast_shadow=False, cull_cm=85000)
-                elif rng.random() < 0.40:
+                elif rng.random() < 0.42:
                     hism.add("RoofTank", (px + rng.uniform(-1200, 1200), py + rng.uniform(-1000, 1000), h + 80.0),
                              (1.0, 1.0, 1.0), None, None, collision=False,
                              mesh=meshes["SM_BN_RoofWaterTank"], cast_shadow=False, cull_cm=45000)
+                # CC0 architectural wall detail (aircon units & fire escapes on brick/plaster mid-rises)
+                if mat in ("MI_Building_Brick", "MI_Building_Plaster"):
+                    if "SM_CC0_AirconUnit" in cc0 and rng.random() < 0.55:
+                        hism.add("CC0_Aircon", (px, py + d * 0.5 + 18.0, rng.uniform(500.0, min(1400.0, h - 250.0))),
+                                 (1.15, 1.15, 1.15), None, None, collision=False, yaw=90.0,
+                                 mesh=cc0["SM_CC0_AirconUnit"], cast_shadow=False, cull_cm=22000)
+                    if "SM_CC0_FireEscape" in cc0 and h >= 1400.0 and rng.random() < 0.35:
+                        hism.add("CC0_FireEscape", (px + w * 0.5 + 15.0, py, 360.0),
+                                 (1.0, 1.0, 1.0), None, None, collision=False, yaw=0.0,
+                                 mesh=cc0["SM_CC0_FireEscape"], cast_shadow=False, cull_cm=28000)
 
     # Ground-floor Karamara storefronts flush against Merkez Bulvar (Y = -4000) & Carsi Caddesi (Y = +16000) facades
-    for sx in (-25000.0, -17000.0, -4000.0, 3000.0, 17000.0, 24000.0):
+    for sx in (-26500.0, -21000.0, -15500.0, -5500.0, 500.0, 6000.0, 16500.0, 22500.0):
         # North side of Merkez Bulvar facing south (+Y -> yaw=+90)
         hism.add("Storefront", (sx, -5950.0, 0.0), (1.0, 1.0, 1.0), None, None, collision=False,
                  yaw=90.0, mesh=meshes["SM_BN_Storefront"], cast_shadow=False, cull_cm=42000)
@@ -275,16 +345,23 @@ def build_buildings_and_storefronts(ctx, clearance):
                  yaw=-90.0, mesh=meshes["SM_BN_Storefront"], cast_shadow=False, cull_cm=42000)
         hism.add("StoreAccent", (sx, -2170.0, 445.0), (8.2, 0.16, 0.14), "MI_LampGlow", None,
                  collision=False, cast_shadow=False, cull_cm=32000)
-    for sx in (-24000.0, -4000.0, 18000.0):
+    carsi_shops = (-25000.0, -17000.0, -5000.0, 3000.0, 16500.0, 23500.0)
+    awning_mats = ("MI_Container_Red", "MI_Container_Blue", "MI_Container_Amber")
+    for index, sx in enumerate(carsi_shops):
         hism.add("Storefront", (sx, 14450.0, 0.0), (1.0, 1.0, 1.0), None, None, collision=False,
                  yaw=90.0, mesh=meshes["SM_BN_Storefront"], cast_shadow=False, cull_cm=42000)
+        hism.add("StoreAccent", (sx, 14560.0, 445.0), (8.0, 0.16, 0.14), "MI_CrownGlow_Amber", None,
+                 collision=False, cast_shadow=False, cull_cm=30000)
+        if clearance(sx, 14715.0)[0] > 460.0:
+            hism.add("CarsiAwning", (sx, 14715.0, 375.0), (8.1, 1.9, 0.24),
+                     awning_mats[index % len(awning_mats)], None, collision=False, cast_shadow=False, cull_cm=32000)
 
     # Eski Liman waterfront mooring bollards along concrete quay edge (X = +615 m)
     for by in range(-36000, 42000, 2800):
         hism.add("HarborBollard", (61550.0, float(by), 45.0), (0.55, 0.55, 0.90),
                  "MI_Metal_Dark", None, collision=False, cast_shadow=False, cull_cm=28000)
 
-    # 2. Dogu Sanayi Warehouses & Industrial Halls
+    # 2. Dogu Sanayi (Pasli Demir) Warehouses & Industrial Monitor Roofs
     sanayi_lots = [
         ( 6000.0, 52000.0, 24.0, 18.0, 12.0), (14000.0, 57000.0, 22.0, 16.0, 11.0),
         (26000.0, 54000.0, 20.0, 16.0, 10.0), (46000.0, 32000.0, 22.0, 14.0, 12.0),
@@ -296,29 +373,54 @@ def build_buildings_and_storefronts(ctx, clearance):
             hism.add("Warehouse_Sanayi", (wx, wy, wh * 50.0), (ww, wd, wh),
                      rng.choice(["MI_Building_Steel", "MI_Building_Brick"]), "PM_Concrete",
                      collision=True, cast_shadow=True)
+            # Industrial sawtooth/monitor skylight clerestory + hazard trim
+            hism.add("Warehouse_Monitor", (wx, wy, wh * 100.0 + 110.0), (ww * 0.78, wd * 0.34, 2.2),
+                     "MI_Metal_Dark", None, collision=False, cast_shadow=False, cull_cm=55000)
+            hism.add("Warehouse_Beacon", (wx, wy, wh * 100.0 + 235.0), (ww * 0.76, 0.25, 0.25),
+                     "MI_CrownGlow_Amber", None, collision=False, cast_shadow=False, cull_cm=45000)
+            for bay in (-0.28, 0.0, 0.28):
+                dx = wx + ww * 100.0 * bay
+                dy = wy - wd * 50.0 - 12.0
+                hism.add("SanayiBayDoor", (dx, dy, 190.0), (3.4, 0.24, 3.8),
+                         "MI_Metal_Dark", None, collision=False, cast_shadow=False, cull_cm=28000)
+                hism.add("SanayiBayLight", (dx, dy - 16.0, 422.0), (1.1, 0.23, 0.16),
+                         "MI_CrownGlow_Amber", None, collision=False, cast_shadow=False, cull_cm=23000)
 
-    # 3. Eski Liman Maritime Depots
+    # 3. Eski Liman (Mara Rihtimi) Maritime Depots with steel harbor trim
     for lx, ly in ((41000.0, -14000.0), (41000.0, 6000.0), (41000.0, 26000.0)):
         clr, _ = clearance(lx, ly)
         if clr > 650.0:
             hism.add("Depot_Liman", (lx, ly, 600.0), (14.0, 18.0, 12.0),
                      "MI_Building_Steel", "PM_Concrete", collision=True, cast_shadow=True)
+            hism.add("Depot_Trim", (lx, ly, 1220.0), (14.4, 18.4, 0.5),
+                     "MI_BridgeSteel", None, collision=False, cast_shadow=False, cull_cm=55000)
 
-    # 4. Yamac Mahallesi Terraced Hillside Residences (elevated onto the slope!)
+    # 4. Yamac Mahallesi (Eski Karamara) Terraced Hillside Villas with Mediterranean Terracotta Roofs
     yamac_lots = [
         (-42000.0,  26000.0, 1050.0), (-42000.0,  38000.0, 1300.0), (-62000.0,  24000.0, 1600.0),
         (-62000.0,  52000.0, 1800.0), (-34000.0,  42000.0,  800.0), (-50000.0,  64000.0, 1050.0),
-        (-30000.0,  60000.0,  450.0), (-66000.0,  16000.0, 1250.0),
+        (-30000.0,  60000.0,  450.0), (-66000.0,  16000.0, 1250.0), (-46000.0,  28000.0, 1200.0),
+        (-58000.0,  48000.0, 1650.0), (-68000.0,  32000.0, 2100.0), (-38000.0,  64000.0,  950.0),
+        (-48000.0,  11000.0,  900.0), (-64000.0,  62000.0, 1350.0),
     ]
     for yx, yy, yz in yamac_lots:
         clr, _ = clearance(yx, yy)
-        if clr > 700.0:
-            h = rng.uniform(1000.0, 1800.0)
-            # Extend basement skirt downward so hillside buildings sit firmly in the slope
+        if clr > 680.0:
+            h = rng.uniform(950.0, 1650.0)
+            vw = rng.uniform(10.5, 15.0)
+            vd = rng.uniform(9.5, 13.5)
+            # Extend basement skirt downward so hillside villas sit firmly in the slope
             hism.add("House_Yamac", (yx, yy, yz + h * 0.5 - 300.0),
-                     (rng.uniform(11.0, 16.0), rng.uniform(10.0, 14.0), (h + 600.0) / 100.0),
+                     (vw, vd, (h + 600.0) / 100.0),
                      rng.choice(["MI_Building_Plaster", "MI_Building_Brick"]), "PM_Concrete",
                      collision=True, cast_shadow=True)
+            # Iconic overhanging Anatolian/Mediterranean terracotta tile roof cap!
+            hism.add("Roof_Terracotta", (yx, yy, yz + h + 45.0),
+                     (vw + 0.9, vd + 0.9, 0.9),
+                     "MI_Building_Terracotta", None, collision=False, cast_shadow=False, cull_cm=75000)
+            hism.add("Roof_TerracottaRidge", (yx, yy, yz + h + 135.0),
+                     (vw * 0.65, vd * 0.65, 0.9),
+                     "MI_Building_Terracotta", None, collision=False, cast_shadow=False, cull_cm=65000)
 
 
 def build_street_furniture_and_foliage(ctx, nodes, edges, clearance):
@@ -407,12 +509,81 @@ def build_street_furniture_and_foliage(ctx, nodes, edges, clearance):
                  collision=False, yaw=180.0, mesh=meshes["SM_BN_TrafficLight"], cast_shadow=False, cull_cm=34000)
         hism.add("TrafficLight", (nx - 1050.0, ny - 1050.0, nz), (1.0, 1.0, 1.0), None, None,
                  collision=False, yaw=0.0, mesh=meshes["SM_BN_TrafficLight"], cast_shadow=False, cull_cm=34000)
-        # Crisp zebra crosswalk decals on north & east approaches
+        # Crisp zebra crosswalk decals, stop bars & directional road arrows on approaches
         if nz < 50.0:
             hism.add("Crosswalk", (nx + 1250.0, ny, nz + 3.0), (3.8, 13.0, 0.01),
                      "MI_Crosswalk", None, collision=False, cast_shadow=False, cull_cm=26000)
             hism.add("Crosswalk", (nx, ny + 1250.0, nz + 3.0), (13.0, 3.8, 0.01),
                      "MI_Crosswalk", None, collision=False, cast_shadow=False, cull_cm=26000)
+            hism.add("StopBar", (nx + 1580.0, ny + 320.0, nz + 2.6), (0.55, 6.2, 0.01),
+                     "MI_LineWhite", None, collision=False, cast_shadow=False, cull_cm=24000)
+            hism.add("StopBar", (nx - 320.0, ny + 1580.0, nz + 2.6), (6.2, 0.55, 0.01),
+                     "MI_LineWhite", None, collision=False, cast_shadow=False, cull_cm=24000)
+            hism.add("RoadArrow", (nx + 2250.0, ny + 360.0, nz + 3.0), (4.6, 2.2, 0.01),
+                     "MI_RoadArrow", None, collision=False, yaw=180.0, cast_shadow=False, cull_cm=26000)
+            hism.add("RoadArrow", (nx - 360.0, ny + 2250.0, nz + 3.0), (4.6, 2.2, 0.01),
+                     "MI_RoadArrow", None, collision=False, yaw=-90.0, cast_shadow=False, cull_cm=26000)
+
+    # 2b. Poly Haven CC0 1.0 micro street furniture along Merkez / Sanayi sidewalks & Kuzey Gecidi rocky outcrops
+    cc0 = ctx.get("cc0", {})
+    rng_cc0 = random.Random(2028)
+    sidewalk_props = [k for k in (
+        "SM_CC0_FireHydrant", "SM_CC0_TrashCan", "SM_CC0_UtilityBoxA",
+        "SM_CC0_UtilityBoxB", "SM_CC0_StreetSeating"
+    ) if k in cc0]
+    if sidewalk_props:
+        for e in edges:
+            if e["highway"] or e["dirt"] or e["district"] not in (knet.DIST_MERKEZ, knet.DIST_SANAYI):
+                continue
+            pts = e["points"]
+            hw = e["width"] * 0.5
+            for idx_p in range(1, len(pts) - 1, 2):
+                a, b = pts[idx_p], pts[min(len(pts) - 1, idx_p + 1)]
+                seg = math.hypot(b[0] - a[0], b[1] - a[1])
+                if seg < 50.0:
+                    continue
+                dx, dy = (b[0] - a[0]) / seg, (b[1] - a[1]) / seg
+                nx_e, ny_e = -dy, dx
+                yaw_e = math.degrees(math.atan2(dy, dx))
+                side = 1.0 if ((idx_p + e["index"]) % 2 == 0) else -1.0
+                px = a[0] + nx_e * (hw + 185.0) * side
+                py = a[1] + ny_e * (hw + 185.0) * side
+                pz = a[2] + 14.0  # Flush on raised sidewalk top
+                if encroaches_road(px, py, a[2], pad_cm=120.0, z_tol_cm=260.0, ignore_edge_idx=-1):
+                    continue
+                if any(math.hypot(px - jx, py - jy) < 1750.0 and abs(a[2] - jz) < 350.0 for jx, jy, jz in junction_nodes):
+                    continue
+                pk = sidewalk_props[(e["index"] * 5 + idx_p) % len(sidewalk_props)]
+                sc = 1.12 if pk == "SM_CC0_FireHydrant" else 1.0
+                hism.add(pk, (px, py, pz), (sc, sc, sc), None, None, collision=False,
+                         yaw=yaw_e + (90.0 if side > 0 else -90.0), mesh=cc0[pk], cast_shadow=False, cull_cm=22000)
+                if "SM_CC0_ManholeCover" in cc0 and (idx_p % 4 == 1):
+                    hism.add("SM_CC0_ManholeCover", (a[0] + nx_e * (hw * 0.42) * side, a[1] + ny_e * (hw * 0.42) * side, a[2] + 1.4),
+                             (1.15, 1.15, 1.0), None, None, collision=False, yaw=yaw_e,
+                             mesh=cc0["SM_CC0_ManholeCover"], cast_shadow=False, cull_cm=16000)
+    if "SM_CC0_Boulder" in cc0:
+        for e in edges:
+            if e["district"] != knet.DIST_GECIT:
+                continue
+            for pt in e["points"][::2]:
+                for side in (-1.0, 1.0):
+                    bx = pt[0] + side * rng_cc0.uniform(1350.0, 2800.0)
+                    by = pt[1] + rng_cc0.uniform(-1100.0, 1100.0)
+                    clr, _ = clearance(bx, by)
+                    if clr < 460.0:
+                        continue
+                    sc = rng_cc0.uniform(1.6, 3.1)
+                    hism.add("SM_CC0_Boulder", (bx, by, max(0.0, pt[2] - 120.0)), (sc, sc, sc * 0.85),
+                             None, None, collision=False, yaw=rng_cc0.uniform(0.0, 360.0),
+                             mesh=cc0["SM_CC0_Boulder"], cast_shadow=False, cull_cm=42000)
+    if "SM_CC0_ConcreteBarrier" in cc0:
+        for b_loc, b_yaw in (
+            ((-48000.0, -52000.0, 1200.0), 0.0), ((48000.0, -52000.0, 950.0), 0.0),
+            ((54000.0, -18000.0, 0.0), 90.0), ((54000.0, 14000.0, 0.0), 90.0),
+        ):
+            bk = "SM_CC0_ConcreteBarrierB" if ("SM_CC0_ConcreteBarrierB" in cc0 and b_loc[0] > 0) else "SM_CC0_ConcreteBarrier"
+            hism.add(bk, b_loc, (1.0, 1.0, 1.0), None, None, collision=False,
+                     yaw=b_yaw, mesh=cc0[bk], cast_shadow=False, cull_cm=30000)
 
     # 3. Jersey barriers & real-foliage HISM (SubobjectDataSubsystem persists components into .umap cleanly)
     hism_actor = spawn(unreal.Actor, "Karamara_FoliageAndBarriers_HISM", (0.0, 0.0, 0.0), folder="Environment/HISM")

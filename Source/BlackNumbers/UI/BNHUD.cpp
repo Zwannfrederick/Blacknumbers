@@ -182,10 +182,18 @@ void ABNHUD::OpenMenu(EBNMenuTab Tab)
 	{
 		DismissResultsOverlay(false);
 	}
+	if (Tab == EBNMenuTab::BlackNumbers)
+	{
+		if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
+		{
+			Story->EnsureIntroShown(Cast<ABNVehiclePawn>(GetOwningPawn()));
+		}
+	}
 	if (MenuWidget.IsValid())
 	{
 		MenuWidget->SetActiveTab(Tab);
 		SyncShowcaseCamera(Cast<ABNVehiclePawn>(GetOwningPawn()));
+		SyncStoryCardOverlay();
 		return;
 	}
 
@@ -253,7 +261,7 @@ void ABNHUD::CloseMenu()
 	SyncStoryCardOverlay();
 	if (!HasStoryCardOpen() && !IsMenuOpen())
 	{
-		if (Car && !bWasPausedForRace)
+		if (Car && !bWasPausedForRace && !ABNRaceEvent::FindActiveRace(GetWorld()))
 		{
 			Car->SetInputLocked(false);
 		}
@@ -283,7 +291,7 @@ bool ABNHUD::HandleMenuCloseOrAdvanceCard()
 {
 	if (IsTitleScreenOpen())
 	{
-		DismissTitleScreen(true);
+		OpenMenu(EBNMenuTab::BlackNumbers);
 		return true;
 	}
 	if (IsRaceBriefingOpen())
@@ -303,9 +311,16 @@ bool ABNHUD::HandleMenuCloseOrAdvanceCard()
 	}
 	if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
 	{
-		if (Story->HasActiveCard() && !MenuWidget.IsValid())
+		if (Story->HasActiveCard() && HasStoryCardOpen())
 		{
 			Story->DismissActiveCard(Cast<ABNVehiclePawn>(GetOwningPawn()));
+			if (MenuWidget.IsValid())
+			{
+				if (ABNVehiclePawn* Car = Cast<ABNVehiclePawn>(GetOwningPawn()))
+				{
+					Car->SetInputLocked(true);
+				}
+			}
 			SyncStoryCardOverlay();
 			return true;
 		}
@@ -437,7 +452,8 @@ void ABNHUD::SyncStoryCardOverlay()
 	{
 		return;
 	}
-	const bool bSuppressed = IsTitleScreenOpen() || IsPauseMenuOpen() || IsResultsOverlayOpen();
+	const bool bCareerOpen = MenuWidget.IsValid() && MenuWidget->GetActiveTab() == EBNMenuTab::BlackNumbers;
+	const bool bSuppressed = IsTitleScreenOpen() || (IsPauseMenuOpen() && !bCareerOpen) || IsResultsOverlayOpen();
 	const UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr;
 	const FBNStoryCard* Card = (!bSuppressed && Story) ? Story->GetActiveCard() : nullptr;
 
@@ -943,12 +959,13 @@ void ABNHUD::DrawHUD()
 
 	if (Prog)
 	{
-		DrawEconomyPill(*Prog, Story, bRaceActive);
+		DrawEconomyPill(*Prog, Story, bRaceActive, bPursuitVisible);
 	}
 
 	DrawWorldMarkers(*Car, ActiveRace, Story);
 	DrawRadar(*Car, ActiveRace, Pursuit, Story);
 	DrawLiveCommsAndPrompts(*Car, ActiveRace, Story);
+	DrawProTelemetry(*Car, ActiveRace, bPursuitVisible);
 	const bool bMenuBlocking = HasStoryCardOpen() || (Prog && Prog->IsGarageOpen());
 	DrawDashboard(*Car, MakeReadout(*Car), bMenuBlocking);
 	DrawCameraModePill(*Car);

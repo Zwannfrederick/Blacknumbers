@@ -71,6 +71,10 @@ const TCHAR* UBNAudioSubsystem::GetSfxAssetPath(EBNSfxId Id)
 	case EBNSfxId::ShiftPop: return TEXT("/Game/Audio/SFX/SFX_Shift_Pop.SFX_Shift_Pop");
 	case EBNSfxId::EngineBlown: return TEXT("/Game/Audio/SFX/SFX_Engine_Blown.SFX_Engine_Blown");
 	case EBNSfxId::GpsArrive: return TEXT("/Game/Audio/SFX/SFX_Gps_Arrive.SFX_Gps_Arrive");
+	case EBNSfxId::CameraFlash: return TEXT("/Game/Audio/SFX/SFX_Camera_Flash.SFX_Camera_Flash");
+	case EBNSfxId::GarageRepair: return TEXT("/Game/Audio/SFX/SFX_Garage_Repair.SFX_Garage_Repair");
+	case EBNSfxId::NewRecord: return TEXT("/Game/Audio/SFX/SFX_New_Record.SFX_New_Record");
+	case EBNSfxId::RainAmbient: return TEXT("/Game/Audio/SFX/SFX_Rain_Ambient.SFX_Rain_Ambient");
 	default: return TEXT("");
 	}
 }

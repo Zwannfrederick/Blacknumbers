@@ -18,6 +18,48 @@ namespace
 
 	constexpr int32 BountyPerSecondPerHeat = 120;
 	constexpr int32 BountyPerDisabledPerHeat = 5000;
+	constexpr int32 BountyPerInfractionPerHeat = 750;
+	constexpr int32 BountyPerDodge = 2500;
+	constexpr float SpeedingKmh = 150.f;
+	constexpr float ResistingArrestSeconds = 30.f;
+	/** Scanner silence (s) before an ambient line is posted, and how long that line stays up. */
+	constexpr float AmbientChatterIdleSeconds = 4.5f;
+	constexpr float AmbientChatterSeconds = 3.6f;
+
+	struct FChatterLine
+	{
+		const TCHAR* Speaker;
+		const TCHAR* Message;
+	};
+
+	const FChatterLine PursuitChatter[] = {
+		{ TEXT("BİRİM-07"), TEXT("Şüpheli hâlâ önümüzde, görsel temas devam ediyor.") },
+		{ TEXT("MERKEZ"), TEXT("Tüm birimler, şüpheliye yakın durun. Sivil trafiğe dikkat.") },
+		{ TEXT("BİRİM-12"), TEXT("Kırmızı ışıkta geçti! Takipteyiz, destek istiyoruz.") },
+		{ TEXT("MERKEZ"), TEXT("Kavşakları kapatın, şüpheliyi ana yola sürün.") },
+		{ TEXT("BİRİM-03"), TEXT("Yanından geçmeye çalışıyorum, sıkıştırmaya hazırım.") },
+		{ TEXT("MERKEZ"), TEXT("Plaka okunamıyor. Araç tarifini tüm ekiplere geçin.") },
+	};
+	const FChatterLine HighSpeedChatter[] = {
+		{ TEXT("BİRİM-07"), TEXT("Şüpheli 180 üstünde! Mesafe açılıyor!") },
+		{ TEXT("MERKEZ"), TEXT("Bu hızda temas yok, sadece takip edin. Önünü kesecek ekip arıyoruz.") },
+		{ TEXT("BİRİM-12"), TEXT("Çok hızlı! Motoru bizimkilerden güçlü!") },
+	};
+	const FChatterLine EvadeChatter[] = {
+		{ TEXT("BİRİM-03"), TEXT("Kaybettik! Son görüldüğü yeri bildirin!") },
+		{ TEXT("MERKEZ"), TEXT("Tüm birimler son bilinen konuma. Gözünüzü dört açın.") },
+	};
+	const FChatterLine CooldownChatter[] = {
+		{ TEXT("MERKEZ"), TEXT("Ara sokakları ve otoparkları tarayın. Uzağa gitmiş olamaz.") },
+		{ TEXT("BİRİM-07"), TEXT("Bu bölgede iz yok, bir sonraki kavşağa geçiyorum.") },
+		{ TEXT("BİRİM-12"), TEXT("Köprü tarafında sessiz. Liman yönünü kontrol edin.") },
+	};
+
+	template <int32 N>
+	const FChatterLine& PickLine(const FChatterLine (&Lines)[N], int32 Index)
+	{
+		return Lines[((Index % N) + N) % N];
+	}
 }
 
 FBNHeatTierSpec FBNHeatTierSpec::ForLevel(int32 HeatLevel)
@@ -132,6 +174,11 @@ void FBNPursuitState::StartPursuit(int32 InitialHeat)
 	UnitsDisabled = 0;
 	BreakersTriggered = 0;
 	Bounty = 0;
+	Infractions = 0;
+	TopSpeedKmh = 0.f;
+	RoadblocksDodged = 0;
+	SpikeStripsDodged = 0;
+	RadioIdleSeconds = 0.f;
 
 	if (HeatLevel >= 11)
 	{
@@ -166,7 +213,61 @@ void FBNPursuitState::PostDispatch(const FString& Speaker, const FString& Messag
 	ActiveRadio.Speaker = Speaker;
 	ActiveRadio.Message = Message;
 	ActiveRadio.RemainingSeconds = FMath::Max(Duration, 0.f);
+	RadioIdleSeconds = 0.f;
 	++DispatchSerial;
+}
+
+FString FBNPursuitState::InfractionLabel(EBNInfraction Infraction)
+{
+	switch (Infraction)
+	{
+	case EBNInfraction::Speeding: return TEXT("Aşırı hız");
+	case EBNInfraction::Reckless: return TEXT("Tehlikeli sürüş");
+	case EBNInfraction::RammedPolice: return TEXT("Polis aracına çarpma");
+	case EBNInfraction::PropertyDamage: return TEXT("Kamu malına zarar");
+	case EBNInfraction::ResistingArrest: return TEXT("Polise direnme");
+	case EBNInfraction::Evading: return TEXT("Polisten kaçma");
+	}
+	return FString();
+}
+
+void FBNPursuitState::AddInfraction(EBNInfraction Infraction)
+{
+	if (HasInfraction(Infraction))
+	{
+		return;
+	}
+	Infractions |= static_cast<uint8>(Infraction);
+	Bounty += HeatLevel * BountyPerInfractionPerHeat;
+}
+
+void FBNPursuitState::RecordRoadblockDodged()
+{
+	++RoadblocksDodged;
+	Bounty += BountyPerDodge * HeatLevel;
+	PostDispatch(TEXT("BARİKAT"), TEXT("Barikatı aştı! Tekrarlıyorum, barikatı aştı!"), 3.5f);
+}
+
+void FBNPursuitState::RecordSpikeStripDodged()
+{
+	++SpikeStripsDodged;
+	Bounty += BountyPerDodge * HeatLevel;
+	PostDispatch(TEXT("BİRİM"), TEXT("Dikenli şeridi kaçırdı! Bir sonrakini hazırlayın!"), 3.5f);
+}
+
+void FBNPursuitState::PostAmbientChatter(float PlayerSpeedKmh)
+{
+	const int32 Index = AmbientChatterIndex++;
+	const FChatterLine* Line = nullptr;
+	switch (Phase)
+	{
+	case EBNPursuitPhase::Evade: Line = &PickLine(EvadeChatter, Index); break;
+	case EBNPursuitPhase::Cooldown: Line = &PickLine(CooldownChatter, Index); break;
+	default:
+		Line = FMath::Abs(PlayerSpeedKmh) >= 180.f ? &PickLine(HighSpeedChatter, Index) : &PickLine(PursuitChatter, Index);
+		break;
+	}
+	PostDispatch(Line->Speaker, Line->Message, AmbientChatterSeconds);
 }
 
 void FBNPursuitState::EndPursuitImmediate()
@@ -190,17 +291,17 @@ void FBNPursuitState::TryEscalateHeat()
 			++HeatLevel;
 			if (Next.bDemirInvolved)
 			{
-				PostDispatch(TEXT("BASKOMISER DEMIR"),
-					FString::Printf(TEXT("%s! Kordonu daraltin, kacmasina izin vermeyin!"), *Next.Label));
+				PostDispatch(TEXT("BAŞKOMİSER DEMİR"),
+					FString::Printf(TEXT("%s! Kordonu daraltın, kaçmasına izin vermeyin!"), *Next.Label));
 			}
 			else if (Next.bRoadblocksEnabled && HeatLevel == 3)
 			{
-				PostDispatch(TEXT("MERKEZ"), TEXT("Heat 3 aktif! K. Vance icin yol barikatlari kurulsun."));
+				PostDispatch(TEXT("MERKEZ"), TEXT("Heat 3 aktif! K. Vance için yol barikatları kurulsun."));
 			}
 			else
 			{
 				PostDispatch(TEXT("MERKEZ"),
-					FString::Printf(TEXT("Takip %s seviyesine cikti! Hizli takip birimleri sevk edildi."), *Next.Label));
+					FString::Printf(TEXT("Takip %s seviyesine çıktı! Hızlı takip birimleri sevk edildi."), *Next.Label));
 			}
 		}
 		else
@@ -225,10 +326,14 @@ void FBNPursuitState::RecordCollateralDamage(int32 Dollars, const TCHAR* ReasonT
 			TryEscalateHeat();
 		}
 	}
+	if (IsPursuitRunning())
+	{
+		AddInfraction(EBNInfraction::Reckless);
+	}
 	if (ReasonTag && *ReasonTag && ActiveRadio.RemainingSeconds <= 0.5f)
 	{
 		PostDispatch(TEXT("MERKEZ"),
-			FString::Printf(TEXT("Hasar tutanagi (%s): +$%d sehir faturasina eklendi."), ReasonTag, Dollars), 3.5f);
+			FString::Printf(TEXT("Hasar tutanağı (%s): +$%d şehir faturasına eklendi."), ReasonTag, Dollars), 3.5f);
 	}
 }
 
@@ -236,21 +341,23 @@ void FBNPursuitState::RecordUnitDisabled(int32 BonusDollars)
 {
 	++UnitsDisabled;
 	Bounty += HeatLevel * BountyPerDisabledPerHeat;
+	AddInfraction(EBNInfraction::RammedPolice);
 	RecordCollateralDamage(BonusDollars);
-	PostDispatch(TEXT("BIRIM"), TEXT("Devriye araci devre disi kaldi! Takviye ekip isteniyor!"), 3.5f);
+	PostDispatch(TEXT("BİRİM"), TEXT("Devriye aracı devre dışı kaldı! Takviye ekip isteniyor!"), 3.5f);
 }
 
 void FBNPursuitState::RecordPursuitBreaker(int32 CollateralDollars, int32 DisabledCount)
 {
 	++BreakersTriggered;
+	AddInfraction(EBNInfraction::PropertyDamage);
 	for (int32 i = 0; i < DisabledCount; ++i)
 	{
 		++UnitsDisabled;
 		Bounty += HeatLevel * BountyPerDisabledPerHeat;
 	}
 	RecordCollateralDamage(CollateralDollars);
-	PostDispatch(TEXT("BIRIM-04"),
-		TEXT("Supheli kamu yapisini yikti! Sehir hasari artiyor, destek ekip sevk edin!"), 4.5f);
+	PostDispatch(TEXT("BİRİM-04"),
+		TEXT("Şüpheli kamu yapısını yıktı! Şehir hasarı artıyor, destek ekip sevk edin!"), 4.5f);
 }
 
 void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float NearestActiveUnitDistCm, int32 ActiveUnitCount, bool bInCooldownSpot)
@@ -279,12 +386,29 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 
 	const FBNHeatTierSpec Spec = FBNHeatTierSpec::ForLevel(HeatLevel);
 	const bool bAnyUnitNear = ActiveUnitCount > 0;
+	TopSpeedKmh = FMath::Max(TopSpeedKmh, FMath::Abs(PlayerSpeedKmh));
+	if (ActiveRadio.RemainingSeconds <= 0.f)
+	{
+		RadioIdleSeconds += Dt;
+		if (RadioIdleSeconds >= AmbientChatterIdleSeconds)
+		{
+			PostAmbientChatter(PlayerSpeedKmh);
+		}
+	}
 
 	switch (Phase)
 	{
 	case EBNPursuitPhase::Pursuit:
 		PursuitTimeSeconds += Dt;
 		Bounty += FMath::RoundToInt(Dt * HeatLevel * BountyPerSecondPerHeat);
+		if (FMath::Abs(PlayerSpeedKmh) >= SpeedingKmh)
+		{
+			AddInfraction(EBNInfraction::Speeding);
+		}
+		if (PursuitTimeSeconds >= ResistingArrestSeconds)
+		{
+			AddInfraction(EBNInfraction::ResistingArrest);
+		}
 		TryEscalateHeat();
 
 		if (bAnyUnitNear && NearestActiveUnitDistCm <= BustRadiusCm && FMath::Abs(PlayerSpeedKmh) < BustMaxSpeedKmh)
@@ -294,7 +418,7 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 			{
 				Phase = EBNPursuitPhase::Busted;
 				PhaseProgress = ResultBannerSeconds;
-				PostDispatch(TEXT("MERKEZ"), TEXT("Supheli durduruldu. K. Vance gozaltinda."), ResultBannerSeconds);
+				PostDispatch(TEXT("MERKEZ"), TEXT("Şüpheli durduruldu. K. Vance gözaltında."), ResultBannerSeconds);
 				return;
 			}
 		}
@@ -307,7 +431,7 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 		{
 			Phase = EBNPursuitPhase::Evade;
 			EvadeMeter = 0.f;
-			PostDispatch(TEXT("BIRIM"), TEXT("Gorsel temas zayifladi! Birimler supheliyi kaybetmek uzere."));
+			PostDispatch(TEXT("BİRİM"), TEXT("Görsel temas zayıfladı! Birimler şüpheliyi kaybetmek üzere."));
 		}
 		break;
 
@@ -317,7 +441,7 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 		{
 			Phase = EBNPursuitPhase::Pursuit;
 			EvadeMeter = 0.f;
-			PostDispatch(TEXT("BIRIM"), TEXT("Gorsel temas yeniden saglandi! Takip suruyor."));
+			PostDispatch(TEXT("BİRİM"), TEXT("Görsel temas yeniden sağlandı! Takip sürüyor."));
 		}
 		else
 		{
@@ -327,7 +451,7 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 				Phase = EBNPursuitPhase::Cooldown;
 				PhaseProgress = 0.f;
 				EvadeMeter = 0.f;
-				PostDispatch(TEXT("MERKEZ"), TEXT("K. Vance gozden kayboldu! Soguma basladi, ara sokaklari tarayin."));
+				PostDispatch(TEXT("MERKEZ"), TEXT("K. Vance gözden kayboldu! Soğuma başladı, ara sokakları tarayın."));
 			}
 		}
 		break;
@@ -338,7 +462,7 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 		{
 			Phase = EBNPursuitPhase::Pursuit;
 			PhaseProgress = 0.f;
-			PostDispatch(TEXT("BIRIM"), TEXT("Supheli tekrar goruldu! Tum birimler yonelsin!"));
+			PostDispatch(TEXT("BİRİM"), TEXT("Şüpheli tekrar görüldü! Tüm birimler yönelsin!"));
 		}
 		else
 		{
@@ -351,6 +475,7 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 			{
 				Phase = EBNPursuitPhase::Escaped;
 				PhaseProgress = ResultBannerSeconds;
+				AddInfraction(EBNInfraction::Evading);
 				PostDispatch(TEXT("MERKEZ"),
 					TEXT("Şüpheli izini kaybettirdi. Şehir hasar tutanağı merkeze aktarıldı."), ResultBannerSeconds);
 			}

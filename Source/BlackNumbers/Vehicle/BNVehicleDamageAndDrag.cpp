@@ -5,6 +5,7 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/GameplayStatics.h"
 #include "Misc/App.h"
@@ -12,6 +13,7 @@
 #include "Story/BNStorySubsystem.h"
 #include "UI/BNHUD.h"
 #include "Vehicle/BNVehicleEffects.h"
+#include "World/BNTrafficSubsystem.h"
 
 namespace
 {
@@ -167,6 +169,85 @@ void ABNVehiclePawn::UpdateDamageAndDrag(float DeltaSeconds, float RealDt, float
 			}
 		}
 	}
+}
+
+void ABNVehiclePawn::ApplyTrafficCollisionDamage(float ImpactSpeedKmh)
+{
+	const float AbsSpeed = FMath::Abs(ImpactSpeedKmh);
+	if (AbsSpeed < 110.f)
+	{
+		return;
+	}
+	// Synthesize realistic collision impulse proportional to impact speed so Traffic hits register cleanly.
+	const float SynthImpulse = 320000.f + (AbsSpeed - 110.f) * 3200.f;
+	ApplyCollisionDamage(SynthImpulse, AbsSpeed, true);
+}
+
+void ABNVehiclePawn::UpdateSlipstream(float RealDt, float SpeedKmh, bool bOnGround)
+{
+	bool bInDraftPocket = false;
+	if (!bInputLocked && bOnGround && SpeedKmh >= Boost.SlipstreamMinSpeedKmh && GetWorld())
+	{
+		const FVector MyLoc = GetActorLocation();
+		const FVector Fwd = GetActorForwardVector().GetSafeNormal2D();
+		const FVector Right(-Fwd.Y, Fwd.X, 0.f);
+
+		auto CheckCandidate = [&](const FVector& TargetLoc, const FVector* TargetFwd) -> bool
+		{
+			const FVector Delta = TargetLoc - MyLoc;
+			if (FMath::Abs(Delta.Z) > 350.f)
+			{
+				return false;
+			}
+			const float AheadCm = FVector::DotProduct(Delta, Fwd);
+			if (AheadCm < 650.f || AheadCm > 3800.f)
+			{
+				return false;
+			}
+			const float LateralCm = FMath::Abs(FVector::DotProduct(Delta, Right));
+			if (LateralCm > 235.f)
+			{
+				return false;
+			}
+			if (TargetFwd && FVector::DotProduct(*TargetFwd, Fwd) < 0.65f)
+			{
+				return false;
+			}
+			return true;
+		};
+
+		for (TActorIterator<ABNVehiclePawn> It(GetWorld()); It; ++It)
+		{
+			const ABNVehiclePawn* Other = *It;
+			if (Other && Other != this)
+			{
+				const FVector OtherFwd = Other->GetActorForwardVector().GetSafeNormal2D();
+				if (CheckCandidate(Other->GetActorLocation(), &OtherFwd))
+				{
+					bInDraftPocket = true;
+					break;
+				}
+			}
+		}
+
+		if (!bInDraftPocket)
+		{
+			if (const UBNTrafficSubsystem* Traffic = GetWorld()->GetSubsystem<UBNTrafficSubsystem>())
+			{
+				TArray<FVector> TrafficLocs;
+				Traffic->GetTrafficLocations(TrafficLocs);
+				for (const FVector& Loc : TrafficLocs)
+				{
+					if (CheckCandidate(Loc, nullptr))
+					{
+						bInDraftPocket = true;
+						break;
+					}
+				}
+			}
+		}
+	}
+	BoostState.UpdateSlipstream(RealDt, bInDraftPocket, bInputLocked, bOnGround, SpeedKmh, Boost);
 }
 
 void ABNVehiclePawn::ApplyCollisionDamage(float ImpulseMag, float SpeedKmh, bool bWallOrVehicleHit)

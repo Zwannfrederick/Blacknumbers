@@ -54,6 +54,9 @@ TEXTURE_MANIFEST = [
     ("T_Container_D", "albedo"),
     ("T_Container_N", "normal"),
     ("T_Container_R", "roughness"),
+    ("T_BridgeSteel_D", "albedo"),
+    ("T_BridgeSteel_N", "normal"),
+    ("T_BridgeSteel_R", "roughness"),
     ("T_Dirt_D", "albedo"),
     ("T_Dirt_N", "normal"),
     ("T_Dirt_R", "roughness"),
@@ -389,6 +392,11 @@ def _generate_all_pngs_impl(force=False):
     save_rgb("T_Container_D", cont_d)
     save_normal("T_Container_N", rib_h + 0.08 * wear, strength=6.5)
     save_gray("T_Container_R", cont_r)
+
+    # Flat weathered steel fallback for offline builds.
+    save_gray("T_BridgeSteel_D", 0.74 + 0.18 * wear - 0.26 * rust_mask)
+    save_normal("T_BridgeSteel_N", wear, strength=2.0)
+    save_gray("T_BridgeSteel_R", 0.48 + 0.24 * wear + 0.20 * rust_mask)
 
     # 8. Dirt (packed earth, stones, subtle ruts)
     rng = np.random.default_rng(501)

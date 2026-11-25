@@ -16,6 +16,7 @@ class UInputMappingContext;
 class ULocalLightComponent;
 class UPointLightComponent;
 class UPrimitiveComponent;
+class USpotLightComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
 struct FHitResult;
@@ -81,6 +82,8 @@ class BLACKNUMBERS_API ABNVehiclePawn : public AWheeledVehiclePawn
 	GENERATED_BODY()
 
 public:
+	/** Wheel setups are ordered FL, FR, BL, BR; rear wheels start at this index. */
+	static constexpr int32 FirstRearWheelIndex = 2;
 	ABNVehiclePawn();
 
 	virtual void Tick(float DeltaSeconds) override;
@@ -88,6 +91,7 @@ public:
 	virtual void EndPlay(const EEndPlayReason::Type EndPlayReason) override;
 	virtual void UnPossessed() override;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
+	virtual void FellOutOfWorld(const UDamageType& DamageType) override;
 
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
 	float GetSpeedKmh() const;
@@ -95,6 +99,8 @@ public:
 	/** Puts the car back on its wheels slightly above where it is, keeping its heading. */
 	UFUNCTION(BlueprintCallable, Category = "Vehicle")
 	void ResetVehicle();
+
+	uint32 GetRecoveryCount() const { return RecoveryCount; }
 
 	UChaosWheeledVehicleMovementComponent* GetChaosMovement() const;
 
@@ -160,6 +166,18 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
 	float GetShiftFlashFraction() const { return FMath::Clamp(ShiftFlashRemaining / 0.24f, 0.f, 1.f); }
 
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	float GetSlipstreamCharge() const { return BoostState.SlipstreamCharge; }
+
+	UFUNCTION(BlueprintPure, Category = "Vehicle")
+	bool IsSlipstreaming() const { return BoostState.bSlipstreaming; }
+
+	UFUNCTION(BlueprintCallable, Category = "Camera")
+	void SetLookBackWanted(bool bWanted) { bLookBackWanted = bWanted; }
+
+	UFUNCTION(BlueprintPure, Category = "Camera")
+	bool IsLookingBack() const { return bLookBackWanted; }
+
 	// --- Chassis Integrity / Totaled & Manual-Shift Drag Mode ---
 	UFUNCTION(BlueprintPure, Category = "Vehicle")
 	float GetVehicleHealth() const { return VehicleHealth; }
@@ -177,6 +195,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Vehicle")
 	void RepairVehicle();
+
+	/** Applies collision damage from high-speed civilian traffic impacts (called by BNTrafficSubsystem). */
+	void ApplyTrafficCollisionDamage(float ImpactSpeedKmh);
 
 	void SetDragMode(bool bEnable);
 	void TriggerManualShiftUp();
@@ -237,7 +258,10 @@ public:
 	void CycleChaseDistance();
 
 	UFUNCTION(BlueprintPure, Category = "Camera")
-	bool IsHoodCamera() const { return ChaseDistanceIndex >= ChaseDistances.Num(); }
+	bool IsHoodCamera() const { return ChaseDistanceIndex == ChaseDistances.Num(); }
+
+	UFUNCTION(BlueprintPure, Category = "Camera")
+	bool IsBumperCamera() const { return ChaseDistanceIndex == ChaseDistances.Num() + 1; }
 
 	UFUNCTION(BlueprintPure, Category = "Camera")
 	FString GetCameraModeLabel() const;
@@ -269,6 +293,9 @@ public:
 	void ApplyVehicleSpec(EBNCarId CarId, const FBNComputedVehicleStats& Stats);
 	void ApplyVehicleBuild(const FBNComputedVehicleStats& Stats, const FLinearColor& PaintTint);
 	void ApplyPaintTint(const FLinearColor& PaintTint);
+	void ApplyPaintFinish(EBNPaintFinish Finish);
+	void ApplyRimPaint(const FLinearColor& RimTint);
+	void ApplyUnderglow(const FLinearColor& NeonColor, bool bEnabled);
 
 	/** Head and tail lights; switched by the level's ABNDayNightCycle (on at night). */
 	UFUNCTION(BlueprintCallable, Category = "Lights")
@@ -291,6 +318,14 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Lights")
 	TArray<TObjectPtr<UPointLightComponent>> ExhaustLights;
 
+	/** Separate shadowless downward underbody neon spotlight (kept out of CarLights, zero cabin bleed). */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Lights")
+	TObjectPtr<USpotLightComponent> UnderglowLight;
+
+	/** Temporary 3-point shadowless studio lighting shown only while in Garage/Title Showcase mode. */
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UPointLightComponent>> ShowcaseLights;
+
 	/** Field of view widens from BaseFov to MaxFov as speed approaches FovMaxSpeedKmh. */
 	UPROPERTY(EditAnywhere, Category = "Camera")
 	float BaseFov = 90.f;
@@ -308,19 +343,25 @@ private:
 	void OnHandbrake(const FInputActionValue& Value);
 	void OnNos(const FInputActionValue& Value);
 	void OnSpeedbreaker(const FInputActionValue& Value);
+	void OnLookBack(const FInputActionValue& Value);
 	void AdvanceStoryCard();
 
 	void UpdateDrift(float DeltaSeconds);
 	void UpdateNormalGripAssist(float DeltaSeconds);
+	void UpdateChassisStability(float DeltaSeconds);
+	void StopAndPlaceVehicle(const FVector& Location, const FQuat& Rotation);
 	/** Holds the slide at TargetSlip (signed degrees): turns the car and its direction of travel smoothly. */
 	void ApplyDriftAssist(float DeltaSeconds, float TargetSlip, float Throttle);
 	void SetRearGrip(float Blend);
 	void ApplyPhysicsStats(const FBNComputedVehicleStats& Stats);
 	void UpdateBoostAndEffects(float DeltaSeconds, float RealDt);
+	void UpdateSlipstream(float RealDt, float SpeedKmh, bool bOnGround);
 	void UpdateDamageAndDrag(float DeltaSeconds, float RealDt, float SpeedKmh);
 	void ApplyCollisionDamage(float ImpulseMag, float SpeedKmh, bool bWallOrVehicleHit);
 	void UpdateCamera(float DeltaSeconds, float RealDt, float SpeedKmh, float RealTimeSeconds);
 	void UpdateShowcaseCamera(float RealDt);
+	void EnsureShowcaseLights();
+	void UpdateShowcaseLights(bool bActive);
 	void UpdateNearMiss(float SpeedKmh);
 	void ResetTimeDilation();
 
@@ -330,6 +371,15 @@ private:
 
 	bool bDrifting = false;
 	bool bInputLocked = false;
+	bool bWasGrounded = false;
+	double LastVerticalSpeed = 0.0;
+	double ImpactRiseLimit = 0.0;
+	float ImpactReboundRemaining = 0.f;
+	float GroundedSampleSeconds = 0.f;
+	FVector SupportNormal = FVector::UpVector;
+	FTransform GroundedSample;
+	FTransform RecoveryPose;
+	uint32 RecoveryCount = 0;
 	/** 0 = drift grip, 1 = full rear grip; last value sent to the physics wheels. */
 	float RearGripBlend = 1.f;
 	bool bRearAbsBypassed = false;
@@ -368,6 +418,11 @@ private:
 	float LastAppliedTireGripScale = 1.f;
 	float CurrentSocketBaseZ = 150.f;
 	bool bShowcaseMode = false;
+	bool bLookBackWanted = false;
+	bool bUnderglowEnabled = false;
+	FLinearColor UnderglowColor = FLinearColor::Black;
+	float CurrentCameraRollDeg = 0.f;
+	float CurrentCameraLateralCm = 0.f;
 	float ShowcaseYawDeg = 148.f;
 	float ShowcaseLateralOffsetCm = 0.f;
 	EBNCarId ActiveCarId = EBNCarId::KuroganeMSpec;

@@ -9,6 +9,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Garage/BNGarageZone.h"
 #include "InputMappingContext.h"
 #include "InputModifiers.h"
 #include "Police/BNPursuitSubsystem.h"
@@ -66,6 +67,11 @@ void ABNVehiclePawn::OnSpeedbreaker(const FInputActionValue& Value)
 	SetSpeedbreakerWanted(Value.Get<bool>());
 }
 
+void ABNVehiclePawn::OnLookBack(const FInputActionValue& Value)
+{
+	SetLookBackWanted(Value.Get<bool>());
+}
+
 void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -104,6 +110,7 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	UInputAction* Speedbreaker = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* Reset = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* CameraDistance = MakeAction(EInputActionValueType::Boolean);
+	UInputAction* LookBack = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* AbandonRaceAction = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* PursuitToggle = MakeAction(EInputActionValueType::Boolean);
 	UInputAction* GarageToggle = MakeAction(EInputActionValueType::Boolean);
@@ -119,7 +126,9 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 	InputContext->MapKey(Steering, EKeys::Right);
 	MapNegated(Steering, EKeys::A);
 	MapNegated(Steering, EKeys::Left);
-	InputContext->MapKey(Steering, EKeys::Gamepad_LeftX);
+	UInputModifierDeadZone* SteeringDeadZone = NewObject<UInputModifierDeadZone>(InputContext);
+	SteeringDeadZone->LowerThreshold = 0.12f;
+	InputContext->MapKey(Steering, EKeys::Gamepad_LeftX).Modifiers.Add(SteeringDeadZone);
 
 	InputContext->MapKey(Throttle, EKeys::W);
 	InputContext->MapKey(Throttle, EKeys::Up);
@@ -147,6 +156,10 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
 	InputContext->MapKey(CameraDistance, EKeys::C);
 	InputContext->MapKey(CameraDistance, EKeys::Gamepad_RightThumbstick);
+
+	InputContext->MapKey(LookBack, EKeys::V);
+	InputContext->MapKey(LookBack, EKeys::MiddleMouseButton);
+	InputContext->MapKey(LookBack, EKeys::Gamepad_LeftThumbstick);
 
 	InputContext->MapKey(AbandonRaceAction, EKeys::BackSpace);
 	InputContext->MapKey(AbandonRaceAction, EKeys::Gamepad_Special_Left);
@@ -185,6 +198,7 @@ void ABNVehiclePawn::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 		Input->BindAction(Handbrake, Event, this, &ABNVehiclePawn::OnHandbrake);
 		Input->BindAction(Nos, Event, this, &ABNVehiclePawn::OnNos);
 		Input->BindAction(Speedbreaker, Event, this, &ABNVehiclePawn::OnSpeedbreaker);
+		Input->BindAction(LookBack, Event, this, &ABNVehiclePawn::OnLookBack);
 	}
 	Input->BindAction(Reset, ETriggerEvent::Started, this, &ABNVehiclePawn::ResetVehicle);
 	Input->BindAction(CameraDistance, ETriggerEvent::Started, this, &ABNVehiclePawn::CycleChaseDistance);
@@ -211,7 +225,10 @@ void ABNVehiclePawn::AdvanceStoryCard()
 			}
 			else if (!HUD->IsMenuOpen())
 			{
-				HUD->TryOpenNearbyRaceBriefing();
+				if (!HUD->TryOpenNearbyRaceBriefing() && ABNGarageZone::FindNearbyGarageZone(this) != nullptr)
+				{
+					ToggleGarage();
+				}
 			}
 		}
 	}

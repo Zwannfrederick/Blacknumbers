@@ -82,7 +82,7 @@ void SBNTitleScreenWidget::Construct(const FArguments& InArgs)
 					+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(TEXT("ESC: Sürüşe Geç   •   G: Selin'in Garajı   •   B: 16'lık Blacklist   •   P: Polis Takibi   •   C: Kamera")))
+						.Text(FText::FromString(TEXT("ESC / START: Kariyer   •   G: Selin'in Garajı   •   B: Black Numbers Listesi")))
 						.Font(BNUITheme::Font(9, false))
 						.ColorAndOpacity(BNUITheme::SteelMuted)
 					]
@@ -212,9 +212,9 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
 	UGameInstance* GI = SBNGameMenuWidget::GetGI(OwnerHUD);
 	const UBNProgressionSubsystem* Prog = GI ? GI->GetSubsystem<UBNProgressionSubsystem>() : nullptr;
 	const UBNStorySubsystem* Story = GI ? GI->GetSubsystem<UBNStorySubsystem>() : nullptr;
-	const bool bHasProgress = (Story && (Story->GetState().bIntroShown || Story->GetState().GetDefeatedCount() > 0))
+	const bool bHasProgress = (Story && (Story->GetState().QualifiersWon > 0 || Story->GetState().GetDefeatedCount() > 0))
 		|| (Prog && Prog->GetProfile().RacesCompleted > 0);
-	const FText StartLabel = FText::FromString(bHasProgress ? TEXT("DEVAM ET") : TEXT("OYUNA BAŞLA"));
+	const FText StartLabel = FText::FromString(bHasProgress ? TEXT("KARİYERE DEVAM ET") : TEXT("KARİYERE BAŞLA"));
 
 	auto OpenTabAction = [this](EBNMenuTab Tab)
 	{
@@ -235,7 +235,7 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
 	Col->AddSlot().AutoHeight()
 	[
 		SNew(STextBlock)
-		.Text(FText::FromString(TEXT("KARAMARA UNDERGROUND  //  MOST WANTED")))
+		.Text(FText::FromString(TEXT("KARAMARA  /  GECE YARIŞLARI")))
 		.Font(BNUITheme::Font(10, true))
 		.ColorAndOpacity(BNUITheme::AmberGold)
 	];
@@ -260,15 +260,8 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
 	// Hover-lit Most Wanted navigation blades
 	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 9.f))
 	[
-		BNUITheme::MakeNavBladeButton(StartLabel, FText::FromString(TEXT("Karamara sokaklarına çık ve serbest sürüşe başla")), true,
-			FOnClicked::CreateLambda([this]()
-			{
-				if (OwnerHUD.IsValid())
-				{
-					OwnerHUD->DismissTitleScreen(true);
-				}
-				return FReply::Handled();
-			}))
+		BNUITheme::MakeNavBladeButton(StartLabel, FText::FromString(TEXT("Black Numbers Listesi ve sokak yarışı programı")), true,
+			OpenTabAction(EBNMenuTab::BlackNumbers))
 	];
 	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 7.f))
 	[
@@ -282,8 +275,15 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
 	];
 	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 7.f))
 	[
-		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("16'LIK BLACKLIST")),
-			FText::FromString(TEXT("Sendika sürücü dosyaları, R1-R8 kanıtlar ve meydan okuma")), false, OpenTabAction(EBNMenuTab::BlackNumbers))
+		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("SERBEST SÜRÜŞ")),
+			FText::FromString(TEXT("Karamara sokaklarına çık")), false, FOnClicked::CreateLambda([this]()
+			{
+				if (OwnerHUD.IsValid())
+				{
+					OwnerHUD->DismissTitleScreen(true);
+				}
+				return FReply::Handled();
+			}))
 	];
 	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 12.f))
 	[

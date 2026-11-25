@@ -12,6 +12,7 @@ bool FBNStoryProgressionLogicTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("BLACK NUMBERS canon roster has 16 members"), Roster.Num(), 16);
 
 	TSet<FString> VehicleNames;
+	TSet<FString> Programs;
 	for (const FBNBossSpec& B : Roster)
 	{
 		TestTrue(TEXT("boss rank within 1..16"), B.Rank >= 1 && B.Rank <= 16);
@@ -19,8 +20,20 @@ bool FBNStoryProgressionLogicTest::RunTest(const FString& Parameters)
 		TestFalse(TEXT("boss org role non-empty"), B.OrgRole.IsEmpty());
 		TestFalse(TEXT("boss fictional vehicle non-empty"), B.VehicleName.IsEmpty());
 		VehicleNames.Add(B.VehicleName);
+		TestEqual(TEXT("total program grows from two to five races"), B.Qualifiers.Num() + 1, B.TierLayer + 1);
+		TSet<FName> Races;
+		FString Program;
+		for (FName Race : B.Qualifiers)
+		{
+			Races.Add(Race);
+			Program += Race.ToString() + TEXT(" / ");
+		}
+		Races.Add(FName(*B.RaceAssetName));
+		TestEqual(TEXT("no race repeats within a boss program"), Races.Num(), B.Qualifiers.Num() + 1);
+		Programs.Add(Program + B.RaceAssetName);
 	}
 	TestEqual(TEXT("all 16 boss vehicles are distinct fictional models"), VehicleNames.Num(), 16);
+	TestEqual(TEXT("each boss has a different ordered program"), Programs.Num(), 16);
 
 	FBNStoryState State;
 	State.Reset();
@@ -30,6 +43,12 @@ bool FBNStoryProgressionLogicTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Heat cap starts at 5 (K. Vance)"), State.GetMaxAllowedHeat(), 5);
 	TestFalse(TEXT("Tier 6 locked at start"), State.IsTier6Unlocked());
 	TestFalse(TEXT("#01 Viktor locked until R8 evidence completes"), State.CanChallengeBoss(1));
+	TestFalse(TEXT("first duel locked before qualifying"), State.IsDuelUnlocked(16));
+	const FName FirstRace = State.GetNextQualifier();
+	TestFalse(TEXT("other races do not qualify"), State.RecordQualifierVictory(FName(TEXT("RACE_Another"))));
+	TestTrue(TEXT("winning the first qualifier unlocks the duel"), State.RecordQualifierVictory(FirstRace));
+	TestFalse(TEXT("repeating the qualifier adds no progress"), State.RecordQualifierVictory(FirstRace));
+	TestTrue(TEXT("first duel unlocked"), State.IsDuelUnlocked(16));
 
 	TArray<FBNStoryCard> Cards;
 	auto Beat = [&](int32 Rank)
@@ -40,6 +59,7 @@ bool FBNStoryProgressionLogicTest::RunTest(const FString& Parameters)
 	};
 
 	Beat(16);
+	TestEqual(TEXT("program progress resets for the next boss"), State.QualifiersWon, 0);
 	TestEqual(TEXT("Perde 2 opens at #16 (R2)"), State.Act, EBNStoryAct::Perde2_Yukselis);
 	Beat(15); Beat(14); Beat(13);
 	Beat(12);
@@ -221,6 +241,35 @@ bool FBNStoryTier6AndFinalChasePieTest::RunTest(const FString& Parameters)
 			}
 
 			Story->SkipToRank(8, World);
+			for (const FBNBossSpec& Boss : FBNStoryState::GetAllBosses())
+			{
+				TestNotNull(TEXT("duel exists in Karamara"), UBNStorySubsystem::FindProgramRace(World, FName(*Boss.RaceAssetName)));
+				for (FName Race : Boss.Qualifiers)
+				{
+					TestNotNull(TEXT("qualifier exists in Karamara"), UBNStorySubsystem::FindProgramRace(World, Race));
+				}
+			}
+			ABNRaceEvent* FirstQualifier = UBNStorySubsystem::FindProgramRace(World, Story->GetState().GetNextQualifier());
+			if (!FirstQualifier)
+			{
+				return true;
+			}
+			TestTrue(TEXT("career launches the first qualifier"), Story->ChallengeSelectedBoss(Car, 8));
+			TestTrue(TEXT("the qualifier is active and the duel remains locked"),
+				ABNRaceEvent::FindActiveRace(World) == FirstQualifier && !Story->GetState().IsDuelUnlocked(8));
+			FirstQualifier->EndRace();
+			TestEqual(TEXT("abandoning a qualifier adds no progress"), Story->GetState().QualifiersWon, 0);
+			Story->NotifyStreetRaceWon(FirstQualifier->Definition->GetFName());
+			UBNSaveGame* Save = NewObject<UBNSaveGame>();
+			Story->WriteToSaveGame(*Save);
+			Story->ReadFromSaveGame(*Save);
+			TestEqual(TEXT("a partial program is restored from the save"), Story->GetState().QualifiersWon, 1);
+			TestFalse(TEXT("partial program leaves duel locked after loading"), Story->GetState().IsDuelUnlocked(8));
+			for (FName Race : Boss8->Qualifiers)
+			{
+				Story->NotifyStreetRaceWon(Race);
+			}
+			TestTrue(TEXT("completing the program unlocks #08 duel"), Story->GetState().IsDuelUnlocked(8));
 			Story->OpenDossier(Car);
 			TestTrue(TEXT("Boss #08 challenge starts Sprint race cleanly"), Story->ChallengeSelectedBoss(Car));
 			Enter(EPhase::StartBoss8);

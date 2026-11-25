@@ -222,14 +222,31 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 	];
 
 	TSharedRef<SHorizontalBox> Buttons = SNew(SHorizontalBox);
-	if (R.RaceEvent.IsValid())
+	const UGameInstance* GI = OwnerHUD.IsValid() ? OwnerHUD->GetGameInstance() : nullptr;
+	const UBNStorySubsystem* Story = GI ? GI->GetSubsystem<UBNStorySubsystem>() : nullptr;
+	if (Story && !Story->GetState().bCampaignCompleted)
+	{
+		Buttons->AddSlot().AutoWidth().Padding(0.f, 0.f, 12.f, 0.f)
+		[
+			BNUITheme::MakeMWButton(FText::FromString(TEXT("YARIŞ PROGRAMI")), EBNButtonVariant::PrimaryAmber,
+				FOnClicked::CreateLambda([this]()
+				{
+					if (OwnerHUD.IsValid())
+					{
+						OwnerHUD->OpenMenu(EBNMenuTab::BlackNumbers);
+					}
+					return FReply::Handled();
+				}), true, 12, FMargin(20.f, 12.f))
+		];
+	}
+	if (R.RaceEvent.IsValid() && (R.BossRank <= 0 || (Story && Story->GetState().IsDuelUnlocked(R.BossRank))))
 	{
 		const FBNRaceResultSummary Captured = R;
 		Buttons->AddSlot().AutoWidth().Padding(FMargin(0.f, 0.f, 12.f, 0.f))
 		[
 			SNew(SBox).MinDesiredWidth(220.f)
 			[
-				BNUITheme::MakeMWButton(FText::FromString(TEXT("TEKRAR YARIŞ")), EBNButtonVariant::PrimaryAmber,
+				BNUITheme::MakeMWButton(FText::FromString(TEXT("TEKRAR YARIŞ")), EBNButtonVariant::SecondarySteel,
 					FOnClicked::CreateLambda([this, Captured]()
 					{
 						if (OwnerHUD.IsValid())
@@ -507,16 +524,13 @@ void ABNHUD::RestartRaceFromResults(const FBNRaceResultSummary& Summary)
 	{
 		if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
 		{
-			if (Story->GetState().CanChallengeBoss(Summary.BossRank))
+			if (Story->GetState().IsDuelUnlocked(Summary.BossRank) && Story->ChallengeSelectedBoss(Car, Summary.BossRank))
 			{
-				Story->OpenDossier(Car);
-				Story->MoveDossierSelection((16 - Summary.BossRank) - Story->GetSelectedBossIndex());
-				if (Story->ChallengeSelectedBoss(Car))
-				{
-					return;
-				}
+				return;
 			}
 		}
+		OpenMenu(EBNMenuTab::BlackNumbers);
+		return;
 	}
 	Race->StartRace(Car);
 }

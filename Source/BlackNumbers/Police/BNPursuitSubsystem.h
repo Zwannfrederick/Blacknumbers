@@ -31,6 +31,15 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Police")
 	void StartPursuit(int32 InitialHeat = 1);
 
+	/** Always-on Most Wanted-style mid-race police intervention; seamlessly continues into free roam after finish. */
+	UFUNCTION(BlueprintCallable, Category = "Police")
+	void StartInRacePursuit(int32 InitialHeat = 1);
+
+	void NotifyRaceEndedKeepPursuit();
+
+	UFUNCTION(BlueprintPure, Category = "Police")
+	bool IsInRaceIntervention() const { return bInRaceIntervention; }
+
 	UFUNCTION(BlueprintCallable, Category = "Police")
 	void EscalateOrStartPursuit();
 
@@ -107,4 +116,5 @@ private:
 	int32 NextSlot = 0;
 	int32 LastDispatchSerial = 0;
 	bool bFreeRoamPatrolsEnabled = true;
+	bool bInRaceIntervention = false;
 };

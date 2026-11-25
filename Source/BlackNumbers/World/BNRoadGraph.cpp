@@ -572,12 +572,12 @@ const TCHAR* UBNRoadGraphSubsystem::DefaultDistrictName(EBNDistrict District)
 {
 	switch (District)
 	{
-	case EBNDistrict::DoguSanayi:     return TEXT("DOĞU SANAYİ");
-	case EBNDistrict::EskiLiman:      return TEXT("ESKİ LİMAN");
-	case EBNDistrict::KuzeyViyadugu:  return TEXT("KUZEY VİYADÜĞÜ & ÇEVRE YOLU");
-	case EBNDistrict::YamacMahallesi: return TEXT("YAMAÇ MAHALLESİ");
-	case EBNDistrict::KuzeyGecidi:    return TEXT("KUZEY GEÇİDİ & SEYİR TEPESİ");
-	default:                          return TEXT("MERKEZ BULVAR & ÇARŞI");
+	case EBNDistrict::DoguSanayi:     return TEXT("PASLI DEMİR — DOĞU SANAYİ");
+	case EBNDistrict::EskiLiman:      return TEXT("MARA RIHTIMI — ESKİ LİMAN");
+	case EBNDistrict::KuzeyViyadugu:  return TEXT("ÇELİK KUŞAK — KUZEY VİYADÜĞÜ");
+	case EBNDistrict::YamacMahallesi: return TEXT("ESKİ KARAMARA — YAMAÇ MAHALLESİ");
+	case EBNDistrict::KuzeyGecidi:    return TEXT("ÇAM ZİRVESİ — KUZEY GEÇİDİ");
+	default:                          return TEXT("ALTIN ÇEKİRDEK — MERKEZ BULVAR");
 	}
 }
 
@@ -585,12 +585,12 @@ const TCHAR* UBNRoadGraphSubsystem::DefaultDistrictSubtitle(EBNDistrict District
 {
 	switch (District)
 	{
-	case EBNDistrict::DoguSanayi:     return TEXT("TARIK OTO TAMİR • KONTEYNER AVLUSU");
-	case EBNDistrict::EskiLiman:      return TEXT("MARA RIHTIM • ESKİ LİMAN KÖPRÜSÜ");
-	case EBNDistrict::KuzeyViyadugu:  return TEXT("O-5 ÇEVRE YOLU • YÜKSEK HIZ HATTI");
-	case EBNDistrict::YamacMahallesi: return TEXT("SELİN'İN GARAJI • YOKUŞ SOKAKLAR");
-	case EBNDistrict::KuzeyGecidi:    return TEXT("DAĞ SAÇ TOKALARI • EMRE ANITI");
-	default:                          return TEXT("KARAMARA ŞEHİR MERKEZİ");
+	case EBNDistrict::DoguSanayi:     return TEXT("TERSANE & FABRİKA • TARIK OTO TAMİR");
+	case EBNDistrict::EskiLiman:      return TEXT("KIYI VİNÇ HATTI • ASMA KÖPRÜ & DENİZ SİSİ");
+	case EBNDistrict::KuzeyViyadugu:  return TEXT("ÇİFT KATLI O-5 OTOYOL • YÜKSEK HIZ HATTI");
+	case EBNDistrict::YamacMahallesi: return TEXT("KİREMİT YOKUŞLAR • SELİN'İN GARAJI");
+	case EBNDistrict::KuzeyGecidi:    return TEXT("DAĞ SAÇ TOKALARI • KAYALIK & EMRE ANITI");
+	default:                          return TEXT("NEON FİNANS KULELERİ • ÇARŞI & GECE PİYASASI");
 	}
 }
 

@@ -386,11 +386,18 @@ def build_karamara_hills(b):
                 hw_m,
             ))
 
+    def lowered_height(raw_z, deck_z, distance):
+        # Leave enough room for interpolation between vertices at the road shoulder.
+        blend = max(0.0, min(1.0, (distance - 20.0) / 30.0))
+        return raw_z + min(0.0, deck_z - 0.70 - raw_z) * (1.0 - blend * blend * (3.0 - 2.0 * blend))
+
     def road_clamp(xm, ym, raw_z):
-        # Also keep Seyir Tepesi overlook terrace (-600, -860, +62 m) and Selin's garage courtyard (-549, +372, +16 m) clear
-        best_d = 1e9
-        best_z = raw_z
+        z = raw_z
         for ax, ay, az, bx, by, bz, hw in segs:
+            margin = hw + 50.0
+            if (xm < min(ax, bx) - margin or xm > max(ax, bx) + margin
+                    or ym < min(ay, by) - margin or ym > max(ay, by) + margin):
+                continue
             vx, vy = bx - ax, by - ay
             l2 = vx * vx + vy * vy
             if l2 < 1e-4:
@@ -398,24 +405,11 @@ def build_karamara_hills(b):
             else:
                 t = max(0.0, min(1.0, ((xm - ax) * vx + (ym - ay) * vy) / l2))
             px, py, pz = ax + vx * t, ay + vy * t, az + (bz - az) * t
-            d = math.hypot(xm - px, ym - py) - hw
-            if d < best_d:
-                best_d = d
-                best_z = pz
-        # Flat pads: Seyir Tepesi overlook & Selin workshop courtyard
+            # At crossings, the lower road must stay clear even when the higher road is closer in XY.
+            z = min(z, lowered_height(raw_z, pz, math.hypot(xm - px, ym - py) - hw))
         for cx, cy, cz, rad in ((-600.0, -860.0, 61.5, 32.0), (-549.0, 372.0, 15.6, 28.0)):
-            dp = math.hypot(xm - cx, ym - cy) - rad
-            if dp < best_d:
-                best_d = dp
-                best_z = cz
-        if best_d < 14.0:
-            return min(raw_z, best_z - 0.70)
-        if best_d < 44.0:
-            t = (best_d - 14.0) / 30.0
-            s = t * t * (3.0 - 2.0 * t)
-            target = min(raw_z, best_z - 0.70)
-            return target * (1.0 - s) + raw_z * s
-        return raw_z
+            z = min(z, lowered_height(raw_z, cz, math.hypot(xm - cx, ym - cy) - rad))
+        return z
 
     def emit_patch(x0, x1, y0, y1, nx, ny, height_fn, rock_z_thresh):
         grid = []
@@ -476,8 +470,8 @@ def build_karamara_hills(b):
         base = upper + mid + south_knoll
         return base + undulate * min(1.0, base / 14.0)
 
-    emit_patch(-1040.0, 120.0, -1080.0, -560.0, 40, 24, kuzey_height, rock_z_thresh=21.0)
-    emit_patch(-940.0, -240.0, 80.0, 740.0, 26, 24, yamac_height, rock_z_thresh=19.5)
+    emit_patch(-1040.0, 120.0, -1080.0, -560.0, 80, 48, kuzey_height, rock_z_thresh=21.0)
+    emit_patch(-940.0, -240.0, 80.0, 740.0, 52, 48, yamac_height, rock_z_thresh=19.5)
 
 
 def build_race_ring(b):
@@ -526,3 +520,221 @@ def build_checkpoint_chevron(b):
             (0.75, 0.0, zc + 0.28), (-0.55, 0.0, zc + 0.65),
             (0.0, 0.1), (1.0, 0.1), (1.0, 0.4), (0.0, 0.4),
         )
+
+
+def build_traffic_suv(b):
+    """4.68 m sleek modern urban crossover SUV (+X forward, Z=0 ground; replaces buggy in civilian traffic)."""
+    # Slots: 0=Paint, 1=Glass, 2=Trim, 3=Headlight, 4=Taillight
+    lower = [
+        (2.32, 0.36), (2.34, 0.80), (2.14, 1.04), (1.20, 1.12),
+        (-1.82, 1.14), (-2.30, 1.06), (-2.34, 0.68), (-2.24, 0.36),
+    ]
+    lower_w = [0.88, 0.94, 0.96, 0.98, 0.98, 0.94, 0.92, 0.88]
+    _add_extruded_profile(b, 0, lower, lower_w)
+    cabin = [
+        (1.12, 1.12), (0.52, 1.72), (-1.56, 1.70), (-2.18, 1.10),
+    ]
+    cabin_w = [0.92, 0.80, 0.79, 0.90]
+    _add_extruded_profile(b, 1, cabin, cabin_w)
+    # Painted roof + low-profile roof rails
+    b.add_box(0, (-0.52, 0.0, 1.73), (2.06, 1.58, 0.05))
+    for s in (-1.0, 1.0):
+        b.add_box(2, (-0.54, s * 0.68, 1.78), (1.76, 0.06, 0.05))
+        b.add_box(0, (0.74, s * 1.04, 1.18), (0.16, 0.16, 0.11))
+        b.add_box(3, (2.32, s * 0.68, 0.84), (0.10, 0.36, 0.14))
+        b.add_box(4, (-2.32, s * 0.68, 0.96), (0.08, 0.38, 0.18))
+    # Lower protective wheel-arch cladding & bumpers
+    b.add_box(2, (2.34, 0.0, 0.50), (0.14, 1.78, 0.28))
+    b.add_box(2, (-2.32, 0.0, 0.48), (0.14, 1.76, 0.26))
+    b.add_box(2, (0.0, 0.0, 0.34), (4.00, 1.92, 0.10))
+    _add_car_wheels(b, 2, 1.44, -1.42, 0.98, radius=0.38, width=0.25)
+
+
+def _add_cambered_blade(b, mat, x_center, z_base, half_span, chord, pitch_deg, thick=0.032, segs=6):
+    """Sculpts a curved, cambered carbon airfoil blade spanning -half_span..+half_span along Y."""
+    pr = math.radians(pitch_deg)
+    cp, sp = math.cos(pr), math.sin(pr)
+    for i in range(segs):
+        t0 = -1.0 + 2.0 * (i / float(segs))
+        t1 = -1.0 + 2.0 * ((i + 1) / float(segs))
+        y0, y1 = t0 * half_span, t1 * half_span
+        # Subtle swept-back curve toward wingtips
+        sw0, sw1 = -0.045 * (t0 * t0), -0.045 * (t1 * t1)
+        di0, di1 = 0.025 * (t0 * t0), 0.025 * (t1 * t1)
+        hc = chord * 0.5
+        ht = thick * 0.5
+        # Leading (+X) and trailing (-X) edges rotated by pitch_deg
+        lx0, lz0 = x_center + sw0 + hc * cp, z_base + di0 - hc * sp
+        tx0, tz0 = x_center + sw0 - hc * cp, z_base + di0 + hc * sp
+        lx1, lz1 = x_center + sw1 + hc * cp, z_base + di1 - hc * sp
+        tx1, tz1 = x_center + sw1 - hc * cp, z_base + di1 + hc * sp
+        u0, u1 = (t0 + 1.0) * 3.0, (t1 + 1.0) * 3.0
+        # Top & bottom airfoil skins
+        b.add_quad_uv(mat, (tx0, y0, tz0 + ht), (lx0, y0, lz0 + ht * 0.8),
+                      (lx1, y1, lz1 + ht * 0.8), (tx1, y1, tz1 + ht),
+                      (u0, 0.0), (u0, 1.5), (u1, 1.5), (u1, 0.0))
+        b.add_quad_uv(mat, (lx0, y0, lz0 - ht * 0.6), (tx0, y0, tz0 - ht * 0.6),
+                      (tx1, y1, tz1 - ht * 0.6), (lx1, y1, lz1 - ht * 0.6),
+                      (u0, 0.0), (u0, 1.5), (u1, 1.5), (u1, 0.0))
+        # Leading & trailing edge caps
+        b.add_quad(mat, (lx0, y0, lz0 - ht * 0.6), (lx1, y1, lz1 - ht * 0.6),
+                   (lx1, y1, lz1 + ht * 0.8), (lx0, y0, lz0 + ht * 0.8))
+        b.add_quad(mat, (tx1, y1, tz1 - ht * 0.6), (tx0, y0, tz0 - ht * 0.6),
+                   (tx0, y0, tz0 + ht), (tx1, y1, tz1 + ht))
+
+
+def build_aero_splitter(b):
+    """Curved carbon front aero splitter with side winglets & support tie-rods."""
+    segs = 8
+    half_w = 0.82
+    for i in range(segs):
+        t0 = -1.0 + 2.0 * (i / float(segs))
+        t1 = -1.0 + 2.0 * ((i + 1) / float(segs))
+        y0, y1 = t0 * half_w, t1 * half_w
+        # Tapered curved nose protruding furthest at center
+        fx0 = 0.16 - 0.09 * (t0 * t0)
+        fx1 = 0.16 - 0.09 * (t1 * t1)
+        bx = -0.18
+        u0, u1 = (t0 + 1.0) * 3.0, (t1 + 1.0) * 3.0
+        b.add_quad_uv(0, (bx, y0, 0.015), (fx0, y0, 0.015), (fx1, y1, 0.015), (bx, y1, 0.015),
+                      (u0, 0.0), (u0, 1.2), (u1, 1.2), (u1, 0.0))
+        b.add_quad_uv(0, (fx0, y0, -0.015), (bx, y0, -0.015), (bx, y1, -0.015), (fx1, y1, -0.015),
+                      (u0, 0.0), (u0, 1.2), (u1, 1.2), (u1, 0.0))
+        b.add_quad(0, (fx0, y0, -0.015), (fx1, y1, -0.015), (fx1, y1, 0.015), (fx0, y0, 0.015))
+    # Corner dive-plane winglets + twin front tie-rods
+    for s in (-1.0, 1.0):
+        b.add_box(0, (-0.04, s * (half_w + 0.01), 0.055), (0.26, 0.025, 0.10))
+        b.add_beam(0, (0.08, s * 0.34, 0.015), (-0.04, s * 0.32, 0.15), 0.018)
+
+
+def build_aero_diffuser(b):
+    """Sculpted rear carbon venturi diffuser tray with 4 tapered shark-fin aero strakes."""
+    b.add_quad_uv(0, (-0.14, -0.62, 0.05), (0.16, -0.62, -0.02),
+                  (0.16, 0.62, -0.02), (-0.14, 0.62, 0.05),
+                  (0.0, 0.0), (0.0, 1.2), (4.0, 1.2), (4.0, 0.0))
+    b.add_box(0, (0.02, 0.0, 0.03), (0.28, 1.24, 0.035))
+    for fy in (-0.44, -0.16, 0.16, 0.44):
+        b.add_box(0, (-0.02, fy, -0.035), (0.30, 0.026, 0.12))
+
+
+def build_aero_gt_wing(b):
+    """Sculpted swan-neck GT carbon rear wing with cambered airfoil blade & angled endplates (Z=0 trunk mount)."""
+    # Twin curved swan-neck pylons
+    for s in (-1.0, 1.0):
+        py = s * 0.44
+        b.add_beam(0, (0.05, py, 0.0), (-0.04, py, 0.24), 0.045)
+        b.add_beam(0, (-0.04, py, 0.24), (0.02, py, 0.40), 0.042)
+        b.add_beam(0, (0.02, py, 0.40), (-0.06, py, 0.39), 0.036)
+        b.add_box(0, (0.05, py, 0.01), (0.18, 0.09, 0.02))
+        # Sculpted angled GT endplates
+        b.add_box(0, (-0.05, s * 0.95, 0.38), (0.38, 0.026, 0.24))
+    _add_cambered_blade(b, 0, -0.04, 0.37, half_span=0.94, chord=0.29, pitch_deg=-7.5, thick=0.036, segs=6)
+
+
+def build_aero_rally_wing(b):
+    """Box-arch rally double-element carbon rear wing with side uprights & center vortex fins."""
+    for s in (-1.0, 1.0):
+        b.add_beam(0, (0.04, s * 0.82, 0.0), (-0.06, s * 0.84, 0.32), 0.065)
+        b.add_box(0, (-0.04, s * 0.85, 0.20), (0.32, 0.032, 0.28))
+    # Lower deck blade + upper cambered main blade + twin center stabilizers
+    _add_cambered_blade(b, 0, -0.02, 0.14, half_span=0.82, chord=0.18, pitch_deg=-3.0, thick=0.026, segs=4)
+    _add_cambered_blade(b, 0, -0.06, 0.32, half_span=0.86, chord=0.25, pitch_deg=-6.0, thick=0.034, segs=6)
+    for fy in (-0.26, 0.26):
+        b.add_box(0, (-0.05, fy, 0.23), (0.20, 0.022, 0.16))
+
+
+def build_aero_blower(b):
+    """Chrome muscle supercharger block + pulley snout + triple-butterfly bug-catcher intake scoop."""
+    # Slots: 0=Chrome, 1=Dark Carbon intake interior
+    b.add_box(0, (0.0, 0.0, 0.07), (0.56, 0.38, 0.14))
+    # Ribbed blower cooling fins along sides
+    for rz in (0.04, 0.08, 0.12):
+        b.add_box(0, (0.0, 0.0, rz), (0.52, 0.42, 0.016))
+    # Front drive snout & belt pulley
+    b.add_box(0, (0.34, 0.0, 0.07), (0.14, 0.14, 0.10))
+    b.add_cylinder_y(1, (0.41, 0.0, 0.07), 0.065, 0.05, segments=12)
+    # Raised triple-throat bug-catcher scoop
+    b.add_frustum_box(0, (0.04, 0.0, 0.14), (0.44, 0.34), (0.48, 0.30), 0.13)
+    for by in (-0.09, 0.0, 0.09):
+        b.add_box(1, (0.27, by, 0.205), (0.05, 0.065, 0.085))
+
+
+def build_aero_offroad_rack(b):
+    """Expedition tubular roof rack basket with 4 front-facing LED rally light pods."""
+    # Slots: 0=Dark Carbon/Metal frame, 1=LampGlow lenses
+    hx, hy = 0.66, 0.54
+    # Perimeter basket rails (lower & upper)
+    for zr in (0.03, 0.11):
+        for s in (-1.0, 1.0):
+            b.add_beam(0, (-hx, s * hy, zr), (hx, s * hy, zr), 0.032)
+            b.add_beam(0, (s * hx, -hy, zr), (s * hx, hy, zr), 0.032)
+    # Corner stanchions & crossbars
+    for sx in (-hx, hx):
+        for sy in (-hy, hy):
+            b.add_beam(0, (sx, sy, -0.02), (sx, sy, 0.11), 0.034)
+    for cx in (-0.42, 0.0, 0.42):
+        b.add_beam(0, (cx, -hy, 0.035), (cx, hy, 0.035), 0.028)
+    # 4 front rally LED spotlight pods
+    for ly in (-0.36, -0.12, 0.12, 0.36):
+        b.add_box(0, (hx + 0.04, ly, 0.10), (0.11, 0.14, 0.12))
+        b.add_box(1, (hx + 0.10, ly, 0.10), (0.02, 0.11, 0.09))
+
+
+def build_sky_dome(b):
+    """Inward-facing 2320 m upper sky hemisphere with horizon-to-zenith V=0..1 UVs for seamless cloud panning."""
+    radius = 2320.0
+    az_segs = 36
+    el_segs = 10
+    el_min = math.radians(-3.0)
+    el_max = math.radians(86.0)
+    for ie in range(el_segs):
+        v0 = ie / float(el_segs)
+        v1 = (ie + 1) / float(el_segs)
+        e0 = el_min + (el_max - el_min) * v0
+        e1 = el_min + (el_max - el_min) * v1
+        r0, z0 = radius * math.cos(e0), radius * math.sin(e0)
+        r1, z1 = radius * math.cos(e1), radius * math.sin(e1)
+        for ia in range(az_segs):
+            u0 = ia / float(az_segs)
+            u1 = (ia + 1) / float(az_segs)
+            a0 = u0 * 2.0 * math.pi
+            a1 = u1 * 2.0 * math.pi
+            p00 = (math.cos(a0) * r0, math.sin(a0) * r0, z0)
+            p10 = (math.cos(a1) * r0, math.sin(a1) * r0, z0)
+            p11 = (math.cos(a1) * r1, math.sin(a1) * r1, z1)
+            p01 = (math.cos(a0) * r1, math.sin(a0) * r1, z1)
+            # Inward-facing winding so camera inside the dome sees the clouds cleanly
+            b.add_quad_uv(0, p00, p01, p11, p10, (u0 * 2.0, v0), (u0 * 2.0, v1), (u1 * 2.0, v1), (u1 * 2.0, v0))
+
+
+def build_jump_ramp(b):
+    """Smooth 10.4 m long x 5.4 m wide stunt jump launch ramp along +X (Z=0..2.35 m, curved takeoff)."""
+    # Slots: 0=Concrete deck, 1=HazardYellow side stripes, 2=MetalDark side struts
+    length = 10.4
+    half_w = 2.7
+    segs = 8
+    x_start = -length * 0.5
+    max_h = 2.35
+
+    def z_of(t):
+        # Smooth quadratic takeoff ramp (zero entry lip at t=0, ~22 deg launch lip at t=1)
+        return max_h * (0.35 * t + 0.65 * t * t)
+
+    for i in range(segs):
+        t0, t1 = i / float(segs), (i + 1) / float(segs)
+        x0, x1 = x_start + t0 * length, x_start + t1 * length
+        z0, z1 = z_of(t0), z_of(t1)
+        # Top drivable ramp surface (+Z normal)
+        b.add_quad(0, (x0, -half_w, z0), (x1, -half_w, z1), (x1, +half_w, z1), (x0, +half_w, z0))
+        # Solid side walls down to Z=-0.2 m so ramp sits flush on slightly sloped roads
+        b.add_quad(2, (x0, -half_w, -0.2), (x1, -half_w, -0.2), (x1, -half_w, z1), (x0, -half_w, z0))
+        b.add_quad(2, (x1, +half_w, -0.2), (x0, +half_w, -0.2), (x0, +half_w, z0), (x1, +half_w, z1))
+        # High-visibility hazard curb strips on both edges
+        for s in (-1.0, 1.0):
+            cy = s * (half_w - 0.14)
+            b.add_quad(1, (x0, cy - 0.14, z0 + 0.03), (x1, cy - 0.14, z1 + 0.03),
+                       (x1, cy + 0.14, z1 + 0.03), (x0, cy + 0.14, z0 + 0.03))
+    # Rear vertical wall at launch end (+X) & bottom cap
+    x_end = x_start + length
+    b.add_quad(2, (x_end, -half_w, -0.2), (x_end, +half_w, -0.2), (x_end, +half_w, max_h), (x_end, -half_w, max_h))
+    b.add_quad(2, (x_start, +half_w, -0.2), (x_end, +half_w, -0.2), (x_end, -half_w, -0.2), (x_start, -half_w, -0.2))

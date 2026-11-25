@@ -4,6 +4,7 @@
 #include "Audio/BNAudioSubsystem.h"
 #include "Camera/CameraComponent.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
+#include "CollisionQueryParams.h"
 #include "Components/PointLightComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SpotLightComponent.h"
@@ -32,28 +33,27 @@
 namespace
 {
 	constexpr float CmPerSecToKmh = 0.036f;
-	constexpr float AirborneAngularDamping = 3.f;
-	constexpr float MinSpeedForSlipKmh = 5.f;
-	constexpr int32 FirstRearWheel = 2; // wheel setups: FL, FR, BL, BR
-	/** Steering needed to start a drift with the handbrake, and to count as "into the turn" while holding one. */
-	constexpr float DriftStartMinSteer = 0.3f;
-	constexpr float DriftHoldMinSteer = 0.1f;
-	constexpr float DriftEndSpeedFraction = 0.66f;
-	/** Fastest the car is turned by the assist (deg/s), so drifts steer smoothly without snapping. */
-	constexpr float MaxAssistYawRate = 125.f;
-	constexpr float PlayerGripAssistDegPerSec = 55.f;
-	constexpr float MinNormalAssistSpeedKmh = 25.f;
+	constexpr float GroundedAngularDamping = 0.15f;
+	constexpr double AirborneTiltDamping = 2.8;
+	constexpr double AirborneTiltStrength = 125.0;
+	constexpr double AirborneTiltSpeedLimit = 70.0;
+	constexpr double TakeoffSpeedAllowance = 155.0;
+	constexpr double ImpactLiftAllowance = 65.0;
+	constexpr float ImpactReboundSeconds = 0.20f;
+	constexpr float RecoverySampleInterval = 0.35f;
+	constexpr double RecoveryLiftCm = 45.0;
 	/** Rest rotation of every Phys_Wheel_* bone in component space (measured; see Vehicle.WheelsAligned). */
 	const FRotator WheelBoneRest(0.f, -90.f, 90.f);
 	const TCHAR* const WheelBones[] = { TEXT("Phys_Wheel_FL"), TEXT("Phys_Wheel_FR"), TEXT("Phys_Wheel_BL"), TEXT("Phys_Wheel_BR") };
 
 	// Light placement from SM_SportsCar bounds: nose at x ~ +247 cm, tail at x ~ -223 cm. Both sit just
 	// outside the body: a light inside or touching the shell floods the car itself and overexposes it.
-	constexpr float HeadlightCandelas = 8000.f;
-	constexpr float HeadlightRange = 5000.f;
-	const FLinearColor HeadlightColour(1.f, 0.95f, 0.85f);
-	constexpr float TaillightCandelas = 3.f;
-	constexpr float TaillightRange = 300.f;
+	constexpr float HeadlightCandelas = 3400.f;
+	constexpr float AiHeadlightCandelas = 1050.f;
+	constexpr float HeadlightRange = 4600.f;
+	const FLinearColor HeadlightColour(1.f, 0.94f, 0.84f);
+	constexpr float TaillightCandelas = 2.6f;
+	constexpr float TaillightRange = 280.f;
 	const FLinearColor TaillightColour(1.f, 0.05f, 0.02f);
 
 	constexpr float ExhaustFlameRange = 70.f;
@@ -90,7 +90,7 @@ namespace
 		for (int32 i = 0; i < UE_ARRAY_COUNT(WheelBones); ++i)
 		{
 			Move.WheelSetups[i].BoneName = WheelBones[i];
-			Move.WheelSetups[i].WheelClass = i < FirstRearWheel ? UBNWheelFront::StaticClass() : UBNWheelRear::StaticClass();
+			Move.WheelSetups[i].WheelClass = i < ABNVehiclePawn::FirstRearWheelIndex ? UBNWheelFront::StaticClass() : UBNWheelRear::StaticClass();
 		}
 
 		// Chaos disables the whole engine simulation when this curve is empty.
@@ -194,13 +194,15 @@ ABNVehiclePawn::ABNVehiclePawn()
 		USpotLightComponent* Head = CreateDefaultSubobject<USpotLightComponent>(Side < 0.f ? TEXT("HeadlightL") : TEXT("HeadlightR"));
 		Head->SetupAttachment(Body);
 		Head->SetRelativeLocation(FVector(265.f, Side * 75.f, 70.f));
-		Head->SetRelativeRotation(FRotator(-4.f, 0.f, 0.f));
+		Head->SetRelativeRotation(FRotator(-6.f, 0.f, 0.f));
 		Head->SetIntensityUnits(ELightUnits::Candelas);
 		Head->SetIntensity(HeadlightCandelas);
+		Head->SetSpecularScale(0.60f);
 		Head->SetLightColor(HeadlightColour);
 		Head->SetAttenuationRadius(HeadlightRange);
-		Head->SetInnerConeAngle(14.f);
-		Head->SetOuterConeAngle(32.f);
+		Head->SetSourceRadius(18.f);
+		Head->SetInnerConeAngle(18.f);
+		Head->SetOuterConeAngle(42.f);
 		CarLights.Add(Head);
 
 		UPointLightComponent* Tail = CreateDefaultSubobject<UPointLightComponent>(Side < 0.f ? TEXT("TaillightL") : TEXT("TaillightR"));
@@ -228,6 +230,19 @@ ABNVehiclePawn::ABNVehiclePawn()
 		Light->SetCastShadows(false);
 		Light->SetVisibility(false);
 	}
+
+	UnderglowLight = CreateDefaultSubobject<USpotLightComponent>(TEXT("UnderglowLight"));
+	UnderglowLight->SetupAttachment(Body);
+	UnderglowLight->SetRelativeLocation(FVector(0.f, 0.f, 34.f));
+	UnderglowLight->SetRelativeRotation(FRotator(-90.f, 0.f, 0.f));
+	UnderglowLight->SetIntensityUnits(ELightUnits::Candelas);
+	UnderglowLight->SetIntensity(220.f);
+	UnderglowLight->SetAttenuationRadius(260.f);
+	UnderglowLight->SetSourceRadius(65.f);
+	UnderglowLight->SetInnerConeAngle(54.f);
+	UnderglowLight->SetOuterConeAngle(80.f);
+	UnderglowLight->SetCastShadows(false);
+	UnderglowLight->SetVisibility(false);
 }
 
 void ABNVehiclePawn::BeginPlay()
@@ -242,8 +257,12 @@ void ABNVehiclePawn::BeginPlay()
 	}
 	if (USkeletalMeshComponent* Body = GetMesh())
 	{
+		Body->SetAngularDamping(GroundedAngularDamping);
+		Body->SetAllUseCCD(true);
+		Body->SetAllBodiesNotifyRigidBodyCollision(true);
 		Body->OnComponentHit.AddUniqueDynamic(this, &ABNVehiclePawn::OnVehicleHit);
 	}
+	GroundedSample = RecoveryPose = GetActorTransform();
 	LastGear = GetChaosMovement()->GetCurrentGear();
 
 	if (IsPlayerControlled())
@@ -255,6 +274,16 @@ void ABNVehiclePawn::BeginPlay()
 		if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
 		{
 			Story->EnsureIntroShown(this);
+		}
+	}
+	else
+	{
+		for (ULocalLightComponent* Light : CarLights)
+		{
+			if (USpotLightComponent* Spot = Cast<USpotLightComponent>(Light))
+			{
+				Spot->SetIntensity(AiHeadlightCandelas);
+			}
 		}
 	}
 }
@@ -317,24 +346,7 @@ void ABNVehiclePawn::Tick(float DeltaSeconds)
 		? GetWorld()->GetWorldSettings()->GetEffectiveTimeDilation() : 1.f;
 	const float RealDt = DeltaSeconds / FMath::Max(WorldDilation, 0.05f);
 
-	// Damp spin in the air and gently self-right roll/pitch so hill crests & knocks always land on all 4 wheels.
-	const bool bGrounded = IsOnGround();
-	USkeletalMeshComponent* ChassisBody = GetMesh();
-	ChassisBody->SetAngularDamping(bGrounded ? 0.15f : AirborneAngularDamping);
-	if (!bGrounded)
-	{
-		FVector AirVel = ChassisBody->GetPhysicsLinearVelocity();
-		if (AirVel.Z > 260.f)
-		{
-			AirVel.Z = 260.f;
-			ChassisBody->SetPhysicsLinearVelocity(AirVel);
-		}
-		FVector AirAng = ChassisBody->GetPhysicsAngularVelocityInDegrees();
-		const FRotator Rot = GetActorRotation();
-		AirAng.X = FMath::Clamp(AirAng.X - Rot.Roll * 2.2f * DeltaSeconds * 10.f, -55.f, 55.f);
-		AirAng.Y = FMath::Clamp(AirAng.Y - Rot.Pitch * 2.2f * DeltaSeconds * 10.f, -55.f, 55.f);
-		ChassisBody->SetPhysicsAngularVelocityInDegrees(AirAng);
-	}
+	UpdateChassisStability(DeltaSeconds);
 
 	if (bInputLocked)
 	{
@@ -364,6 +376,80 @@ void ABNVehiclePawn::Tick(float DeltaSeconds)
 	if (Move->GetCurrentGear() < 0 && GetSpeedKmh() < -MaxReverseSpeedKmh)
 	{
 		Move->SetBrakeInput(0.f); // in reverse the brake pedal is the throttle
+	}
+}
+
+void ABNVehiclePawn::UpdateChassisStability(float DeltaSeconds)
+{
+	USkeletalMeshComponent* Body = GetMesh();
+	const UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
+	const int32 WheelCount = Move->Wheels.Num();
+	int32 Contacts = 0;
+	FVector ContactPoints[UE_ARRAY_COUNT(WheelBones)] = {};
+	for (int32 Index = 0; Index < FMath::Min<int32>(WheelCount, UE_ARRAY_COUNT(WheelBones)); ++Index)
+	{
+		const FWheelStatus& Wheel = Move->GetWheelState(Index);
+		Contacts += Wheel.bInContact;
+		ContactPoints[Index] = Wheel.ContactPoint;
+	}
+
+	const FVector Up = GetActorUpVector();
+	const bool bGrounded = Contacts > 0;
+	FVector Vel = Body->GetPhysicsLinearVelocity();
+	if (Contacts == UE_ARRAY_COUNT(WheelBones))
+	{
+		const FVector Axles = ContactPoints[0] + ContactPoints[1] - ContactPoints[2] - ContactPoints[3];
+		const FVector Track = ContactPoints[1] + ContactPoints[3] - ContactPoints[0] - ContactPoints[2];
+		SupportNormal = FVector::CrossProduct(Axles, Track).GetSafeNormal();
+	}
+
+	// Trim suspension rebound at takeoff against the last supported plane. Once airborne, gravity owns the arc.
+	double AllowedRise = TNumericLimits<double>::Max();
+	if ((bGrounded || bWasGrounded) && SupportNormal.Z > 0.6 && Vel.Z > TakeoffSpeedAllowance)
+	{
+		const double RampRise = -(Vel.X * SupportNormal.X + Vel.Y * SupportNormal.Y) / SupportNormal.Z;
+		AllowedRise = FMath::Max(0.0, RampRise) + TakeoffSpeedAllowance;
+	}
+	if (ImpactReboundRemaining > 0.f)
+	{
+		AllowedRise = FMath::Min(AllowedRise, ImpactRiseLimit);
+		ImpactReboundRemaining -= DeltaSeconds;
+	}
+	if (Vel.Z > AllowedRise)
+	{
+		Vel.Z = AllowedRise;
+		Body->SetPhysicsLinearVelocity(Vel);
+	}
+	LastVerticalSpeed = Vel.Z;
+	bWasGrounded = bGrounded;
+
+	if (!bGrounded)
+	{
+		FVector Spin = Body->GetPhysicsAngularVelocityInDegrees();
+		const FVector Axis = FVector::CrossProduct(Up, FVector::UpVector);
+		const FVector Tilt = (FVector(Spin.X, Spin.Y, 0.f) * FMath::Exp(-AirborneTiltDamping * DeltaSeconds)
+			+ Axis * AirborneTiltStrength * DeltaSeconds).GetClampedToMaxSize(AirborneTiltSpeedLimit);
+		Body->SetPhysicsAngularVelocityInDegrees(FVector(Tilt.X, Tilt.Y, Spin.Z));
+	}
+
+	if (!bGrounded || Up.Z < 0.85)
+	{
+		GroundedSampleSeconds = 0.f;
+		return;
+	}
+	GroundedSampleSeconds += DeltaSeconds;
+	if (GroundedSampleSeconds >= RecoverySampleInterval)
+	{
+		GroundedSampleSeconds = 0.f;
+		const FVector Location = GetActorLocation();
+		FHitResult Ground;
+		if (GetWorld()->LineTraceSingleByObjectType(Ground, Location, Location - FVector(0.f, 0.f, 135.f),
+			FCollisionObjectQueryParams(ECC_WorldStatic), FCollisionQueryParams(SCENE_QUERY_STAT(BNRecoveryGround), false, this))
+			&& Ground.ImpactNormal.Z > 0.65)
+		{
+			RecoveryPose = GroundedSample;
+			GroundedSample = GetActorTransform();
+		}
 	}
 }
 
@@ -427,6 +513,7 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 	if (IsPlayerControlled())
 	{
 		BoostState.UpdateSpeedbreaker(RealDt, bSpeedbreakerWanted, bInputLocked, SpeedKmh, Boost);
+		UpdateSlipstream(RealDt, SpeedKmh, bOnGround);
 	}
 	else
 	{
@@ -466,7 +553,8 @@ void ABNVehiclePawn::UpdateBoostAndEffects(float DeltaSeconds, float RealDt)
 	{
 		const float SurgeAccel = (BoostState.bNosActive ? Boost.NosAccelCmPerSec2 : 0.f)
 			+ (BoostState.LaunchBoostRemaining > 0.f ? Boost.LaunchBoostAccelCmPerSec2 : 0.f)
-			+ (DriftExitBoostRemaining > 0.f ? 850.f : 0.f);
+			+ (DriftExitBoostRemaining > 0.f ? 850.f : 0.f)
+			+ BoostState.GetSlipstreamAccelCmPerSec2(Boost);
 		if (SurgeAccel > 0.f)
 		{
 			USkeletalMeshComponent* Body = GetMesh();
@@ -578,15 +666,20 @@ void ABNVehiclePawn::OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* Oth
 
 	// Anti-launch & wall-glance physics stabilizer: kill absurd Chaos vertical rocket bounces & flip spins
 	// on wall/barrier/curb/car impacts so crashes slide cleanly like Most Wanted instead of catapulting into the air.
-	if (FMath::Abs(Hit.ImpactNormal.Z) < 0.65f && ImpulseMag > 25000.f)
+	if ((OtherCar || FMath::Abs(Hit.ImpactNormal.Z) < 0.65f) && ImpulseMag > 25000.f)
 	{
 		if (USkeletalMeshComponent* Body = GetMesh())
 		{
 			FVector Vel = Body->GetPhysicsLinearVelocity();
 			bool bAdjustedVel = false;
-			if (Vel.Z > 150.f)
+			if (ImpactReboundRemaining <= 0.f)
 			{
-				Vel.Z = 150.f;
+				ImpactRiseLimit = FMath::Max(LastVerticalSpeed, ImpactLiftAllowance);
+			}
+			ImpactReboundRemaining = ImpactReboundSeconds;
+			if (Vel.Z > ImpactRiseLimit)
+			{
+				Vel.Z = ImpactRiseLimit;
 				bAdjustedVel = true;
 			}
 			const FVector Normal2D = FVector(Hit.ImpactNormal.X, Hit.ImpactNormal.Y, 0.f).GetSafeNormal();
@@ -644,171 +737,6 @@ void ABNVehiclePawn::OnVehicleHit(UPrimitiveComponent* HitComponent, AActor* Oth
 	}
 }
 
-bool ABNVehiclePawn::IsOnGround() const
-{
-	const UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
-	for (int32 i = 0; i < Move->Wheels.Num(); ++i)
-	{
-		if (Move->GetWheelState(i).bInContact)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-float ABNVehiclePawn::GetSlipAngleDegrees() const
-{
-	const FVector Velocity = GetVelocity().GetSafeNormal2D();
-	if (FMath::Abs(GetSpeedKmh()) < MinSpeedForSlipKmh || Velocity.IsNearlyZero())
-	{
-		return 0.f;
-	}
-	const FVector Forward = GetActorForwardVector().GetSafeNormal2D();
-	return FMath::RadiansToDegrees(FMath::Atan2(FVector::CrossProduct(Forward, Velocity).Z, FVector::DotProduct(Forward, Velocity)));
-}
-
-void ABNVehiclePawn::UpdateDrift(float DeltaSeconds)
-{
-	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
-	const bool bHandbrake = Move->GetHandbrakeInput();
-	if (bHandbrake != bRearAbsBypassed)
-	{
-		bRearAbsBypassed = bHandbrake;
-		for (int32 i = FirstRearWheel; i < Move->Wheels.Num(); ++i)
-		{
-			Move->SetABSEnabled(i, !bHandbrake && Move->Wheels[i]->bABSEnabled);
-		}
-	}
-
-	const float Speed = FMath::Abs(GetSpeedKmh());
-	const float Steer = Move->GetSteeringInput();
-	const float Throttle = Move->GetThrottleInput();
-	if (!bDrifting && bHandbrake && Speed >= Drift.MinSpeedKmh && FMath::Abs(Steer) >= DriftStartMinSteer)
-	{
-		bDrifting = true;
-		DriftHoldSeconds = 0.f;
-		DriftDirection = Steer > 0.f ? -1.f : 1.f;
-		DriftEntrySpeed = GetMesh()->GetPhysicsLinearVelocity().Size2D();
-		CurrentDriftTargetSlip = GetSlipAngleDegrees();
-	}
-
-	if (bDrifting)
-	{
-		if (Speed >= Drift.MinSpeedKmh && FMath::Abs(GetSlipAngleDegrees()) >= 10.f)
-		{
-			DriftHoldSeconds += DeltaSeconds;
-		}
-		const float Into = -Steer * DriftDirection;
-		const float TargetAngle = Into > DriftHoldMinSteer
-			? FMath::GetMappedRangeValueClamped(FVector2f(DriftHoldMinSteer, 1.f), FVector2f(Drift.MinAngleDegrees, Drift.MaxAngleDegrees), Into)
-			: 0.f;
-		const float RawTarget = TargetAngle * DriftDirection;
-		const float InterpRate = (TargetAngle == 0.f || RawTarget * CurrentDriftTargetSlip < 0.f) ? 8.5f : 6.5f;
-		CurrentDriftTargetSlip = FMath::FInterpTo(CurrentDriftTargetSlip, RawTarget, DeltaSeconds, InterpRate);
-
-		const bool bUnwound = TargetAngle == 0.f && FMath::Abs(GetSlipAngleDegrees()) < Drift.ExitAngleDegrees;
-		if (bUnwound || Speed < Drift.MinSpeedKmh * DriftEndSpeedFraction)
-		{
-			// Reward a sustained clean drift exit with a punchy arcade turbo surge & NOS drip!
-			if (bUnwound && IsPlayerControlled() && DriftHoldSeconds >= 1.1f && Speed >= 45.f)
-			{
-				DriftExitBoostRemaining = 0.85f;
-				DriftExitBannerRemaining = 1.6f;
-				GearShiftKick = FMath::Max(GearShiftKick, 0.75f);
-				BoostState.TriggerBackfire(0.32f);
-				BoostState.NosFraction = FMath::Min(1.f, BoostState.NosFraction + 0.08f);
-				if (UBNAudioSubsystem* Audio = GetWorld() ? GetWorld()->GetSubsystem<UBNAudioSubsystem>() : nullptr)
-				{
-					Audio->PlaySfx2D(EBNSfxId::NosIgnite, 0.52f);
-				}
-			}
-			bDrifting = false;
-			DriftHoldSeconds = 0.f;
-			CurrentDriftTargetSlip = 0.f;
-		}
-		else if (IsOnGround())
-		{
-			ApplyDriftAssist(DeltaSeconds, CurrentDriftTargetSlip, Throttle);
-		}
-	}
-	SetRearGrip(bDrifting ? 0.f : FMath::Min(1.f, RearGripBlend + DeltaSeconds / Drift.GripRecoverSeconds));
-}
-
-void ABNVehiclePawn::UpdateNormalGripAssist(float DeltaSeconds)
-{
-	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
-	const float SpeedKmh = FMath::Abs(GetSpeedKmh());
-	if (bDrifting || bInputLocked || !IsPlayerControlled() || !IsOnGround()
-		|| Move->GetHandbrakeInput() || SpeedKmh < MinNormalAssistSpeedKmh)
-	{
-		return;
-	}
-	USkeletalMeshComponent* Body = GetMesh();
-	const FVector Velocity = Body->GetPhysicsLinearVelocity();
-	if (Velocity.Size2D() < 600.f)
-	{
-		return;
-	}
-	const float Slip = GetSlipAngleDegrees();
-	const float AbsSlip = FMath::Abs(Slip);
-	if (AbsSlip > 0.5f && AbsSlip < 35.f)
-	{
-		const float MaxTurn = PlayerGripAssistDegPerSec * DeltaSeconds;
-		const float Turn = -FMath::Clamp(Slip, -MaxTurn, MaxTurn);
-		const FVector Travel = FRotator(0.f, Turn, 0.f).RotateVector(FVector(Velocity.X, Velocity.Y, 0.f));
-		Body->SetPhysicsLinearVelocity(FVector(Travel.X, Travel.Y, Velocity.Z));
-	}
-	if (FMath::Abs(Move->GetSteeringInput()) < 0.08f)
-	{
-		const FVector Spin = Body->GetPhysicsAngularVelocityInDegrees();
-		Body->SetPhysicsAngularVelocityInDegrees(FVector(Spin.X, Spin.Y, FMath::FInterpTo(Spin.Z, 0.f, DeltaSeconds, 5.f)));
-	}
-}
-
-void ABNVehiclePawn::ApplyDriftAssist(float DeltaSeconds, float TargetSlip, float Throttle)
-{
-	USkeletalMeshComponent* Body = GetMesh();
-	const FVector Velocity = Body->GetPhysicsLinearVelocity();
-	const float Slip = GetSlipAngleDegrees();
-
-	if (Throttle < 0.15f || GetChaosMovement()->GetBrakeInput() > 0.1f)
-	{
-		DriftEntrySpeed = FMath::Max(0.f, DriftEntrySpeed - 650.f * DeltaSeconds);
-	}
-
-	const float SpeedScale = FMath::GetMappedRangeValueClamped(FVector2f(80.f, 200.f), FVector2f(1.0f, 0.55f), FMath::Abs(GetSpeedKmh()));
-	const float TravelYawRate = -Drift.LineTightness * SpeedScale * Slip;
-	const float DesiredYawRate = FMath::Clamp(TravelYawRate - Drift.AngleGain * (TargetSlip - Slip), -MaxAssistYawRate, MaxAssistYawRate);
-
-	const float Push = FMath::Max(Throttle, 0.f) * Drift.Thrust * DeltaSeconds;
-	const float Speed2D = FMath::Max(Velocity.Size2D(), FMath::Min(Velocity.Size2D() + Push, DriftEntrySpeed));
-	const float TravelYaw = FMath::RadiansToDegrees(FMath::Atan2(Velocity.Y, Velocity.X)) + TravelYawRate * DeltaSeconds;
-	const FVector Travel = FRotator(0.f, TravelYaw, 0.f).Vector() * Speed2D;
-	Body->SetPhysicsLinearVelocity(FVector(Travel.X, Travel.Y, Velocity.Z));
-	const FVector Spin = Body->GetPhysicsAngularVelocityInDegrees();
-	Body->SetPhysicsAngularVelocityInDegrees(FVector(Spin.X, Spin.Y, FMath::FInterpTo(Spin.Z, DesiredYawRate, DeltaSeconds, 14.f)));
-}
-
-void ABNVehiclePawn::SetRearGrip(float Blend)
-{
-	const bool bTractionControl = !bDrifting;
-	if (Blend == RearGripBlend && bTractionControl == bRearTractionControl && LastAppliedTireGripScale == ActiveTireGripScale)
-	{
-		return;
-	}
-	RearGripBlend = Blend;
-	bRearTractionControl = bTractionControl;
-	LastAppliedTireGripScale = ActiveTireGripScale;
-	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
-	for (int32 i = FirstRearWheel; i < Move->Wheels.Num(); ++i)
-	{
-		const UChaosVehicleWheel* Wheel = Move->Wheels[i];
-		Move->SetWheelFrictionMultiplier(i, Wheel->FrictionForceMultiplier * ActiveTireGripScale * FMath::Lerp(Drift.RearGripScale, 1.f, Blend));
-		Move->SetTractionControlEnabled(i, bTractionControl && Wheel->bTractionControlEnabled);
-	}
-}
-
 void ABNVehiclePawn::ApplyPhysicsStats(const FBNComputedVehicleStats& Stats)
 {
 	UChaosWheeledVehicleMovementComponent* Move = GetChaosMovement();
@@ -828,7 +756,7 @@ void ABNVehiclePawn::ApplyPhysicsStats(const FBNComputedVehicleStats& Stats)
 		if (const UChaosVehicleWheel* Wheel = Move->Wheels[i])
 		{
 			Move->SetWheelMaxBrakeTorque(i, Wheel->MaxBrakeTorque * Stats.BrakeScale);
-			if (i < FirstRearWheel)
+			if (i < FirstRearWheelIndex)
 			{
 				Move->SetWheelFrictionMultiplier(i, Wheel->FrictionForceMultiplier * ActiveTireGripScale);
 			}
@@ -871,6 +799,34 @@ void ABNVehiclePawn::ApplyPaintTint(const FLinearColor& PaintTint)
 	}
 }
 
+void ABNVehiclePawn::ApplyPaintFinish(EBNPaintFinish Finish)
+{
+	if (Visuals)
+	{
+		Visuals->ApplyPaintFinishPreset(Finish, Chassis);
+	}
+}
+
+void ABNVehiclePawn::ApplyRimPaint(const FLinearColor& RimTint)
+{
+	if (Visuals)
+	{
+		Visuals->ApplyRimPaint(RimTint, WheelMeshes);
+	}
+}
+
+void ABNVehiclePawn::ApplyUnderglow(const FLinearColor& NeonColor, bool bEnabled)
+{
+	bUnderglowEnabled = bEnabled;
+	UnderglowColor = NeonColor;
+	if (UnderglowLight)
+	{
+		UnderglowLight->SetLightColor(NeonColor);
+		UnderglowLight->SetIntensity(AreLightsOn() || bShowcaseMode ? 240.f : 120.f);
+		UnderglowLight->SetVisibility(bEnabled);
+	}
+}
+
 void ABNVehiclePawn::SetInputLocked(bool bLocked)
 {
 	const bool bWasLocked = bInputLocked;
@@ -902,8 +858,28 @@ void ABNVehiclePawn::ResetVehicle()
 	FRotator Heading = GetActorRotation();
 	Heading.Pitch = 0.f;
 	Heading.Roll = 0.f;
-	SetActorTransform(FTransform(Heading, GetActorLocation() + FVector(0.f, 0.f, 50.f)),
-		false, nullptr, ETeleportType::TeleportPhysics);
+	StopAndPlaceVehicle(GetActorLocation() + FVector(0.f, 0.f, 50.f), Heading.Quaternion());
+}
+
+void ABNVehiclePawn::FellOutOfWorld(const UDamageType& DamageType)
+{
+	if (!HasAuthority() && GetLocalRole() != ROLE_None)
+	{
+		return;
+	}
+	++RecoveryCount;
+	ResetTimeDilation();
+	StopAndPlaceVehicle(RecoveryPose.GetLocation() + FVector(0.f, 0.f, RecoveryLiftCm), RecoveryPose.GetRotation());
+}
+
+void ABNVehiclePawn::StopAndPlaceVehicle(const FVector& Location, const FQuat& Rotation)
+{
+	SetActorLocationAndRotation(Location, Rotation, false, nullptr, ETeleportType::TeleportPhysics);
 	GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
 	GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
+	bWasGrounded = false;
+	SupportNormal = FVector::UpVector;
+	LastVerticalSpeed = 0.0;
+	ImpactReboundRemaining = 0.f;
+	GroundedSampleSeconds = 0.f;
 }

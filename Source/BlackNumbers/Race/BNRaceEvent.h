@@ -81,6 +81,20 @@ public:
 	bool WasFailedBlownEngine() const { return bFailedBlownEngine; }
 	int32 GetLastDragPerfectShifts() const { return LastDragPerfectShifts; }
 	bool IsPlayerInStartRing() const { return bPlayerInStartRing; }
+	bool HasSplitDelta() const { return bHasSplitDelta && SplitBannerRemaining > 0.f; }
+	float GetLastSplitDeltaSeconds() const { return LastSplitDeltaSeconds; }
+	bool WasLastFinishNewRecord() const { return bLastFinishWasNewRecord; }
+	int32 GetLastRecordBonusCash() const { return LastRecordBonusCash; }
+
+	/** Queries upcoming sharp turn along the racing spline (+35m..+145m ahead); returns true when |Angle| >= 30 deg. */
+	bool GetUpcomingTurnCue(const ABNVehiclePawn* Car, float& OutTurnAngleDeg, float& OutDistanceMeters) const;
+
+	/** Pure helper scaling free-roam rival performance to player's upgrade tier and selected difficulty. */
+	static FBNComputedVehicleStats ComputeScaledRivalStats(EBNCarId RivalCar, int32 PlayerAvgTier,
+		EBNDifficulty Difficulty, float BaseSkill, float& OutScaledSkill);
+
+	/** Explicitly triggers mid-race police intervention (used automatically at ~35% progress & in tests). */
+	void TriggerInRacePoliceNow(int32 InitialHeat = 1);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Race")
 	TObjectPtr<UBNRaceDefinition> Definition;
@@ -99,6 +113,10 @@ public:
 	/** Left and right posts of the next gate. */
 	UPROPERTY(VisibleAnywhere, Category = "Race")
 	TArray<TObjectPtr<UStaticMeshComponent>> GatePosts;
+
+	/** Holographic directional chevrons on the outside of sharp upcoming corners (non-blocking visual cue). */
+	UPROPERTY(VisibleAnywhere, Category = "Race")
+	TArray<TObjectPtr<UStaticMeshComponent>> TurnBarriers;
 
 	EBNRaceState GetState() const { return State; }
 	const FBNRaceProgress& GetProgress() const { return Player.Progress; }
@@ -144,6 +162,7 @@ private:
 	bool bArmed = false;
 
 	int32 ActiveBossRank = 0;
+	int32 ActiveQualifierLayer = 0;
 	int32 ActiveBossDriftTarget = 0;
 	float ActiveBossSkill = 0.85f;
 	EBNCarId ActiveBossCarId = EBNCarId::KuroganeMSpec;
@@ -155,4 +174,11 @@ private:
 	bool bFailedTotaled = false;
 	bool bFailedBlownEngine = false;
 	int32 LastDragPerfectShifts = 0;
+	bool bInRacePoliceSpawned = false;
+	float TargetPbTime = 0.f;
+	float LastSplitDeltaSeconds = 0.f;
+	float SplitBannerRemaining = 0.f;
+	bool bHasSplitDelta = false;
+	bool bLastFinishWasNewRecord = false;
+	int32 LastRecordBonusCash = 0;
 };

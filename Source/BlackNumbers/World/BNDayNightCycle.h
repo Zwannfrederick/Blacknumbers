@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "World/BNRoadGraph.h"
 #include "World/BNTimeOfDay.h"
 #include "BNDayNightCycle.generated.h"
 
@@ -12,6 +13,25 @@ class APostProcessVolume;
 class UMaterialParameterCollection;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FBNNightChangedSignature, bool, bIsNight);
+
+UENUM(BlueprintType)
+enum class EBNWeatherMode : uint8
+{
+	AutoDistrict = 0,
+	WetDamp = 1,
+	LightRain = 2,
+	Count UMETA(Hidden)
+};
+
+/** Per-district regional wetness, sun azimuth shift, and atmospheric tint profile. */
+struct BLACKNUMBERS_API FBNDistrictAtmosphereProfile
+{
+	float Wetness = 0.35f;
+	float SunYawOffsetDeg = 0.f;
+	float FogDensityScale = 1.f;
+	FLinearColor FogTintScale = FLinearColor(1.f, 1.f, 1.f, 1.f);
+	FLinearColor SunColorScale = FLinearColor(1.f, 1.f, 1.f, 1.f);
+};
 
 /**
  * Drives sun, moon, sky light, fog and colour grading from a 24h clock.
@@ -41,6 +61,28 @@ public:
 
 	UFUNCTION(BlueprintPure, Category = "Time")
 	float GetNightFactor() const { return LastNightFactor; }
+
+	UFUNCTION(BlueprintCallable, Category = "Weather")
+	void SetWeatherMode(EBNWeatherMode NewMode);
+
+	UFUNCTION(BlueprintPure, Category = "Weather")
+	EBNWeatherMode GetWeatherMode() const { return WeatherMode; }
+
+	UFUNCTION(BlueprintPure, Category = "Weather")
+	float GetCurrentWetness() const { return CurrentWetness; }
+
+	UFUNCTION(BlueprintPure, Category = "Weather")
+	float GetRainIntensity() const { return CurrentRainIntensity; }
+
+	UFUNCTION(BlueprintPure, Category = "Weather")
+	EBNDistrict GetActiveDistrict() const { return ActiveDistrict; }
+
+	static const TCHAR* WeatherModeLabel(EBNWeatherMode Mode);
+	static FBNDistrictAtmosphereProfile GetDistrictAtmosphere(EBNDistrict District);
+	static float ComputeEffectiveWetness(EBNDistrict District, EBNWeatherMode Mode);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weather")
+	EBNWeatherMode WeatherMode = EBNWeatherMode::AutoDistrict;
 
 	UPROPERTY(BlueprintAssignable, Category = "Time")
 	FBNNightChangedSignature OnNightChanged;
@@ -98,10 +140,18 @@ public:
 	float SkyRecaptureHours = 2.0f;
 
 private:
+	void UpdateRegionalAtmosphere(float DeltaSeconds);
 	void ApplyLook();
 
 	float LastCaptureHour = -100.f;
 	float LastNightFactor = 0.f;
+	EBNDistrict ActiveDistrict = EBNDistrict::MerkezBulvar;
+	float CurrentWetness = 0.42f;
+	float CurrentRainIntensity = 0.f;
+	float CurrentSunYawOffset = 0.f;
+	float CurrentFogDensityScale = 1.f;
+	FLinearColor CurrentFogTintScale = FLinearColor(1.f, 1.f, 1.f, 1.f);
+	FLinearColor CurrentSunColorScale = FLinearColor(1.f, 1.f, 1.f, 1.f);
 	/** Last broadcast state, only for change detection: not saved, so PIE copies start false. Read IsNight() instead. */
 	bool bIsNight = false;
 

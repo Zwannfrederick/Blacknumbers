@@ -70,6 +70,30 @@ void FBNBoostState::UpdateSpeedbreaker(float RealDt, bool bWanted, bool bInputLo
 	}
 }
 
+void FBNBoostState::UpdateSlipstream(float RealDt, bool bInDraftPocket, bool bInputLocked, bool bOnGround, float SpeedKmh, const FBNBoostTuning& Tuning)
+{
+	const float Dt = FMath::Max(RealDt, 0.f);
+	if (bInDraftPocket && !bInputLocked && bOnGround && SpeedKmh >= Tuning.SlipstreamMinSpeedKmh)
+	{
+		bSlipstreaming = true;
+		SlipstreamCharge = FMath::Clamp(SlipstreamCharge + Tuning.SlipstreamBuildRate * Dt, 0.f, 1.f);
+		if (!bNosActive)
+		{
+			NosFraction = FMath::Clamp(NosFraction + Tuning.SlipstreamNosBonusPerSecond * SlipstreamCharge * Dt, 0.f, 1.f);
+		}
+	}
+	else
+	{
+		bSlipstreaming = false;
+		SlipstreamCharge = FMath::Max(0.f, SlipstreamCharge - Tuning.SlipstreamDecayRate * Dt);
+	}
+}
+
+float FBNBoostState::GetSlipstreamAccelCmPerSec2(const FBNBoostTuning& Tuning) const
+{
+	return SlipstreamCharge > 0.05f ? Tuning.SlipstreamMaxAccelCmPerSec2 * SlipstreamCharge : 0.f;
+}
+
 void FBNBoostState::UpdateCountdownLaunch(float RealDt, float PlayerThrottle, const FBNBoostTuning& Tuning)
 {
 	const float Dt = FMath::Max(RealDt, 0.f);

@@ -1,11 +1,15 @@
 #include "UI/BNRaceBriefingWidget.h"
 
 #include "Audio/BNAudioSubsystem.h"
+#include "Engine/GameInstance.h"
 #include "Engine/World.h"
+#include "Garage/BNGarageSubsystem.h"
+#include "Garage/BNGarageTypes.h"
 #include "Input/Events.h"
 #include "InputCoreTypes.h"
 #include "Race/BNRaceDefinition.h"
 #include "Race/BNRaceEvent.h"
+#include "Story/BNStorySubsystem.h"
 #include "UI/BNHUD.h"
 #include "UI/BNUITheme.h"
 #include "Vehicle/BNVehiclePawn.h"
@@ -92,12 +96,21 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 	const FLinearColor Accent = BriefingDisciplineColor(Disc);
 
 	FString DistrictName(TEXT("KARAMARA"));
+	FString RulerTag;
 	if (Event && Event->GetWorld())
 	{
 		if (const UBNRoadGraphSubsystem* RoadGraph = Event->GetWorld()->GetSubsystem<UBNRoadGraphSubsystem>();
 			RoadGraph && RoadGraph->HasGraph())
 		{
-			RoadGraph->GetDistrictAt(Event->GetActorLocation(), &DistrictName, nullptr);
+			const EBNDistrict Dist = RoadGraph->GetDistrictAt(Event->GetActorLocation(), &DistrictName, nullptr);
+			if (const UBNStorySubsystem* Story = Event->GetWorld()->GetGameInstance()
+				? Event->GetWorld()->GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
+			{
+				const FBNDistrictTerritoryInfo Terr = Story->GetState().GetDistrictTerritory(Dist);
+				RulerTag = Terr.bDistrictLiberated
+					? TEXT("  •  BÖLGE ELE GEÇİRİLDİ")
+					: FString::Printf(TEXT("  •  HÜKÜMDAR: #%02d %s"), Terr.RulerRank, *Terr.RulerName);
+			}
 		}
 	}
 
@@ -115,8 +128,36 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 		? TEXT("SOLO SKOR")
 		: FString::Printf(TEXT("%d RAKİP"), FMath::Max(1, Rivals));
 
-	const FString CashReward = (Disc == EBNRaceDiscipline::Drift) ? TEXT("$1,600+") : TEXT("$2,200 / $1,300");
-	const FString RepReward = (Disc == EBNRaceDiscipline::Drag) ? TEXT("+320 İTİBAR") : TEXT("+280 İTİBAR");
+	// Real single-source-of-truth payouts synchronized with FBNPlayerProfile::AwardRaceResult!
+	int32 FirstCash = 0, FirstRep = 0, SecondCash = 0, SecondRep = 0;
+	const int32 TotalRacers = (Disc == EBNRaceDiscipline::Drift) ? 1 : (FMath::Max(1, Rivals) + 1);
+	FBNPlayerProfile::EstimateRacePayout(Disc == EBNRaceDiscipline::Drift, 1, TotalRacers, 5000, FirstCash, FirstRep);
+	FBNPlayerProfile::EstimateRacePayout(Disc == EBNRaceDiscipline::Drift, 2, TotalRacers, 2500, SecondCash, SecondRep);
+
+	const FString CashReward = (Disc == EBNRaceDiscipline::Drift)
+		? FString::Printf(TEXT("$%s+"), *FString::FormatAsNumber(FirstCash))
+		: FString::Printf(TEXT("$%s / $%s"), *FString::FormatAsNumber(FirstCash), *FString::FormatAsNumber(SecondCash));
+
+	// Personal Best record for this race track
+	FString PbLabel = TEXT("HENÜZ YOK");
+	if (Def && Event && Event->GetWorld() && Event->GetWorld()->GetGameInstance())
+	{
+		if (const UBNProgressionSubsystem* Prog = Event->GetWorld()->GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>())
+		{
+			if (Disc == EBNRaceDiscipline::Drift)
+			{
+				if (const int32* BestDrift = Prog->GetProfile().BestDriftScores.Find(Def->GetName()))
+				{
+					PbLabel = FString::Printf(TEXT("%s PUAN"), *FString::FormatAsNumber(*BestDrift));
+				}
+			}
+			else if (const float* BestTime = Prog->GetProfile().BestRaceTimes.Find(Def->GetName()))
+			{
+				PbLabel = ABNHUD::FormatRaceTime(*BestTime);
+			}
+		}
+	}
+	const FString RepReward = FString::Printf(TEXT("+%d  |  PB: %s"), FirstRep, *PbLabel);
 
 	const FSlateBrush* VigFull = BNUITheme::GetVignetteFullBrush();
 	const bool bHasVig = VigFull != BNUITheme::WhiteBrush();
@@ -175,7 +216,7 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(14.f, 0.f, 0.f, 0.f))
 							[
 								SNew(STextBlock)
-								.Text(FText::FromString(FString::Printf(TEXT("BÖLGE: %s"), *DistrictName)))
+								.Text(FText::FromString(FString::Printf(TEXT("BÖLGE: %s%s"), *DistrictName, *RulerTag)))
 								.Font(BNUITheme::Font(10, true))
 								.ColorAndOpacity(BNUITheme::SteelMuted)
 							]

@@ -15,6 +15,7 @@ import unreal
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bn_materials  # noqa: E402
 import bn_meshes  # noqa: E402
+import fetch_cc0_models  # noqa: E402
 import karamara_network as knet  # noqa: E402
 import karamara_scenery as kscene  # noqa: E402
 
@@ -213,7 +214,15 @@ def build_road_geometry(nodes, edges):
         w = e["width"]
         is_dirt = e["dirt"]
         is_carsi = (e["node_a"] in (8, 9, 10, 11) and e["node_b"] in (8, 9, 10, 11) and abs(pts[0][1] - 16000.0) < 200.0)
-        mat = "MI_Dirt" if is_dirt else ("MI_Cobblestone" if is_carsi else "MI_Asphalt")
+        is_old_yamac = (e["district"] == knet.DIST_YAMAC and e["node_a"] in (32, 33, 34) and e["node_b"] in (32, 33, 34))
+        if is_dirt:
+            mat = "MI_Dirt"
+        elif is_carsi or is_old_yamac:
+            mat = "MI_Cobblestone"
+        elif e["highway"]:
+            mat = "MI_HighwayAsphalt"
+        else:
+            mat = "MI_Asphalt"
         phys = "PM_Dirt" if is_dirt else "PM_Asphalt"
 
         if is_dirt:
@@ -243,7 +252,7 @@ def build_road_geometry(nodes, edges):
             roads.add("RoadSeg", (mx, my, mz - thick_cm * 0.5), (slab_len_m, slab_w_m, thick_cm / 100.0),
                       mat, phys, collision=True, yaw=yaw, pitch=pitch, cast_shadow=(mz > 120.0))
 
-            # Lane markings (center yellow dashes + white edges on paved roads, culled past 280 m)
+            # Lane markings (center yellow dashes, white edges, + dashed multi-lane dividers on >= 18m boulevards/highways)
             if not is_dirt:
                 roads.add("CenterLine", (mx, my, mz + 1.8), (slab_len_m * 0.52, 0.16, 0.02),
                           "MI_LineYellow", None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=28000)
@@ -252,6 +261,10 @@ def build_road_geometry(nodes, edges):
                     eo = (w * 0.5 - 55.0) * side
                     roads.add("EdgeLine", (mx + nx * eo, my + ny * eo, mz + 1.5), (slab_len_m, 0.14, 0.02),
                               "MI_LineWhite", None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=28000)
+                    if w >= 1800.0:
+                        lo = (w * 0.25) * side
+                        roads.add("LaneDash", (mx + nx * lo, my + ny * lo, mz + 1.6), (slab_len_m * 0.42, 0.12, 0.02),
+                                  "MI_LineWhite", None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=26000)
 
                 # Raised urban sidewalks along flat Merkez / Sanayi / Yamac streets — strictly clear of junctions!
                 if not e["highway"] and e["district"] in (knet.DIST_MERKEZ, knet.DIST_SANAYI, knet.DIST_YAMAC):
@@ -431,6 +444,39 @@ def build_gameplay_actors(edges):
             p.set_editor_property("prop_kind", kind)
             p.get_editor_property("prop_mesh").set_material(0, MI[mat])
 
+    dist_enums = [
+        unreal.BNDistrict.MERKEZ_BULVAR,
+        unreal.BNDistrict.DOGU_SANAYI,
+        unreal.BNDistrict.ESKI_LIMAN,
+        unreal.BNDistrict.KUZEY_VIYADUGU,
+        unreal.BNDistrict.YAMAC_MAHALLESI,
+        unreal.BNDistrict.KUZEY_GECIDI,
+    ]
+
+    # 6 Open-World Roadside Speed Traps (1 per borough)
+    for trap_id, tx, ty, tz, tyaw, tname, tdist, min_kmh, trad in knet.SPEED_TRAPS:
+        st = spawn(unreal.BNSpeedTrap, trap_id, (tx, ty, tz), yaw=tyaw, folder="Gameplay/Activities")
+        st.set_editor_property("trap_id", trap_id)
+        st.set_editor_property("display_name", tname)
+        st.set_editor_property("district", dist_enums[tdist])
+        st.set_editor_property("min_trigger_speed_kmh", float(min_kmh))
+        st.set_editor_property("trigger_radius_cm", float(trad))
+        st.get_editor_property("post_mesh").set_material(0, MI["MI_Metal_Dark"])
+        st.get_editor_property("camera_head_mesh").set_material(0, MI["MI_HazardYellow"])
+
+    # 4 Open-World Stunt Jump Ramps
+    for jump_id, jx, jy, jz, jyaw, jname, jdist in knet.STUNT_JUMPS:
+        jp = spawn(unreal.BNStuntJump, jump_id, (jx, jy, jz), yaw=jyaw, folder="Gameplay/Activities")
+        jp.set_editor_property("jump_id", jump_id)
+        jp.set_editor_property("display_name", jname)
+        jp.set_editor_property("district", dist_enums[jdist])
+        if "SM_BN_JumpRamp" in MESHES:
+            rmesh = jp.get_editor_property("ramp_mesh")
+            rmesh.set_static_mesh(MESHES["SM_BN_JumpRamp"])
+            rmesh.set_editor_property("relative_scale3d", unreal.Vector(1.0, 1.0, 1.0))
+            rmesh.set_editor_property("relative_location", unreal.Vector(0.0, 0.0, 0.0))
+            rmesh.set_editor_property("relative_rotation", unreal.Rotator(0.0, 0.0, 0.0))
+
 
 def build_races(nodes, edges, lookup):
     """Builds all 11 unique Karamara race DataAssets (Circuit, Sprint, Drift, Drag) & places holographic beacons."""
@@ -499,6 +545,10 @@ def build_lighting():
     fog = spawn(unreal.ExponentialHeightFog, "HeightFog", folder="Lighting")
     post = spawn(unreal.PostProcessVolume, "GlobalGrade", folder="Lighting")
     post.set_editor_property("unbound", True)
+    if "SM_BN_SkyDome" in MESHES:
+        sky_dome = place_mesh("Karamara_CloudSkyDome", "SM_BN_SkyDome", (0.0, 0.0, -2400.0),
+                              collision=False, folder="Lighting")
+        sky_dome.static_mesh_component.set_editor_property("cast_shadow", False)
 
     cycle = spawn(unreal.BNDayNightCycle, "DayNightCycle", folder="Lighting")
     cycle.set_editor_property("time_of_day", 17.4)  # Iconic golden-amber late afternoon over Karamara
@@ -526,10 +576,14 @@ def build_lighting():
 # Main Build Execution
 # ---------------------------------------------------------------------------
 reset_level()
+world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+world.get_world_settings().set_editor_property("kill_z", -500.0)  # Just below Mara Sea at -320 cm.
 nodes, edges, lookup = knet.build_network()
 clearance = kscene.build_road_clearance_checker(edges)
 scenery_batch = HismBatcher("Karamara_CityScenery_HISM", "Environment/HISM")
-ctx = dict(spawn=spawn, block=block, place_mesh=place_mesh, hism=scenery_batch, MI=MI, PM=PM, meshes=MESHES, cube=CUBE)
+cc0_meshes = fetch_cc0_models.load_available_cc0_meshes()
+ctx = dict(spawn=spawn, block=block, place_mesh=place_mesh, hism=scenery_batch,
+           MI=MI, PM=PM, meshes=MESHES, cc0=cc0_meshes, cube=CUBE)
 
 kscene.build_terrain_and_sea(ctx)
 build_road_geometry(nodes, edges)
@@ -546,6 +600,6 @@ spawn(unreal.PlayerStart, "PlayerStart", (px, py, pz), yaw=pyaw, folder="Gamepla
 
 if not levels.save_current_level():
     raise RuntimeError("Could not save " + MAP_PATH)
-unreal.log("BN: built %s (2 km x 2 km, 6 districts, 9 races) with %d actors" % (
-    MAP_PATH, len(actors.get_all_level_actors())
+unreal.log("BN: built %s (2 km x 2 km, 6 districts, 11 races, %d traps, %d jumps, %d CC0 meshes) with %d actors" % (
+    MAP_PATH, len(knet.SPEED_TRAPS), len(knet.STUNT_JUMPS), len(cc0_meshes), len(actors.get_all_level_actors())
 ))

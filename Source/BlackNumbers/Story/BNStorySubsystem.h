@@ -6,6 +6,7 @@
 #include "BNStorySubsystem.generated.h"
 
 class ABNVehiclePawn;
+class ABNRaceEvent;
 class UBNSaveGame;
 
 /** Non-blocking live crew/rival radio or phone message banner shown during gameplay. */
@@ -80,7 +81,9 @@ public:
 	void MoveDossierSelection(int32 Delta);
 	void CycleDossierTab();
 	void DismissActiveCard(ABNVehiclePawn* PlayerCar);
-	bool ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar);
+	bool ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar, int32 RequestedRank = INDEX_NONE);
+	static ABNRaceEvent* FindProgramRace(UWorld* World, FName RaceAsset);
+	void NotifyStreetRaceWon(FName RaceAsset);
 
 	// Non-blocking Live Crew/Rival Comms & living world story hooks
 	void PostComms(const FString& Speaker, const FString& Message, float DurationSeconds = 5.2f,

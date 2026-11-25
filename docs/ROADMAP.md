@@ -94,7 +94,7 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 - [x] Heat 1–11 kademeleri **veri olarak** (`FBNHeatTierSpec`): araç sayısı, hız, agresiflik, Heat 3+ yol barikatları; Kanon §8 gereği Heat 6+ kimlik ifşasına (`R4`) kadar kilitli *(testli)*
 - [x] **Şehir Faturası (Collateral Damage) & Pursuit Breakers (`ABNPursuitBreaker`):** Yıkılabilir yapılar çarpılınca devrilip takip eden polisleri devre dışı bırakır ve oturum hasar kaydına işler *(testli)*
 - [x] Polis telsiz konuşmaları ve HUD (`ABNHUD::DrawPursuit`): Heat/Busted/Cooldown barı, Karamara Merkez/Birim telsiz satırı ve kalıcı Şehir Faturası
-- [ ] Yarış sırasında polisin devreye girmesi + sivil trafikle etkileşim *(Faz 3 şehir yolu & Faz 6 ile bağlanacak)*
+- [x] Yarış sırasında polisin devreye girmesi (daima açık, kapatılamaz; bitiş çizgisi sonrası serbest sürüşte devam eden takip) + sivil trafik çarpışma hasarı *(testli)*
 
 **Bitti sayılır:** Oyuncu Heat 1'den 5'e kadar kovalanabilir, Pursuit Breaker yıkabilir, ya kaçar ya yakalanır. *Otomatik testler (`BlackNumbers.Police.*`) geçiyor; test pistinde 4 Pursuit Breaker yerleştirildi.*
 
@@ -156,6 +156,14 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
 - [x] **2 km × 2 km 6 Semtli Karamara & 9 Yarış:** Tek kaynaklı `UBNRoadGraphAsset` / `UBNRoadGraphSubsystem` (A\* yol bulma, 6 kanon semt, 6 Cooldown saklanma cebi, +62 m Kuzey Geçidi dağ saç tokaları, Eski Liman Köprüsü, 16 boss'un 9 benzersiz rotaya ve özgün kasa araçlara dağıtılması, dinamik yol grafı radarı & semt afişi)
 - [x] **Akıllı Polis YZ, Serbest Devriyeler & Dinamik Trafik:** A\* yol takipli polis YZ, 3 organik serbest devriye, yola hizalı barikatlar, Heat 5+ Ağır Rhino SUV & Dikenli Şeritler, enkaz saçan 10 Pursuit Breaker, 20 araçlık 5 farklı kasa yol-grafı sivil trafiği
 - [x] **Prosedürel Ses & Adaptif Müzik:** 14 SFX + 3 kesintisiz adaptif müzik döngüsü (`Tools/bn_audio_assets.py` + `UBNAudioSubsystem`), 5 araç sınıfına özgü motor sesi profili (`TurboI4 / SportI6 / MuscleV8 / RallyV6 / ExoticV10`) ve Ayarlar ses mikseri
+- [x] **Pro Görsel Cila, Telifsiz 3B Varlıklar, Bölge Hükümdarları & Pro Mekanikler (2026-11-24):**
+  - 19 Poly Haven CC0 1.0 3B glTF sokak/sanayi/dağ modeli (`Tools/fetch_cc0_models.py`), 17 Poly Haven CC0 PBR doku seti + PureSky bulut kubbesi, Khronos `CarConcept.glb` CC-BY 4.0 birleşik GrandTourer (`Draco RS-T` / `SM_BN_GrandTourer`), `Saved/ExternalVehicles/` harici araç bırak-al hattı, 6 kavisli karbon aero kiti + `SM_BN_Traffic_SUV` + `SM_BN_JumpRamp`
+  - Konuma göre dinamik asfalt ıslaklığı (`MPC_BN_World.Wetness`) ve bölgesel güneş açısı/sis tonu + `BÖLGESEL OTO / ISLAK ASFALT / HAFİF YAĞMUR` (`ABNDayNightCycle` + `bn.Weather`)
+  - 6 isimli semt ve **6 Bölge Hükümdarı / Bölge Hakimiyeti (`0/6 → 6/6`)**: Altın Çekirdek (`#06`), Paslı Demir (`#05`), Mara Rıhtımı (`#01`), Çelik Kuşak (`#08`), Eski Karamara (`#07`), Çam Zirvesi (`#03`) — `[M]` harita bölge katmanları, hover bilgi kartı, Hızlı Seyahat ve tek tıkla sıradaki boss'a GPS
+  - Pro sürüş & yarış mekanikleri: Hava Akımı (Slipstream), Tampon Kamera + `[V]` Arka Bakış + viraj kamera yatışı, canlı Split Delta + Kişisel Rekorlar (`BestRaceTimes/Drift/Trap/Jump`), keskin viraj holografik uyarıları, 6 Hız Tuzağı + 4 Sıçrama Rampası, 3 kademeli Rakip Zorluğu (`RAHAT / SOKAK OTO-TİER / EFSANE`), Garaj Boya Yüzeyi (4) / Jant Rengi (5) / Alt Neon (5) + 3 noktalı stüdyo ışığı, ücretsiz garaj geçiş tamiri
+  - Doğrulama: **43/43 test yeşil**, 1080p RTX 3050 Ti **135.0–170.6 FPS** (`0.0–0.4% >16.7 ms`, **991 MiB** net oyun VRAM), 9 canlı ekran görüntüsü incelendi
+- [x] **Eski Liman Köprüsü:** Doğu çıkışındaki iki rampanın kotu ayrımda hizalandı ve Sanayi inişi kıyı platformunun üzerinde kaldı. Beş açıklığa korkuluk çarpışması ve köprü çeliğine Poly Haven CC0 kaplama eklendi.
+- [x] **Araç ve arazi fiziği:** Tümseklerden gelen süspansiyon geri tepmesi zemin eğimine göre sınırlanır. Kuzey Geçidi ve Yamaç arazisi fiziksel zemin sağlar. Mara Denizi'ne düşen araç son sağlam zemine döner.
 - [ ] Tam Sequencer sinematikleri C01–C19 *(metin/storyboard çekirdeği + Epilog kartları Faz 6–7'de eklendi)*
 - [ ] VRAM/FPS derin optimizasyon ve paketleme (Linux + Windows)
 

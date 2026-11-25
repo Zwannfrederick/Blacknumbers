@@ -22,17 +22,17 @@ DIST_GECIT = 5
 
 DISTRICT_BOUNDS = [
     dict(district=DIST_MERKEZ,  center=(-4000.0,   -2000.0), half=(34000.0, 26000.0),
-         name="MERKEZ BULVAR & ÇARŞI",        subtitle="KARAMARA ŞEHİR MERKEZİ • TİCARET HATTI"),
+         name="ALTIN ÇEKİRDEK — MERKEZ BULVAR", subtitle="NEON FİNANS KULELERİ • ALTIN KASA BÖLGESİ"),
     dict(district=DIST_SANAYI,  center=(38000.0,   46000.0), half=(30000.0, 28000.0),
-         name="DOĞU SANAYİ",                  subtitle="TARIK OTO TAMİR • ARDA GALERİ • DRİFT AVLUSU"),
+         name="PASLI DEMİR — DOĞU SANAYİ",      subtitle="TERSANE & DRİFT AVLUSU • DEMİR DÖKÜM BÖLGESİ"),
     dict(district=DIST_LIMAN,   center=(72000.0,   -4000.0), half=(30000.0, 44000.0),
-         name="ESKİ LİMAN",                   subtitle="MARA RIHTIM • ESKİ LİMAN KÖPRÜSÜ"),
+         name="MARA RIHTIMI — ESKİ LİMAN",      subtitle="KIYI VİNÇLERİ & ASMA KÖPRÜ • SİYAH ÇAPA BÖLGESİ"),
     dict(district=DIST_VIYADUK, center=(0.0,      -54000.0), half=(66000.0, 16000.0),
-         name="KUZEY VİYADÜĞÜ & ÇEVRE YOLU",  subtitle="O-5 YÜKSEK HIZ OTOYOLU"),
+         name="ÇELİK KUŞAK — KUZEY VİYADÜĞÜ",   subtitle="ÇİFT KATLI O-5 OTOYOL • SİNYAL HATTI BÖLGESİ"),
     dict(district=DIST_YAMAC,   center=(-58000.0,  42000.0), half=(32000.0, 34000.0),
-         name="YAMAÇ MAHALLESİ",              subtitle="SELİN'İN GARAJI • YOKUŞ SOKAKLAR"),
+         name="ESKİ KARAMARA — YAMAÇ MAHALLESİ",subtitle="KİREMİT YOKUŞLAR & SELİN'İN GARAJI • KROM VİRAJ"),
     dict(district=DIST_GECIT,   center=(-56000.0, -72000.0), half=(42000.0, 28000.0),
-         name="KUZEY GEÇİDİ & SEYİR TEPESİ",  subtitle="DAĞ SAÇ TOKALARI • EMRE ANITI"),
+         name="ÇAM ZİRVESİ — KUZEY GEÇİDİ",     subtitle="DAĞ SAÇ TOKALARI & EMRE ANITI • ZİRVE EKİBİ"),
 ]
 
 # Scenic title-screen & free-roam PlayerStart inside Merkez Bulvar looking east down the avenue
@@ -167,10 +167,10 @@ RAW_EDGES = [
     (17, 20, [(53200.0, -22600.0, 320.0), (56200.0, -17200.0, 860.0), (59500.0, -14000.0, 1320.0), (62200.0, -14000.0, 1545.0)], 1860.0, 100.0, DIST_LIMAN, True, False),
     # Main Eski Liman Koprusu Truss Span (20 -> 21: straight elevated Z = +16 m over Mara Harbor, exactly 5x40 m spans!)
     (20, 21, [(74000.0, -14000.0, 1600.0)], 1860.0, 120.0, DIST_LIMAN, True, False),
-    # East Bridge North Spur to Eski Liman Tunnel Portal (Route A — straight lead-out before curve)
-    (21, 23, [(86000.0, -14200.0, 1520.0), (87800.0, -18000.0, 1080.0)], 1700.0, 100.0, DIST_LIMAN, True, False),
+    # Keep the two east exits at nearly the same height until their asphalt slabs separate.
+    (21, 23, [(86100.0, -15100.0, 1560.0), (88100.0, -18300.0, 1210.0)], 1700.0, 100.0, DIST_LIMAN, True, False),
     # East Bridge South Sweep returning to East Harbor & Dogu Sanayi (straight lead-out before curve)
-    (21, 22, [(86200.0, -14000.0, 1550.0), (89200.0, -10800.0, 1320.0), (89800.0, -3500.0, 1020.0)], 1800.0, 105.0, DIST_LIMAN, True, False),
+    (21, 22, [(86200.0, -14000.0, 1570.0), (89200.0, -10800.0, 1320.0), (89800.0, -3500.0, 1020.0)], 1800.0, 105.0, DIST_LIMAN, True, False),
     (22, 14, [(78000.0, 26000.0, 300.0), (69000.0, 38000.0, 80.0)], 1700.0, 95.0, DIST_LIMAN, True, False),
 
     # --- Kuzey Viyadugu & O-5 Cevre Yolu Perimeter Highway ---
@@ -484,6 +484,26 @@ PURSUIT_BREAKERS = [
     ("Breaker_CevreGuney",     20000.0,  76500.0,    0.0,   0.0, "Güney Çevre Yolu Tabelası", 42000, 0),
     ("Breaker_YamacKule",     -51000.0,  22000.0, 1220.0,  80.0, "Yamaç Su Deposu İskelesi",  36000, 2),
     ("Breaker_GecitKayalik",  -20000.0, -78000.0, 3950.0, 175.0, "Kuzey Geçidi Kaya Bariyeri",48000, 1),
+]
+
+# 6 Open-World Roadside Speed Traps (1 per borough):
+# (trap_id, x, y, z, yaw_deg, display_name, district, min_speed_kmh, trigger_radius_cm)
+SPEED_TRAPS = [
+    ("TRAP_Merkez",   4000.0,  -5180.0,    0.0, 180.0, "Altın Çekirdek Bulvar Radarı", DIST_MERKEZ,  110.0, 1400.0),
+    ("TRAP_Sanayi",  28000.0,  40920.0,    0.0, 180.0, "Paslı Demir Sanayi Radarı",    DIST_SANAYI,  105.0, 1300.0),
+    ("TRAP_Liman",   74000.0, -15050.0, 1600.0, 180.0, "Mara Köprü Hız Radarı",        DIST_LIMAN,   130.0, 1350.0),
+    ("TRAP_Viyaduk",  6000.0, -55750.0, 1200.0, 180.0, "Çelik Kuşak O-5 Radarı",       DIST_VIYADUK, 150.0, 1500.0),
+    ("TRAP_Yamac",  -31000.0,  50600.0,  900.0, 180.0, "Eski Karamara Yokuş Radarı",   DIST_YAMAC,    95.0, 1200.0),
+    ("TRAP_Gecit",  -47000.0, -90400.0, 5650.0,   0.0, "Çam Zirvesi Geçit Radarı",     DIST_GECIT,    90.0, 1200.0),
+]
+
+# 4 Open-World Stunt Jump Ramps with unobstructed runways & landings:
+# (jump_id, x, y, z, yaw_deg, display_name, district)
+STUNT_JUMPS = [
+    ("JUMP_Sanayi",  42000.0,  54500.0,   0.0,   0.0, "Paslı Demir Avlu Rampası",     DIST_SANAYI),
+    ("JUMP_Liman",   52500.0,   2000.0,   0.0,  90.0, "Mara Rıhtım Sıçraması",        DIST_LIMAN),
+    ("JUMP_Merkez",  18000.0,  -4550.0,   0.0,   0.0, "Altın Çekirdek Bulvar Rampası",DIST_MERKEZ),
+    ("JUMP_Viyaduk", 12000.0,  76400.0,   0.0, 180.0, "Çelik Kuşak Otoyol Rampası",   DIST_VIYADUK),
 ]
 
 

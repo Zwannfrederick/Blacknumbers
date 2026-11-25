@@ -33,8 +33,14 @@ public:
 	/** Applies paint color on the current chassis while keeping current metallic/clearcoat values. */
 	void ApplyPaintTint(const FLinearColor& PaintTint, UStaticMeshComponent* ChassisComp);
 
+	/** Applies a named garage finish preset (Gloss/Metallic/Satin/MatteCarbon) keeping current paint tint. */
+	void ApplyPaintFinishPreset(EBNPaintFinish Finish, UStaticMeshComponent* ChassisComp);
+
 	/** Applies full paint tint + metallic + clearcoat finish to the current chassis paint slot. */
 	void ApplyPaintFinish(const FLinearColor& PaintTint, float Metallic, float ClearCoat, UStaticMeshComponent* ChassisComp);
+
+	/** Tints the alloy rim slot (never rubber tires or wheel transforms) across all 4 wheel meshes. */
+	void ApplyRimPaint(const FLinearColor& RimTint, const TArray<TObjectPtr<UStaticMeshComponent>>& WheelMeshes);
 
 	/** Updates pulsing cyan NOS or amber backfire exhaust point lights. */
 	static void UpdateExhaustLights(const TArray<TObjectPtr<UPointLightComponent>>& ExhaustLights,
@@ -49,11 +55,13 @@ public:
 	bool IsUsingCustomBodyMesh() const { return bUsingCustomBodyMesh; }
 
 private:
-	UStaticMesh* ResolveBodyMesh(EBNBodyStyle Style, bool& bOutIsCustom);
+	UStaticMesh* ResolveBodyMesh(EBNCarId CarId, EBNBodyStyle Style, bool& bOutIsCustom);
+	UStaticMesh* LoadOptionalMesh(const TCHAR* PackagePath, const TCHAR* AssetPath);
 	void ConfigureChassisTransform(UStaticMeshComponent* ChassisComp, UStaticMesh* Mesh, EBNBodyStyle Style,
 		bool bIsCustom, UStaticMeshComponent* GlassComp, const TArray<TObjectPtr<UStaticMeshComponent>>& WheelMeshes,
 		float& OutBodyTopZ);
 	void EnsureAeroAssets(const FBNVehicleSpec& Spec);
+	void BindBodyLightsSlot(UStaticMeshComponent* ChassisComp);
 	void RebuildAeroKit(const FBNVehicleSpec& Spec, float BodyTopZ);
 	void ClearAeroParts();
 	UStaticMeshComponent* AddAeroPart(const TCHAR* Name, UStaticMesh* Mesh, const FVector& Loc,
@@ -63,8 +71,10 @@ private:
 	EBNAeroKit AppliedAeroKit = EBNAeroKit::StreetLip;
 	bool bHasBuiltAeroKit = false;
 	bool bUsingCustomBodyMesh = false;
+	FLinearColor LastPaintTint = FLinearColor(0.22f, 0.24f, 0.27f, 1.f);
 	float LastMetallic = 0.72f;
 	float LastClearCoat = 0.85f;
+	float LastRoughnessOverride = -1.f;
 	float LastBodyTopZ = 128.f;
 
 	UPROPERTY(Transient)
@@ -80,7 +90,16 @@ private:
 	TObjectPtr<UMaterialInterface> AeroBaseMaterial;
 
 	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> CarbonBaseMaterial;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInterface> RimBaseMaterial;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> BodyPaintMID;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> BodyLightsMID;
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> AeroCarbonMID;
@@ -96,6 +115,9 @@ private:
 
 	UPROPERTY(Transient)
 	TObjectPtr<UMaterialInstanceDynamic> BrakeLightStripMID;
+
+	UPROPERTY(Transient)
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> WheelRimMIDs;
 
 	UPROPERTY(Transient)
 	TArray<TObjectPtr<UStaticMeshComponent>> AeroParts;

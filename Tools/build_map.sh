@@ -12,22 +12,25 @@ if pgrep -x UnrealEditor > /dev/null; then
   exit 2
 fi
 
-# Generate seamless PBR PNGs (with CC0 1.0 PolyHaven upgrade + offline fallback), Most Wanted UI PNGs,
-# 3D glTF meshes, procedural audio WAVs, and stage UE template vehicles.
+# Generate seamless PBR PNGs (with CC0 1.0 PolyHaven upgrade + offline fallback), CC0 3D models,
+# Khronos CarConcept + optional external drop-in cars, Most Wanted UI PNGs, procedural 3D glTF meshes,
+# procedural audio WAVs, and stage UE template vehicles.
 python3 "$PROJECT_DIR/Tools/bn_pbr_textures.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/fetch_cc0_textures.py" || exit $?
+python3 "$PROJECT_DIR/Tools/fetch_cc0_models.py" --download-only || exit $?
+python3 "$PROJECT_DIR/Tools/import_external_vehicles.py" --stage-only || exit $?
 python3 "$PROJECT_DIR/Tools/bn_ui_textures.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/bn_meshes.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/bn_audio_assets.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/import_ue_vehicles.py" --stage-files || exit $?
 
 status=0
-for script in bn_ui_textures.py import_ue_vehicles.py bn_meshes.py bn_audio_assets.py build_test_map.py build_karamara_map.py; do
+for script in bn_ui_textures.py import_ue_vehicles.py bn_meshes.py fetch_cc0_models.py import_external_vehicles.py bn_audio_assets.py build_test_map.py build_karamara_map.py; do
   "$UE/Engine/Binaries/Linux/UnrealEditor-Cmd" "$PROJECT_DIR/BlackNumbers.uproject" -run=pythonscript \
     -script="$PROJECT_DIR/Tools/$script" -unattended -nullrhi -nosplash -NoSound > /dev/null 2>&1
   s=$?
   LOG="$PROJECT_DIR/Saved/Logs/BlackNumbers.log"
-  grep -E "LogPython: Error|Python script executed|BN: built|BN: verified|BN: ensured" "$LOG" | cut -c31-
+  grep -E "LogPython: Error|Python script executed|BN: built|BN: verified|BN: ensured|BN: imported" "$LOG" | cut -c31-
   if [ "$s" -ne 0 ]; then
     status=$s
   fi

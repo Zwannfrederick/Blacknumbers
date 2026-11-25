@@ -216,14 +216,45 @@ void ABNPoliceController::AttachPoliceGear(ABNVehiclePawn& Car)
 	Siren->SetupAttachment(Body);
 	Siren->RegisterComponent();
 
-	// Matte obsidian tactical finish for Heavy Rhino SUV; deep navy-black Karamara interceptor paint for cruisers.
+	// Matte obsidian tactical finish for Heavy Rhino SUV; classic black-and-white interceptor livery for cruisers.
 	Car.ApplyPaintTint(bHeavyRhino ? FLinearColor(0.025f, 0.028f, 0.032f, 1.f) : FLinearColor(0.03f, 0.045f, 0.08f, 1.f));
+	if (!bHeavyRhino && CubeMesh)
+	{
+		UMaterialInterface* WhiteMat = FPackageName::DoesPackageExist(TEXT("/Game/World/Materials/MI_Traffic_Paint"))
+			? LoadObject<UMaterialInterface>(nullptr, TEXT("/Game/World/Materials/MI_Traffic_Paint.MI_Traffic_Paint"))
+			: nullptr;
+		for (const float Side : { -1.f, 1.f })
+		{
+			UStaticMeshComponent* DoorStripe = NewObject<UStaticMeshComponent>(&Car,
+				Side < 0.f ? TEXT("PoliceDoorL") : TEXT("PoliceDoorR"));
+			DoorStripe->SetStaticMesh(CubeMesh);
+			DoorStripe->SetupAttachment(Body);
+			DoorStripe->SetRelativeLocation(FVector(4.f, Side * 93.f, 52.f));
+			DoorStripe->SetRelativeScale3D(FVector(1.36f, 0.025f, 0.34f));
+			DoorStripe->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+			DoorStripe->SetCastShadow(false);
+			if (WhiteMat)
+			{
+				DoorStripe->SetMaterial(0, WhiteMat);
+			}
+			DoorStripe->RegisterComponent();
+			LiveryPanels.Add(DoorStripe);
+		}
+	}
 }
 
 void ABNPoliceController::CleanupPoliceGear()
 {
 	if (LightbarMesh) { LightbarMesh->DestroyComponent(); LightbarMesh = nullptr; }
 	if (PushBarMesh) { PushBarMesh->DestroyComponent(); PushBarMesh = nullptr; }
+	for (UStaticMeshComponent* Panel : LiveryPanels)
+	{
+		if (IsValid(Panel))
+		{
+			Panel->DestroyComponent();
+		}
+	}
+	LiveryPanels.Reset();
 	if (RedLight) { RedLight->DestroyComponent(); RedLight = nullptr; }
 	if (BlueLight) { BlueLight->DestroyComponent(); BlueLight = nullptr; }
 	if (Siren)

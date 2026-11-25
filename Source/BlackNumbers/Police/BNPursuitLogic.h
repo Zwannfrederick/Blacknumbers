@@ -59,6 +59,17 @@ struct BLACKNUMBERS_API FBNHeatTierSpec
 	static FBNHeatTierSpec ForLevel(int32 HeatLevel);
 };
 
+/** Rap sheet entries; each is recorded once per pursuit and adds bounty once. */
+enum class EBNInfraction : uint8
+{
+	Speeding = 1 << 0,
+	Reckless = 1 << 1,
+	RammedPolice = 1 << 2,
+	PropertyDamage = 1 << 3,
+	ResistingArrest = 1 << 4,
+	Evading = 1 << 5,
+};
+
 struct BLACKNUMBERS_API FBNDispatchLine
 {
 	FString Speaker;
@@ -89,6 +100,14 @@ struct BLACKNUMBERS_API FBNPursuitState
 	int32 BreakersTriggered = 0;
 	int32 Bounty = 0;
 	int32 DispatchSerial = 0;
+	/** EBNInfraction bitmask for the current pursuit (rap sheet). */
+	uint8 Infractions = 0;
+	float TopSpeedKmh = 0.f;
+	int32 RoadblocksDodged = 0;
+	int32 SpikeStripsDodged = 0;
+	/** Seconds the scanner has been quiet; ambient chatter fires when it gets too long. */
+	float RadioIdleSeconds = 0.f;
+	int32 AmbientChatterIndex = 0;
 	bool bInsideCooldownSpot = false;
 	FString ActiveCooldownSpotName;
 	FBNDispatchLine ActiveRadio;
@@ -99,10 +118,17 @@ struct BLACKNUMBERS_API FBNPursuitState
 	void RecordCollateralDamage(int32 Dollars, const TCHAR* ReasonTag = nullptr);
 	void RecordUnitDisabled(int32 BonusDollars = 15000);
 	void RecordPursuitBreaker(int32 CollateralDollars, int32 DisabledCount);
+	void RecordRoadblockDodged();
+	void RecordSpikeStripDodged();
 	void EndPursuitImmediate();
+	bool HasInfraction(EBNInfraction Infraction) const { return (Infractions & static_cast<uint8>(Infraction)) != 0; }
+	int32 CountInfractions() const { return FMath::CountBits(Infractions); }
+	static FString InfractionLabel(EBNInfraction Infraction);
 	bool IsPursuitRunning() const;
 	void PostDispatch(const FString& Speaker, const FString& Message, float Duration = 4.5f);
 
 private:
 	void TryEscalateHeat();
+	void AddInfraction(EBNInfraction Infraction);
+	void PostAmbientChatter(float PlayerSpeedKmh);
 };

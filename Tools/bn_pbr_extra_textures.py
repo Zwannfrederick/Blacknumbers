@@ -39,6 +39,28 @@ EXTRA_TEXTURE_MANIFEST = [
     ("T_Rock_D", "albedo"),
     ("T_Rock_N", "normal"),
     ("T_Rock_R", "roughness"),
+    # Multi-city architecture, highway asphalt, mountain slope-blend, carbon weave & sky clouds
+    ("T_Cladding_D", "albedo"),
+    ("T_Cladding_N", "normal"),
+    ("T_Cladding_R", "roughness"),
+    ("T_Cladding_E", "emissive"),
+    ("T_ConcreteTower_D", "albedo"),
+    ("T_ConcreteTower_N", "normal"),
+    ("T_ConcreteTower_R", "roughness"),
+    ("T_ConcreteTower_E", "emissive"),
+    ("T_PitAsphalt_D", "albedo"),
+    ("T_PitAsphalt_N", "normal"),
+    ("T_PitAsphalt_R", "roughness"),
+    ("T_CliffRock_D", "albedo"),
+    ("T_CliffRock_N", "normal"),
+    ("T_CliffRock_R", "roughness"),
+    ("T_MountainGrass_D", "albedo"),
+    ("T_MountainGrass_N", "normal"),
+    ("T_MountainGrass_R", "roughness"),
+    ("T_CarbonWeave_D", "albedo"),
+    ("T_CarbonWeave_N", "normal"),
+    ("T_CarbonWeave_R", "roughness"),
+    ("T_SkyClouds_D", "albedo"),
 ]
 
 
@@ -414,5 +436,73 @@ def generate_extra_pngs(out_dir, save_rgb, save_gray, save_normal, periodic_nois
     save_rgb("T_Rock_D", np.stack([rk * 1.03, rk * 0.99, rk * 0.93], axis=-1))
     save_normal("T_Rock_N", 0.45 * r_macro + 0.35 * strata + 0.20 * r_fine, strength=6.0)
     save_gray("T_Rock_R", np.clip(0.84 + 0.14 * r_macro - 0.08 * strata, 0.55, 0.98))
+
+    # Procedural fallbacks for new CC0 sets (overridden by Poly Haven CC0 textures when online)
+    save_rgb("T_CliffRock_D", np.stack([rk * 0.88, rk * 0.86, rk * 0.84], axis=-1))
+    save_normal("T_CliffRock_N", 0.50 * r_macro + 0.35 * strata + 0.15 * r_fine, strength=6.5)
+    save_gray("T_CliffRock_R", np.clip(0.86 + 0.12 * r_macro, 0.60, 0.98))
+
+    rng = np.random.default_rng(1304)
+    g_n = fbm(rng, C, [(8, 0.45), (24, 0.35), (64, 0.20)])
+    mg_d = np.stack([0.24 + 0.16 * g_n, 0.26 + 0.18 * g_n, 0.14 + 0.09 * g_n], axis=-1)
+    save_rgb("T_MountainGrass_D", mg_d)
+    save_normal("T_MountainGrass_N", g_n, strength=3.2)
+    save_gray("T_MountainGrass_R", np.clip(0.80 + 0.14 * g_n, 0.55, 0.96))
+
+    # Pit-lane highway asphalt fallback
+    rng = np.random.default_rng(1305)
+    a_n = fbm(rng, C, [(16, 0.4), (48, 0.35), (128, 0.25)])
+    a_v = 0.12 + 0.08 * a_n
+    save_rgb("T_PitAsphalt_D", np.stack([a_v, a_v, a_v * 1.04], axis=-1))
+    save_normal("T_PitAsphalt_N", a_n, strength=2.6)
+    save_gray("T_PitAsphalt_R", np.clip(0.55 + 0.30 * a_n, 0.22, 0.90))
+
+    # Modern cladding & concrete tower facades (procedural fallback; upgraded with CC0 walls by fetch_cc0_textures.py)
+    for pref, base_c, em_c in (
+        ("T_Cladding", (0.28, 0.31, 0.36), (0.72, 0.88, 1.0)),
+        ("T_ConcreteTower", (0.44, 0.43, 0.41), (1.0, 0.80, 0.46)),
+    ):
+        arr_d = np.full((C, C, 3), base_c, dtype=np.float32)
+        arr_e = np.zeros((C, C, 3), dtype=np.float32)
+        arr_h = np.full((C, C), 0.5, dtype=np.float32)
+        arr_r = np.full((C, C), 0.58, dtype=np.float32)
+        for r in range(4):
+            for c in range(4):
+                x0, x1 = c * 256 + 38, (c + 1) * 256 - 38
+                y0, y1 = r * 256 + 42, (r + 1) * 256 - 42
+                arr_d[y0:y1, x0:x1] = (0.06, 0.09, 0.13)
+                arr_r[y0:y1, x0:x1] = 0.08
+                arr_h[y0:y1, x0:x1] = 0.25
+                if (r * 7 + c * 3) % 2 == 0:
+                    arr_e[y0:y1, x0:x1] = em_c
+        save_rgb(pref + "_D", arr_d)
+        save_normal(pref + "_N", arr_h, strength=3.0)
+        save_gray(pref + "_R", arr_r)
+        save_rgb(pref + "_E", arr_e)
+
+    # Crisp 2x2 diagonal twill Carbon-Fiber Weave (512x512) for sculpted aero bodykits!
+    CF = 512
+    cy, cx = np.mgrid[0:CF, 0:CF]
+    phase = ((cx // 8) + (cy // 8)) % 4
+    weft = (phase < 2).astype(np.float32)
+    u_local = ((cx % 8) / 8.0) * math.pi
+    v_local = ((cy % 8) / 8.0) * math.pi
+    ridge = weft * np.sin(u_local) + (1.0 - weft) * np.sin(v_local)
+    cf_lum = 0.045 + 0.065 * ridge
+    save_rgb("T_CarbonWeave_D", np.stack([cf_lum, cf_lum * 1.02, cf_lum * 1.08], axis=-1))
+    save_normal("T_CarbonWeave_N", ridge, strength=2.4)
+    save_gray("T_CarbonWeave_R", np.clip(0.16 + 0.14 * (1.0 - ridge), 0.08, 0.36))
+
+    # Soft seamless Cloud Sky Dome texture (overridden by Poly Haven autumn_field_puresky when online)
+    rng = np.random.default_rng(1306)
+    cl1 = fbm(rng, C, [(4, 0.45), (10, 0.30), (24, 0.15), (64, 0.10)])
+    cl2 = fbm(rng, C, [(6, 0.50), (16, 0.30), (40, 0.20)])
+    cloud_density = smoothstep(0.42, 0.78, 0.65 * cl1 + 0.35 * cl2)
+    cloud_col = np.stack([
+        0.55 + 0.45 * cloud_density,
+        0.48 + 0.42 * cloud_density,
+        0.44 + 0.36 * cloud_density,
+    ], axis=-1) * cloud_density[:, :, None]
+    save_rgb("T_SkyClouds_D", cloud_col)
 
     return len(EXTRA_TEXTURE_MANIFEST)

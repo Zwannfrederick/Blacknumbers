@@ -22,9 +22,11 @@
 #include "RenderTimer.h"
 #include "RHIGlobals.h"
 #include "Police/BNPursuitSubsystem.h"
+#include "Garage/BNGarageTypes.h"
 #include "Race/BNRaceDefinition.h"
 #include "Race/BNRaceEvent.h"
 #include "UI/BNHUD.h"
+#include "UI/BNMenuWidget.h"
 #include "Vehicle/BNVehiclePawn.h"
 #include "World/BNDayNightCycle.h"
 #include "World/BNRoadGraph.h"
@@ -319,7 +321,7 @@ namespace
 
 	FAutoConsoleCommandWithWorld GBNVisualShotsCommand(
 		TEXT("bn.VisualShots"),
-		TEXT("Captures 5 verification screenshots across KaramaraSlice (Title, Merkez Day, Bridge, Mountains, Night Pursuit) and exits."),
+		TEXT("Captures Karamara verification screenshots (title, career, city and pursuit) and exits."),
 		FConsoleCommandWithWorldDelegate::CreateLambda([](UWorld* World)
 		{
 			struct FShotState
@@ -364,15 +366,47 @@ namespace
 					if (Elapsed >= 1.5)
 					{
 						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(-2);
+					}
+					break;
+				case -2:
+					if (Elapsed >= 1.6)
+					{
+						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>(); HUD && HUD->IsTitleScreenOpen())
+						{
+							HUD->OpenMenu(EBNMenuTab::BlackNumbers);
+							for (int32 Card = 0; Card < 2 && HUD->HasStoryCardOpen(); ++Card)
+							{
+								HUD->HandleMenuCloseOrAdvanceCard();
+							}
+							Advance(-1);
+						}
+						else
+						{
+							Advance(2);
+						}
+					}
+					break;
+				case -1:
+					if (Elapsed >= 1.6)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
 						Advance(2);
 					}
 					break;
 				case 2: // Setup Shot 1: Merkez Bulvar Midday (13:00) behind player car + HUD + RoadGraph radar
 					if (Elapsed >= 1.5)
 					{
-						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>(); HUD && HUD->IsTitleScreenOpen())
+						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>())
 						{
-							HUD->DismissTitleScreen(true);
+							if (HUD->IsTitleScreenOpen())
+							{
+								HUD->DismissTitleScreen(true);
+							}
+							if (HUD->IsPauseMenuOpen())
+							{
+								HUD->CloseMenu();
+							}
 						}
 						SetHour(13.0f);
 						Car->SetActorLocationAndRotation(FVector(-18000.f, -4000.f, 95.f), FRotator(0.f, 0.f, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
@@ -517,10 +551,43 @@ namespace
 						Advance(16);
 					}
 					break;
-				case 16:
+				case 16: // Setup Shot 8: Draco RS-T (Khronos CarConcept GrandTourer) + Carbon GT Wing + Cyan Underglow in Yamac Mahallesi (terracotta hillside & Selin's Garage)
 					if (Elapsed >= 1.2)
 					{
-						UE_LOG(LogTemp, Display, TEXT("bn.VisualShots: captured all 8 Karamara verification screenshots."));
+						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>(); HUD && HUD->IsWorldMapOpen())
+						{
+							HUD->ToggleWorldMap();
+						}
+						SetHour(17.6f);
+						Car->SetActorLocationAndRotation(FVector(-53500.f, 35500.f, 1690.f), FRotator(0.f, -25.f, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+						Car->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+						const int32 StockTiers[FBNUpgradeSpec::NumSlots] = {};
+						Car->ApplyVehicleSpec(EBNCarId::DracoRST, FBNComputedVehicleStats::Compute(EBNCarId::DracoRST, StockTiers));
+						Car->ApplyPaintTint(FLinearColor(0.86f, 0.14f, 0.10f, 1.f));
+						Car->ApplyUnderglow(FLinearColor(0.10f, 0.78f, 1.0f, 1.f), true);
+						Car->SetShowcaseMode(true);
+						if (!St->Cam.IsValid()) { St->Cam = W->SpawnActor<ACameraActor>(); }
+						if (St->Cam.IsValid())
+						{
+							const FVector CarLoc = Car->GetActorLocation();
+							const FVector Eye = CarLoc + FVector(440.f, -340.f, 145.f);
+							St->Cam->SetActorLocationAndRotation(Eye, (CarLoc + FVector(0.f, 0.f, 52.f) - Eye).Rotation());
+							PC->SetViewTarget(St->Cam.Get());
+						}
+						Advance(17);
+					}
+					break;
+				case 17:
+					if (Elapsed >= 2.6 && RemainingShaderJobs() == 0)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(18);
+					}
+					break;
+				case 18:
+					if (Elapsed >= 1.2)
+					{
+						UE_LOG(LogTemp, Display, TEXT("bn.VisualShots: Karamara screenshot sequence complete."));
 						FPlatformMisc::RequestExit(false);
 						return false;
 					}

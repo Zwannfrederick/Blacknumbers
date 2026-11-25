@@ -37,13 +37,15 @@ namespace
 	constexpr float VerticalInteractionTolCm = 220.f;
 	constexpr int32 TrafficCollateralDollars = 3500;
 	constexpr float KnockDurationSeconds = 1.35f;
+	constexpr float KnockMaxSpeedCmPerSec = 1050.f;
+	constexpr float KnockMaxYawDegreesPerSec = 125.f;
 	constexpr float PauseDurationSeconds = 2.0f;
 
 	constexpr float RecycleMaxDistCm = 58000.f;
 	constexpr float RecycleMinDistCm = 14000.f;
 	constexpr float RecycleSpawnMaxCm = 46000.f;
-	constexpr float HeadlightBeamCandelas = 3000.f;
-	constexpr float HeadlightBeamRadius = 2200.f;
+	constexpr float HeadlightBeamCandelas = 1250.f;
+	constexpr float HeadlightBeamRadius = 2100.f;
 	const FLinearColor HeadlightBeamColor(1.f, 0.94f, 0.82f);
 
 	// Realistic Turkish urban street palette (includes classic yellow taxis, white commercial vans, silver/dark sedans)
@@ -65,14 +67,14 @@ namespace
 		TEXT("/Game/World/Meshes/SM_BN_Traffic_Hatchback"),
 		TEXT("/Game/World/Meshes/SM_BN_Traffic_Van"),
 		TEXT("/Game/World/Meshes/SM_BN_Traffic_BoxTruck"),
-		TEXT("/Game/Vehicles/OffroadCar/SM_Offroad_Body"),
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_SUV"),
 	};
 	const TCHAR* const TrafficMeshAssets[] = {
 		TEXT("/Game/World/Meshes/SM_BN_Traffic_Sedan.SM_BN_Traffic_Sedan"),
 		TEXT("/Game/World/Meshes/SM_BN_Traffic_Hatchback.SM_BN_Traffic_Hatchback"),
 		TEXT("/Game/World/Meshes/SM_BN_Traffic_Van.SM_BN_Traffic_Van"),
 		TEXT("/Game/World/Meshes/SM_BN_Traffic_BoxTruck.SM_BN_Traffic_BoxTruck"),
-		TEXT("/Game/Vehicles/OffroadCar/SM_Offroad_Body.SM_Offroad_Body"),
+		TEXT("/Game/World/Meshes/SM_BN_Traffic_SUV.SM_BN_Traffic_SUV"),
 	};
 }
 
@@ -457,6 +459,7 @@ void UBNTrafficSubsystem::SpawnAllTraffic()
 		Beam->SetRelativeLocationAndRotation(FVector(240.f, 0.f, 70.f), FRotator(-6.f, 0.f, 0.f));
 		Beam->SetIntensityUnits(ELightUnits::Candelas);
 		Beam->SetIntensity(HeadlightBeamCandelas);
+		Beam->SetSpecularScale(0.55f);
 		Beam->SetLightColor(HeadlightBeamColor);
 		Beam->SetAttenuationRadius(HeadlightBeamRadius);
 		Beam->SetInnerConeAngle(16.f);
@@ -694,8 +697,12 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 				Car.NearMissCooldown = 4.0f;
 
 				const FVector Away2D = (NextLoc - PlayerLoc).GetSafeNormal2D();
-				Car.KnockVelocity = (Away2D * 680.f + FVector(PlayerVel.X, PlayerVel.Y, 0.f) * 0.65f).GetClampedToMaxSize(1550.f);
-				Car.KnockYawRateDeg = (FVector::CrossProduct(PlayerVel.GetSafeNormal2D(), Away2D).Z >= 0.f ? 1.f : -1.f) * 210.f;
+				Car.KnockVelocity = (Away2D * 320.f + FVector(PlayerVel.X, PlayerVel.Y, 0.f) * 0.30f).GetClampedToMaxSize(KnockMaxSpeedCmPerSec);
+				const FVector RoadHeading = NextRot.Vector();
+				Car.KnockVelocity.Z = FVector::DotProduct(Car.KnockVelocity, RoadHeading.GetSafeNormal2D())
+					* FMath::Tan(FMath::DegreesToRadians(NextRot.Pitch));
+				Car.KnockYawRateDeg = FMath::Sign(FVector::CrossProduct(PlayerVel.GetSafeNormal2D(), Away2D).Z)
+					* FMath::Min(RelSpeedKmh, KnockMaxYawDegreesPerSec);
 
 				if (USkeletalMeshComponent* PlayerMesh = Player->GetMesh())
 				{
@@ -707,6 +714,7 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 					Fx->TriggerCollisionSparks(0.5f * (NextLoc + PlayerLoc) + FVector(0.f, 0.f, 55.f), -Away2D, 1.f);
 				}
 				Player->AddCameraImpulse(0.8f);
+				Player->ApplyTrafficCollisionDamage(RelSpeedKmh);
 				if (Pursuit)
 				{
 					Pursuit->ReportCollateralDamage(TrafficCollateralDollars, TEXT("Sivil Trafik Çarpışması"));

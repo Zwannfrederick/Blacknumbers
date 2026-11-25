@@ -72,6 +72,69 @@ bool FBNPursuitLogicTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNPursuitChatterAndRapSheetTest, "BlackNumbers.Police.ChatterAndRapSheet",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNPursuitChatterAndRapSheetTest::RunTest(const FString& Parameters)
+{
+	// Ambient radio chatter keeps the scanner alive between scripted events.
+	FBNPursuitState Chatter;
+	Chatter.StartPursuit(1);
+	const int32 SerialAfterStart = Chatter.DispatchSerial;
+	for (int32 i = 0; i < 100; ++i)
+	{
+		Chatter.Update(0.1f, 120.f, 1500.f, 1);
+	}
+	TestTrue(TEXT("idle pursuit posts ambient chatter within 10 s"), Chatter.DispatchSerial > SerialAfterStart);
+	TestFalse(TEXT("ambient chatter has text"), Chatter.ActiveRadio.Message.IsEmpty());
+	TestFalse(TEXT("ambient chatter has a speaker"), Chatter.ActiveRadio.Speaker.IsEmpty());
+
+	// Rap sheet: each infraction is recorded once and adds bounty once.
+	FBNPursuitState Sheet;
+	Sheet.StartPursuit(1);
+	TestEqual(TEXT("no infractions at pursuit start"), Sheet.CountInfractions(), 0);
+	Sheet.Update(0.1f, 195.f, 1500.f, 1);
+	TestTrue(TEXT("speeding above threshold is an infraction"), Sheet.HasInfraction(EBNInfraction::Speeding));
+	TestTrue(TEXT("top speed tracked"), Sheet.TopSpeedKmh >= 195.f);
+
+	const int32 BeforeReckless = Sheet.Bounty;
+	Sheet.RecordCollateralDamage(800, TEXT("Lamba"));
+	const int32 FirstGain = Sheet.Bounty - BeforeReckless;
+	Sheet.RecordCollateralDamage(800, TEXT("Lamba"));
+	TestTrue(TEXT("collateral damage is reckless driving"), Sheet.HasInfraction(EBNInfraction::Reckless));
+	TestTrue(TEXT("first infraction adds bounty"), FirstGain > 0);
+	TestEqual(TEXT("repeat infraction adds no extra bounty"), Sheet.Bounty - BeforeReckless, FirstGain);
+
+	Sheet.RecordUnitDisabled();
+	TestTrue(TEXT("disabling a unit is ramming police"), Sheet.HasInfraction(EBNInfraction::RammedPolice));
+	Sheet.RecordPursuitBreaker(5000, 0);
+	TestTrue(TEXT("pursuit breaker is property damage"), Sheet.HasInfraction(EBNInfraction::PropertyDamage));
+
+	const int32 BeforeDodge = Sheet.Bounty;
+	Sheet.RecordRoadblockDodged();
+	Sheet.RecordSpikeStripDodged();
+	TestEqual(TEXT("roadblock dodge counted"), Sheet.RoadblocksDodged, 1);
+	TestEqual(TEXT("spike strip dodge counted"), Sheet.SpikeStripsDodged, 1);
+	TestTrue(TEXT("dodges add bounty"), Sheet.Bounty > BeforeDodge);
+
+	Sheet.Update(31.f, 120.f, 1500.f, 1);
+	TestTrue(TEXT("long pursuit is resisting arrest"), Sheet.HasInfraction(EBNInfraction::ResistingArrest));
+
+	Sheet.Update(0.5f, 120.f, 15000.f, 1);
+	Sheet.Update(4.0f, 120.f, 15000.f, 1);
+	Sheet.Update(60.0f, 0.f, 15000.f, 0);
+	TestEqual(TEXT("pursuit escaped"), Sheet.Phase, EBNPursuitPhase::Escaped);
+	TestTrue(TEXT("escaping is evading police"), Sheet.HasInfraction(EBNInfraction::Evading));
+	TestEqual(TEXT("all six infractions on the sheet"), Sheet.CountInfractions(), 6);
+	TestFalse(TEXT("infractions have Turkish labels"), FBNPursuitState::InfractionLabel(EBNInfraction::Evading).IsEmpty());
+
+	// A new pursuit starts with a clean rap sheet.
+	Sheet.StartPursuit(1);
+	TestEqual(TEXT("new pursuit clears infractions"), Sheet.CountInfractions(), 0);
+	TestEqual(TEXT("new pursuit clears dodges"), Sheet.RoadblocksDodged, 0);
+	return true;
+}
+
 #endif
 
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR

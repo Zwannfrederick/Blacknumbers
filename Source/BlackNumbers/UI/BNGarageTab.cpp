@@ -113,12 +113,12 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildGarageTab()
 	}
 
 	TSharedRef<SWidget> LeftRail = SNew(SBox)
-		.WidthOverride(368.f)
+		.WidthOverride(332.f)
 		[
 			SNew(SBorder)
 			.BorderImage(BNUITheme::GetPanelBevelBrush())
 			.BorderBackgroundColor(FLinearColor(0.92f, 0.92f, 0.92f, 0.88f))
-			.Padding(FMargin(16.f, 14.f))
+			.Padding(FMargin(14.f, 12.f))
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 8.f))
@@ -147,11 +147,40 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildGarageTab()
 			]
 		];
 
-	// Live 10-color custom paint swatch picker directly under the live 360-degree showcase car!
+	// Compact 2-row paint palette (5+5) + Finish + Rim Color + Underglow Neon controls (zero overflow at 1080p/720p!)
 	const TArray<TPair<FString, FLinearColor>>& Palette = FBNVehicleSpec::GetPaintPalette();
 	const int32 ActivePaintIdx = P.GetActivePaintIndex();
-	TSharedRef<SHorizontalBox> PaintSwatches = SNew(SHorizontalBox);
-	PaintSwatches->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 8.f, 0.f))
+	const EBNPaintFinish ActiveFinish = P.GetActivePaintFinish();
+	const auto& Rims = FBNVehicleSpec::GetRimPaintPalette();
+	const int32 ActiveRimIdx = P.GetActiveRimPaintIndex();
+	const auto& Neons = FBNVehicleSpec::GetUnderglowPalette();
+	const int32 ActiveNeonIdx = P.GetActiveUnderglowIndex();
+
+	auto MakeColorSwatch = [](const FLinearColor& Col, const FString& Tip, bool bPicked, FOnClicked OnClick, float BoxSize = 18.f) -> TSharedRef<SWidget>
+	{
+		return SNew(SButton)
+			.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+			.IsFocusable(false)
+			.ToolTipText(FText::FromString(Tip))
+			.ContentPadding(FMargin(0.f))
+			.OnClicked(OnClick)
+			[
+				SNew(SBorder)
+				.BorderImage(WhiteBrush())
+				.BorderBackgroundColor(bPicked ? BNUITheme::AmberBright : BNUITheme::HairlineSteel)
+				.Padding(FMargin(bPicked ? 2.f : 1.f))
+				[
+					SNew(SBox).WidthOverride(BoxSize).HeightOverride(BoxSize)
+					[
+						SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(Col)
+					]
+				]
+			];
+	};
+
+	TSharedRef<SHorizontalBox> PaintRow1 = SNew(SHorizontalBox);
+	TSharedRef<SHorizontalBox> PaintRow2 = SNew(SHorizontalBox);
+	PaintRow1->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 6.f, 0.f))
 	[
 		BNUITheme::MakeMWButton(FText::FromString(TEXT("FABRİKA")),
 			ActivePaintIdx < 0 ? EBNButtonVariant::PrimaryAmber : EBNButtonVariant::SecondarySteel,
@@ -165,43 +194,103 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildGarageTab()
 					Refresh();
 				}
 				return FReply::Handled();
-			}), true, 9, FMargin(8.f, 5.f))
+			}), true, 8, FMargin(7.f, 4.f))
 	];
 	for (int32 p = 0; p < Palette.Num(); ++p)
 	{
-		const bool bPicked = (ActivePaintIdx == p);
-		const FLinearColor SwatchCol = Palette[p].Value;
-		PaintSwatches->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 5.f, 0.f))
+		TSharedRef<SHorizontalBox>& TargetRow = (p < 5) ? PaintRow1 : PaintRow2;
+		TargetRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
 		[
-			SNew(SButton)
-			.ButtonStyle(FCoreStyle::Get(), "NoBorder")
-			.IsFocusable(false)
-			.ToolTipText(FText::FromString(Palette[p].Key))
-			.ContentPadding(FMargin(0.f))
-			.OnClicked(FOnClicked::CreateLambda([this, p]()
-			{
-				UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiConfirm, 0.85f);
-				if (UBNProgressionSubsystem* Pr = GetGI(OwnerHUD) ? GetGI(OwnerHUD)->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+			MakeColorSwatch(Palette[p].Value, Palette[p].Key, ActivePaintIdx == p,
+				FOnClicked::CreateLambda([this, p]()
 				{
-					Pr->TrySetCustomPaint(p, GetPlayerCar(OwnerHUD));
-					PreviewedCar.Reset();
-					ActionFeedback = Pr->GetFeedbackText();
-					Refresh();
-				}
-				return FReply::Handled();
-			}))
-			[
-				SNew(SBorder)
-				.BorderImage(WhiteBrush())
-				.BorderBackgroundColor(bPicked ? BNUITheme::AmberBright : BNUITheme::HairlineSteel)
-				.Padding(FMargin(bPicked ? 2.5f : 1.5f))
-				[
-					SNew(SBox).WidthOverride(22.f).HeightOverride(22.f)
-					[
-						SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(SwatchCol)
-					]
-				]
-			]
+					UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiConfirm, 0.85f);
+					if (UBNProgressionSubsystem* Pr = GetGI(OwnerHUD) ? GetGI(OwnerHUD)->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+					{
+						Pr->TrySetCustomPaint(p, GetPlayerCar(OwnerHUD));
+						PreviewedCar.Reset();
+						ActionFeedback = Pr->GetFeedbackText();
+						Refresh();
+					}
+					return FReply::Handled();
+				}), 18.f)
+		];
+	}
+
+	// Paint Finish row (4 presets)
+	TSharedRef<SHorizontalBox> FinishRow = SNew(SHorizontalBox);
+	FinishRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 6.f, 0.f))
+	[
+		SNew(STextBlock).Text(FText::FromString(TEXT("YÜZEY:"))).Font(BNUITheme::Font(8, true)).ColorAndOpacity(BNUITheme::SteelMuted)
+	];
+	for (int32 f = 0; f < static_cast<int32>(EBNPaintFinish::Count); ++f)
+	{
+		const EBNPaintFinish Fin = static_cast<EBNPaintFinish>(f);
+		FinishRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+		[
+			BNUITheme::MakeMWButton(FText::FromString(FBNVehicleSpec::PaintFinishLabel(Fin)),
+				ActiveFinish == Fin ? EBNButtonVariant::PrimaryAmber : EBNButtonVariant::SecondarySteel,
+				FOnClicked::CreateLambda([this, Fin]()
+				{
+					if (UBNProgressionSubsystem* Pr = GetGI(OwnerHUD) ? GetGI(OwnerHUD)->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+					{
+						Pr->TrySetPaintFinish(Fin, GetPlayerCar(OwnerHUD));
+						PreviewedCar.Reset();
+						ActionFeedback = Pr->GetFeedbackText();
+						Refresh();
+					}
+					return FReply::Handled();
+				}), true, 8, FMargin(6.f, 3.f))
+		];
+	}
+
+	// Rim Paint & Underglow Neon compact strip
+	TSharedRef<SHorizontalBox> RimAndNeonRow = SNew(SHorizontalBox);
+	RimAndNeonRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 5.f, 0.f))
+	[
+		SNew(STextBlock).Text(FText::FromString(TEXT("JANT:"))).Font(BNUITheme::Font(8, true)).ColorAndOpacity(BNUITheme::SteelMuted)
+	];
+	for (int32 r = 0; r < Rims.Num(); ++r)
+	{
+		RimAndNeonRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+		[
+			MakeColorSwatch(Rims[r].Value, Rims[r].Key, ActiveRimIdx == r,
+				FOnClicked::CreateLambda([this, r]()
+				{
+					UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiConfirm, 0.85f);
+					if (UBNProgressionSubsystem* Pr = GetGI(OwnerHUD) ? GetGI(OwnerHUD)->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+					{
+						Pr->TrySetRimPaint(r, GetPlayerCar(OwnerHUD));
+						PreviewedCar.Reset();
+						ActionFeedback = Pr->GetFeedbackText();
+						Refresh();
+					}
+					return FReply::Handled();
+				}), 15.f)
+		];
+	}
+	RimAndNeonRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(10.f, 0.f, 5.f, 0.f))
+	[
+		SNew(STextBlock).Text(FText::FromString(TEXT("NEON:"))).Font(BNUITheme::Font(8, true)).ColorAndOpacity(BNUITheme::SteelMuted)
+	];
+	for (int32 n = 0; n < Neons.Num(); ++n)
+	{
+		const FLinearColor PreviewCol = (n == 0) ? FLinearColor(0.14f, 0.15f, 0.18f, 1.f) : Neons[n].Value;
+		RimAndNeonRow->AddSlot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 4.f, 0.f))
+		[
+			MakeColorSwatch(PreviewCol, Neons[n].Key, ActiveNeonIdx == n,
+				FOnClicked::CreateLambda([this, n]()
+				{
+					UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiConfirm, 0.85f);
+					if (UBNProgressionSubsystem* Pr = GetGI(OwnerHUD) ? GetGI(OwnerHUD)->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+					{
+						Pr->TrySetUnderglow(n, GetPlayerCar(OwnerHUD));
+						PreviewedCar.Reset();
+						ActionFeedback = Pr->GetFeedbackText();
+						Refresh();
+					}
+					return FReply::Handled();
+				}), 15.f)
 		];
 	}
 
@@ -209,42 +298,47 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildGarageTab()
 		? Palette[ActivePaintIdx].Key
 		: FString(TEXT("Fabrika Rengi"));
 
-	// Center open viewport: completely clear for live 360-degree 3D car turntable + bottom paint & nameplate dock!
+	// Center open viewport: completely clear for live 360-degree 3D car turntable + compact non-clipping bottom dock!
 	TSharedRef<SVerticalBox> CenterShowcase = SNew(SVerticalBox)
 	+ SVerticalBox::Slot().FillHeight(1.f)[SNew(SSpacer)]
 	+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
 	[
-		SNew(SVerticalBox)
-		+ SVerticalBox::Slot().AutoHeight()[BNUITheme::MakeHazardBar(4.f)]
-		+ SVerticalBox::Slot().AutoHeight()
+		SNew(SBox).MaxDesiredWidth(520.f)
 		[
-			SNew(SBorder)
-			.BorderImage(BNUITheme::GetPanelBevelBrush())
-			.BorderBackgroundColor(FLinearColor(0.95f, 0.95f, 0.95f, 0.88f))
-			.Padding(FMargin(20.f, 10.f))
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight()[BNUITheme::MakeHazardBar(4.f)]
+			+ SVerticalBox::Slot().AutoHeight()
 			[
-				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()
+				SNew(SBorder)
+				.BorderImage(BNUITheme::GetPanelBevelBrush())
+				.BorderBackgroundColor(FLinearColor(0.95f, 0.95f, 0.95f, 0.90f))
+				.Padding(FMargin(14.f, 9.f))
 				[
-					SNew(STextBlock)
-					.Text(FText::FromString(FString::Printf(TEXT("%s   //   %s"), *ShownSpec.DisplayName.ToUpper(), FBNVehicleSpec::BodyStyleLabel(ShownSpec.BodyStyle))))
-					.Font(BNUITheme::Font(15, true))
-					.ColorAndOpacity(BNUITheme::AmberBright)
-					.Justification(ETextJustify::Center)
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 6.f))
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(ActionFeedback.IsEmpty()
-						? FString::Printf(TEXT("SELİN'İN GARAJI  •  BOYA: %s  •  360° CANLI VİTRİN"), *PaintName)
-						: ActionFeedback))
-					.Font(BNUITheme::Font(10, !ActionFeedback.IsEmpty()))
-					.ColorAndOpacity(ActionFeedback.IsEmpty() ? BNUITheme::SteelMuted : BNUITheme::EmeraldGreen)
-					.Justification(ETextJustify::Center)
-				]
-				+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)
-				[
-					PaintSwatches
+					SNew(SVerticalBox)
+					+ SVerticalBox::Slot().AutoHeight()
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(FString::Printf(TEXT("%s  //  %s"), *ShownSpec.DisplayName.ToUpper(), FBNVehicleSpec::BodyStyleLabel(ShownSpec.BodyStyle))))
+						.Font(BNUITheme::Font(13, true))
+						.ColorAndOpacity(BNUITheme::AmberBright)
+						.Justification(ETextJustify::Center)
+						.AutoWrapText(true)
+					]
+					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 6.f))
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(ActionFeedback.IsEmpty()
+							? FString::Printf(TEXT("SELİN'İN GARAJI  •  %s (%s)"), *PaintName, FBNVehicleSpec::PaintFinishLabel(ActiveFinish))
+							: ActionFeedback))
+						.Font(BNUITheme::Font(9, !ActionFeedback.IsEmpty()))
+						.ColorAndOpacity(ActionFeedback.IsEmpty() ? BNUITheme::SteelMuted : BNUITheme::EmeraldGreen)
+						.Justification(ETextJustify::Center)
+						.AutoWrapText(true)
+					]
+					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 0.f, 0.f, 4.f))[PaintRow1]
+					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 0.f, 0.f, 6.f))[PaintRow2]
+					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 0.f, 0.f, 5.f))[FinishRow]
+					+ SVerticalBox::Slot().AutoHeight().HAlign(HAlign_Center)[RimAndNeonRow]
 				]
 			]
 		]
@@ -354,12 +448,12 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildGarageTab()
 	}
 
 	TSharedRef<SWidget> RightRail = SNew(SBox)
-		.WidthOverride(378.f)
+		.WidthOverride(342.f)
 		[
 			SNew(SBorder)
 			.BorderImage(BNUITheme::GetPanelBevelBrush())
 			.BorderBackgroundColor(FLinearColor(0.92f, 0.92f, 0.92f, 0.88f))
-			.Padding(FMargin(16.f, 14.f))
+			.Padding(FMargin(14.f, 12.f))
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))

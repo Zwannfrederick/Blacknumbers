@@ -157,10 +157,52 @@ void UBNPursuitSubsystem::EscalateOrStartPursuit()
 
 void UBNPursuitSubsystem::StopPursuit()
 {
+	bInRaceIntervention = false;
 	State.EndPursuitImmediate();
 	SpikePenaltySeconds = 0.f;
 	ClearAllUnits();
 	ClearSpikeStrips();
+}
+
+void UBNPursuitSubsystem::StartInRacePursuit(int32 InitialHeat)
+{
+	ABNVehiclePawn* Player = FindPlayerCar();
+	if (!Player)
+	{
+		return;
+	}
+	bInRaceIntervention = true;
+	if (!State.IsPursuitRunning())
+	{
+		ClearPatrols();
+		ClearSpikeStrips();
+		State.StartPursuit(FMath::Clamp(InitialHeat, 1, FMath::Min(State.MaxAllowedHeatLevel, 4)));
+		State.PostDispatch(TEXT("MERKEZ"),
+			TEXT("YASA DIŞI SOKAK YARIŞI TESPİT EDİLDİ! Devriyeler yarışa müdahale ediyor!"), 4.2f);
+		SpawnCooldown = 0.5f;
+		RoadblockCooldown = 14.f;
+		NextSlot = 0;
+		const FBNHeatTierSpec Spec = FBNHeatTierSpec::ForLevel(State.HeatLevel);
+		SpawnChaser(*Player, Spec, NextSlot++);
+		if (Spec.MaxActiveUnits >= 2)
+		{
+			SpawnChaser(*Player, Spec, NextSlot++);
+		}
+	}
+}
+
+void UBNPursuitSubsystem::NotifyRaceEndedKeepPursuit()
+{
+	if (bInRaceIntervention && State.IsPursuitRunning())
+	{
+		bInRaceIntervention = false;
+		State.PostDispatch(TEXT("MERKEZ"),
+			TEXT("Yarış bitti ama şüpheli hâlâ kaçıyor! Tüm birimler takibi sürdürün!"), 3.8f);
+	}
+	else
+	{
+		bInRaceIntervention = false;
+	}
 }
 
 void UBNPursuitSubsystem::SetMaxAllowedHeat(int32 MaxHeat)
@@ -176,7 +218,7 @@ void UBNPursuitSubsystem::ReportCollateralDamage(int32 Dollars, const FString& R
 void UBNPursuitSubsystem::OnPursuitBreakerTriggered(ABNPursuitBreaker* Breaker, ABNVehiclePawn* PlayerCar)
 {
 	const ABNVehiclePawn* ActivePlayer = PlayerCar ? PlayerCar : FindPlayerCar();
-	if (!Breaker || !State.IsPursuitRunning() || IsPlayerInActiveRace(GetWorld(), ActivePlayer))
+	if (!Breaker || !State.IsPursuitRunning() || (!bInRaceIntervention && IsPlayerInActiveRace(GetWorld(), ActivePlayer)))
 	{
 		return;
 	}
@@ -550,7 +592,7 @@ void UBNPursuitSubsystem::Tick(float DeltaTime)
 		return;
 	}
 
-	if (!Player || IsPlayerInActiveRace(GetWorld(), Player))
+	if (!Player || (!bInRaceIntervention && IsPlayerInActiveRace(GetWorld(), Player)))
 	{
 		StopPursuit();
 		return;

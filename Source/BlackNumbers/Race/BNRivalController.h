@@ -7,6 +7,7 @@
 class ABNRaceEvent;
 class ABNVehiclePawn;
 class USplineComponent;
+enum class EBNRivalStyle : uint8;
 
 /**
  * Drives a rival car along its race's racing line: pure-pursuit steering toward a point ahead, and the
@@ -24,7 +25,7 @@ public:
 
 	virtual void Tick(float DeltaSeconds) override;
 
-	void Setup(ABNRaceEvent* InRace, float InSkill, float InLaneOffset);
+	void Setup(ABNRaceEvent* InRace, float InSkill, float InLaneOffset, EBNRivalStyle InStyle);
 
 	/** Times the car was put back on the line after getting stuck or flipped. */
 	int32 GetRespawnCount() const { return Respawns; }
@@ -48,6 +49,7 @@ private:
 
 	TWeakObjectPtr<ABNRaceEvent> Race;
 	float Skill = 0.5f;
+	EBNRivalStyle Style{};
 	/** Sideways offset from the racing line (right positive), so rivals do not all queue on one line. */
 	float LaneOffset = 0.f;
 	/** Lane being moved to while passing; LaneOffset slides toward it. */

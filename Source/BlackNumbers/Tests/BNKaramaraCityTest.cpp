@@ -3,9 +3,12 @@
 #if WITH_DEV_AUTOMATION_TESTS && WITH_EDITOR
 
 #include "ChaosWheeledVehicleMovementComponent.h"
+#include "Components/SkeletalMeshComponent.h"
 #include "Editor.h"
+#include "Engine/HitResult.h"
 #include "EngineUtils.h"
 #include "GameFramework/PlayerController.h"
+#include "GameFramework/WorldSettings.h"
 #include "Garage/BNGarageZone.h"
 #include "Police/BNPursuitBreaker.h"
 #include "Police/BNPursuitSubsystem.h"
@@ -30,6 +33,7 @@ namespace
 	constexpr float ViaductApproachYaw = -90.f;
 	constexpr float TargetRampMinZ = 350.f;
 	constexpr float DriveTimeoutSeconds = 12.f;
+	const FVector CoastTestStart(105500.f, 12000.f, 370.f);
 
 	template <typename ActorType>
 	int32 CountActors(UWorld* World)
@@ -44,9 +48,10 @@ namespace
 
 	struct FKaramaraTestState
 	{
-		enum class EPhase { VerifyCity, Settle, DriveRamp } Phase = EPhase::VerifyCity;
+		enum class EPhase { VerifyCity, Settle, DriveRamp, SettleOnCoast, DriveIntoSea } Phase = EPhase::VerifyCity;
 		double PhaseStart = 0.0;
 		TWeakObjectPtr<ABNBreakableProp> SpawnedProp;
+		uint32 InitialRecoveries = 0;
 	};
 }
 
@@ -96,6 +101,13 @@ bool FBNKaramaraCityTest::RunTest(const FString& Parameters)
 		{
 		case EPhase::VerifyCity:
 		{
+			const float KillZ = World->GetWorldSettings()->KillZ;
+			TestTrue(TEXT("Mara Sea recovers vehicles before they fall far below the surface"), KillZ < -320.f && KillZ > -700.f);
+			FHitResult Hillside;
+			const bool bHitHillside = World->LineTraceSingleByChannel(Hillside, FVector(-70000.f, -90000.f, 9000.f),
+				FVector(-70000.f, -90000.f, 0.f), ECC_Visibility);
+			TestTrue(TEXT("Off-road terrain supports a vehicle above the flat city floor"), bHitHillside && Hillside.ImpactPoint.Z > 6000.f);
+
 			TestTrue(TEXT("Karamara has day/night cycle"), CountActors<ABNDayNightCycle>(World) >= 1);
 			TestTrue(TEXT("Karamara has >= 60 street lamps across 6 districts"), CountActors<ABNStreetLamp>(World) >= 60);
 			TestTrue(TEXT("Karamara has Selin's Garage"), CountActors<ABNGarageZone>(World) >= 1);
@@ -173,10 +185,35 @@ bool FBNKaramaraCityTest::RunTest(const FString& Parameters)
 				{
 					MutableProp->Destroy();
 				}
-				return true;
+				PlaceStopped(*Car, CoastTestStart);
+				State->InitialRecoveries = Car->GetRecoveryCount();
+				Enter(EPhase::SettleOnCoast);
 			}
 			return false;
 		}
+		case EPhase::SettleOnCoast:
+			if (InPhase >= 0.9f)
+			{
+				TestTrue(TEXT("East Harbor coast has solid ground before the drop"), Car->IsOnGround());
+				Car->GetMesh()->SetPhysicsLinearVelocity(FVector(1900.f, 0.f, 0.f));
+				Enter(EPhase::DriveIntoSea);
+			}
+			return false;
+		case EPhase::DriveIntoSea:
+			if (Car->GetRecoveryCount() != State->InitialRecoveries)
+			{
+				const FVector Return = Car->GetActorLocation();
+				UE_LOG(LogTemp, Display, TEXT("BN Karamara test: sea recovery returned to %s"), *Return.ToCompactString());
+				TestTrue(TEXT("A car falling into Mara Sea returns above the same coast"),
+					Return.Z > 300.f && Return.X < 107000.f && FVector::Dist2D(Return, CoastTestStart) < 2400.f);
+				return true;
+			}
+			if (InPhase > 5.f)
+			{
+				AddError(TEXT("Driving off the East Harbor coast did not trigger recovery"));
+				return true;
+			}
+			return false;
 		}
 		return true;
 	}));

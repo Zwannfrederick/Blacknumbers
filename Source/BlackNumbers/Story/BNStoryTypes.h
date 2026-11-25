@@ -3,6 +3,7 @@
 #include "CoreMinimal.h"
 #include "Garage/BNGarageTypes.h"
 #include "Race/BNRaceDefinition.h"
+#include "World/BNRoadGraph.h"
 #include "BNStoryTypes.generated.h"
 
 UENUM(BlueprintType)
@@ -25,6 +26,8 @@ enum class EBNTarikAttitude : uint8
 	Reconciled,
 	Retired,
 };
+
+enum class EBNRivalStyle : uint8 { Balanced, LateBrake, DefendLine, FastExit };
 
 /** Canonical BLACK NUMBERS syndicate racer (#16..#01). */
 USTRUCT(BlueprintType)
@@ -62,6 +65,9 @@ struct BLACKNUMBERS_API FBNBossSpec
 	UPROPERTY(BlueprintReadOnly, Category = "Story")
 	FString RaceAssetName;
 
+	TArray<FName> Qualifiers;
+	EBNRivalStyle RivalStyle = EBNRivalStyle::Balanced;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Story")
 	EBNCarId BaseCar = EBNCarId::KuroganeMSpec;
 
@@ -87,6 +93,52 @@ struct BLACKNUMBERS_API FBNBossSpec
 
 	UPROPERTY(BlueprintReadOnly, Category = "Story")
 	FLinearColor VehicleTint = FLinearColor::White;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	EBNDistrict HomeDistrict = EBNDistrict::MerkezBulvar;
+};
+
+/** Most Wanted / Carbon-style borough territory & District Ruler control record. */
+USTRUCT(BlueprintType)
+struct BLACKNUMBERS_API FBNDistrictTerritoryInfo
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	EBNDistrict District = EBNDistrict::MerkezBulvar;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString BoroughTitle;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString BoroughTheme;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString CrewName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 RulerRank = 16;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString RulerName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString RulerVehicle;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FLinearColor TerritoryColor = FLinearColor(0.85f, 0.25f, 0.15f, 1.f);
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	TArray<int32> CrewRanks;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 DefeatedInDistrict = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	bool bRulerDefeated = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	bool bDistrictLiberated = false;
 };
 
 /** One storyboard / narrative overlay card rendered cleanly on Canvas HUD. */
@@ -127,6 +179,8 @@ struct BLACKNUMBERS_API FBNStoryState
 	/** Next challenger rank (#16 down to #1; 0 once #01 Viktor Serez is defeated). */
 	UPROPERTY(BlueprintReadOnly, Category = "Story")
 	int32 NextBossRank = 16;
+
+	int32 QualifiersWon = 0;
 
 	/** Bitmask (1 << Rank) for defeated BLACK NUMBERS members 1..16. */
 	uint32 DefeatedMask = 0;
@@ -169,6 +223,10 @@ struct BLACKNUMBERS_API FBNStoryState
 
 	bool IsBossDefeated(int32 Rank) const;
 	bool CanChallengeBoss(int32 Rank) const;
+	bool IsDuelUnlocked(int32 Rank) const;
+	FName GetNextQualifier() const;
+	bool RecordQualifierVictory(FName RaceAsset);
+	int32 GetQualifierDriftTarget() const;
 	int32 GetMaxAllowedHeat() const;
 	bool IsTier6Unlocked() const { return bTarikReconciled; }
 	int32 GetDefeatedCount() const;
@@ -179,7 +237,11 @@ struct BLACKNUMBERS_API FBNStoryState
 	void SkipToRank(int32 TargetRank);
 
 	FString GetCurrentObjectiveLine() const;
+	FBNDistrictTerritoryInfo GetDistrictTerritory(EBNDistrict District) const;
+	int32 GetLiberatedDistrictCount() const;
 
+	static EBNDistrict GetDistrictForBoss(int32 Rank);
+	static bool IsDistrictRulerRank(int32 Rank);
 	static const TCHAR* ActLabel(EBNStoryAct InAct);
 	static const TCHAR* TarikAttitudeLabel(EBNTarikAttitude Attitude);
 	static const TCHAR* EscapeRouteName(int32 RouteIndex);

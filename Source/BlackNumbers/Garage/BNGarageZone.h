@@ -4,12 +4,13 @@
 #include "GameFramework/Actor.h"
 #include "BNGarageZone.generated.h"
 
+class ABNVehiclePawn;
 class UPointLightComponent;
 class UStaticMeshComponent;
 
 /**
  * World entry bay for Selin'in Garaji (Yamaç Mahallesi / Doğu Sanayi).
- * Driving slowly into the glowing green/amber bay opens the garage upgrade & car selection HUD.
+ * Passing through damaged auto-repairs the car for free; pressing [ENTER] or [G] inside opens the garage HUD.
  */
 UCLASS()
 class BLACKNUMBERS_API ABNGarageZone : public AActor
@@ -20,6 +21,9 @@ public:
 	ABNGarageZone();
 
 	virtual void Tick(float DeltaSeconds) override;
+
+	/** Returns the garage bay currently containing Car (when not in pursuit/race), or nullptr. */
+	static ABNGarageZone* FindNearbyGarageZone(const ABNVehiclePawn* Car);
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Garage")
 	TObjectPtr<UStaticMeshComponent> PillarL;
@@ -37,8 +41,8 @@ public:
 	FString GarageName = TEXT("Selin'in Garaji");
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Garage", meta = (ClampMin = "150", Units = "Centimeters"))
-	float TriggerRadius = 550.f;
+	float TriggerRadius = 620.f;
 
 private:
-	bool bArmed = false;
+	bool bRepairArmed = true;
 };

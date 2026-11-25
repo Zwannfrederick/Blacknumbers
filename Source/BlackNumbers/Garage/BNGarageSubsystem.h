@@ -43,7 +43,34 @@ public:
 	TArray<int32> CustomPaintIndices;
 
 	UPROPERTY()
+	TArray<uint8> PaintFinishes;
+
+	UPROPERTY()
+	TArray<int32> RimPaintIndices;
+
+	UPROPERTY()
+	TArray<int32> UnderglowIndices;
+
+	UPROPERTY()
+	uint8 Difficulty = 1;
+
+	UPROPERTY()
+	TMap<FString, float> BestRaceTimes;
+
+	UPROPERTY()
+	TMap<FString, int32> BestDriftScores;
+
+	UPROPERTY()
+	TMap<FString, float> BestSpeedTrapKmh;
+
+	UPROPERTY()
+	TMap<FString, float> BestJumpMeters;
+
+	UPROPERTY()
 	int32 StoryNextBossRank = 16;
+
+	UPROPERTY()
+	int32 StoryQualifiersWon = 0;
 
 	UPROPERTY()
 	int32 StoryDefeatedMask = 0;
@@ -111,6 +138,23 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Garage")
 	bool TrySetCustomPaint(int32 PaletteIndex, ABNVehiclePawn* Car = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "Garage")
+	bool TrySetPaintFinish(EBNPaintFinish Finish, ABNVehiclePawn* Car = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "Garage")
+	bool TrySetRimPaint(int32 RimIndex, ABNVehiclePawn* Car = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "Garage")
+	bool TrySetUnderglow(int32 NeonIndex, ABNVehiclePawn* Car = nullptr);
+
+	UFUNCTION(BlueprintCallable, Category = "Garage")
+	void SetDifficulty(EBNDifficulty NewDifficulty);
+
+	bool RecordRacePersonalBest(const FString& RaceKey, bool bDrift, float FinishSeconds, int32 DriftPoints, int32& OutBonusCash);
+	bool RecordSpeedTrapResult(const FString& TrapKey, const FString& TrapLabel, float SpeedKmh, float& OutPrevBest, int32& OutCash, int32& OutRep);
+	bool RecordStuntJumpResult(const FString& JumpKey, const FString& JumpLabel, float DistanceMeters, float& OutPrevBest, int32& OutCash, int32& OutRep);
+	void ShowNotificationBanner(const FString& BannerText, float DurationSeconds = 3.5f);
 
 	UFUNCTION(BlueprintCallable, Category = "Garage")
 	void GrantRaceReward(int32 Place, int32 TotalRacers, bool bDrift, int32 DriftPoints);

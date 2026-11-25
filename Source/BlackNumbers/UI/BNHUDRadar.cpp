@@ -512,7 +512,18 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 			{
 				DistrictBannerName = DistName;
 				DistrictBannerSubtitle = DistSub;
-				DistrictBannerUntil = Now + 3.4;
+				DistrictBannerRuler.Reset();
+				bDistrictBannerLiberated = false;
+				if (Story)
+				{
+					const FBNDistrictTerritoryInfo Terr = Story->GetState().GetDistrictTerritory(CurDist);
+					bDistrictBannerLiberated = Terr.bDistrictLiberated;
+					DistrictBannerRuler = Terr.bDistrictLiberated
+						? FString::Printf(TEXT("BÖLGE ELE GEÇİRİLDİ  •  %s KONTROLÜNDE"), *Terr.BoroughTitle)
+						: FString::Printf(TEXT("BÖLGE HÜKÜMDARI: #%02d %s  (%s)  •  EKİP: %s"),
+							Terr.RulerRank, *Terr.RulerName.ToUpper(), *Terr.RulerVehicle, *Terr.CrewName);
+				}
+				DistrictBannerUntil = Now + 3.8;
 			}
 			LastDistrictId = DistInt;
 			if (Story && !bRaceActive)
@@ -533,13 +544,19 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 		if (Now < DistrictBannerUntil && !DistrictBannerName.IsEmpty() && !bRaceActive)
 		{
 			const float Remaining = static_cast<float>(DistrictBannerUntil - Now);
-			const float Alpha = FMath::Clamp(FMath::Min(Remaining, 3.4f - Remaining) * 2.5f, 0.f, 1.f);
+			const float Alpha = FMath::Clamp(FMath::Min(Remaining, 3.8f - Remaining) * 2.5f, 0.f, 1.f);
 			FLinearColor TitleCol = BNRadar::DashColour;
 			TitleCol.A = Alpha;
 			FLinearColor SubCol = BNRadar::LegendColour;
 			SubCol.A = Alpha * 0.9f;
 			DrawCentred(DistrictBannerName, 112.f, 1.25f, TitleCol);
 			DrawCentred(DistrictBannerSubtitle, 144.f, 0.78f, SubCol);
+			if (!DistrictBannerRuler.IsEmpty())
+			{
+				FLinearColor RulerCol = bDistrictBannerLiberated ? BNRadar::SweetSpotColour : BNRadar::BlipPoliceRed;
+				RulerCol.A = Alpha * 0.95f;
+				DrawCentred(DistrictBannerRuler, 168.f, 0.80f, RulerCol);
+			}
 		}
 	}
 }
@@ -598,12 +615,18 @@ void ABNHUD::DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* Act
 	}
 }
 
-void ABNHUD::DrawEconomyPill(const UBNProgressionSubsystem& Progression, const UBNStorySubsystem* Story, bool bRaceActive)
+void ABNHUD::DrawEconomyPill(const UBNProgressionSubsystem& Progression, const UBNStorySubsystem* Story, bool bRaceActive, bool bPursuitVisible)
 {
+	// Never collide with the centered Pursuit Heat/Busted or Race status bar at the top of the screen!
+	if (bPursuitVisible || bRaceActive)
+	{
+		return;
+	}
 	UFont* Font = GEngine->GetLargeFont();
 	const FBNPlayerProfile& P = Progression.GetProfile();
-	const FString EconText = FString::Printf(TEXT("$%s   //   %s İTİBAR   //   [M] HARİTA   //   [ESC] MENÜ"),
-		*FString::FormatAsNumber(P.Cash), *FString::FormatAsNumber(P.Reputation));
+	const int32 LibCount = Story ? Story->GetState().GetLiberatedDistrictCount() : 0;
+	const FString EconText = FString::Printf(TEXT("$%s  //  %s İTİBAR  //  BÖLGE %d/6  //  [M] HARİTA  //  [ESC] MENÜ"),
+		*FString::FormatAsNumber(P.Cash), *FString::FormatAsNumber(P.Reputation), LibCount);
 	float W = 0.f, H = 0.f;
 	GetTextSize(EconText, W, H, Font, BNRadar::LabelScale);
 	const float X = BNRadar::RadarMargin - 6.f;
@@ -631,8 +654,9 @@ void ABNHUD::DrawEconomyPill(const UBNProgressionSubsystem& Progression, const U
 			if (const FBNBossSpec* Boss = FBNStoryState::FindBossByRank(S.NextBossRank))
 			{
 				const bool bReady = S.CanChallengeBoss(S.NextBossRank);
-				ObjText = FString::Printf(TEXT("HEDEF #%02d: %s (%s)  •  %s  •  [B] BLACKLIST"),
-					Boss->Rank, *Boss->Name, *Boss->VehicleName, *Boss->DisciplineLabel);
+				const FString Stage = S.GetNextQualifier().IsNone() ? TEXT("DÜELLO")
+					: FString::Printf(TEXT("ELEME %d/%d"), S.QualifiersWon + 1, Boss->Qualifiers.Num());
+				ObjText = FString::Printf(TEXT("#%02d %s  •  %s  •  [B] YARIŞ PROGRAMI"), Boss->Rank, *Boss->Name, *Stage);
 				ObjCol = bReady ? BNRadar::SweetSpotColour : BNRadar::LegendColour;
 				BarCol = bReady ? BNRadar::SweetSpotColour : BNRadar::RadarRing;
 			}
@@ -659,10 +683,11 @@ void ABNHUD::DrawLiveCommsAndPrompts(const ABNVehiclePawn& Car, const ABNRaceEve
 	UFont* Font = GEngine->GetLargeFont();
 	const double Now = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.0;
 
-	// 1. GPS Arrival Banner
+	// 1. GPS Arrival Banner (shifts cleanly below the 3-line District Entry Banner if both fire together)
 	if (Now < GpsArrivalBannerUntil)
 	{
-		DrawCentred(TEXT("GPS HEDEFİNE ULAŞILDI!"), 168.f, 1.35f, BNRadar::RouteNextLeg);
+		const float GpsY = (Now < DistrictBannerUntil && !DistrictBannerName.IsEmpty()) ? 204.f : 168.f;
+		DrawCentred(TEXT("GPS HEDEFİNE ULAŞILDI!"), GpsY, 1.25f, BNRadar::RouteNextLeg);
 	}
 
 	// 2. Interactive Free-Roam Pre-Race Briefing Prompt Pill (when parked inside an idle race ring)

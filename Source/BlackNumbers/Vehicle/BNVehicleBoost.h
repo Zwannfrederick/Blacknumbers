@@ -93,9 +93,25 @@ struct BLACKNUMBERS_API FBNBoostTuning
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Launch", meta = (ClampMin = "0.1"))
 	float LaunchRevFallRate = 1.6f;
+
+	/** Slipstream (drafting) tuning: trailing behind a rival/traffic car above 120 km/h builds extra pull + NOS. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slipstream", meta = (ClampMin = "50"))
+	float SlipstreamMinSpeedKmh = 120.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slipstream", meta = (ClampMin = "0"))
+	float SlipstreamMaxAccelCmPerSec2 = 380.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slipstream", meta = (ClampMin = "0"))
+	float SlipstreamNosBonusPerSecond = 0.10f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slipstream", meta = (ClampMin = "0.1"))
+	float SlipstreamBuildRate = 0.65f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Slipstream", meta = (ClampMin = "0.1"))
+	float SlipstreamDecayRate = 0.90f;
 };
 
-/** Pure runtime state for NOS, Speedbreaker, countdown Perfect Launch, Near-Miss, and exhaust backfire. */
+/** Pure runtime state for NOS, Speedbreaker, Slipstream drafting, countdown Perfect Launch, Near-Miss, and exhaust backfire. */
 struct BLACKNUMBERS_API FBNBoostState
 {
 	float NosFraction = 1.f;
@@ -103,6 +119,9 @@ struct BLACKNUMBERS_API FBNBoostState
 
 	float SpeedbreakerFraction = 1.f;
 	bool bSpeedbreakerActive = false;
+
+	float SlipstreamCharge = 0.f;
+	bool bSlipstreaming = false;
 
 	float LaunchRevFraction = 0.f;
 	float LaunchBoostRemaining = 0.f;
@@ -116,6 +135,8 @@ struct BLACKNUMBERS_API FBNBoostState
 
 	void UpdateNos(float RealDt, bool bWanted, bool bInputLocked, bool bOnGround, float SpeedKmh, bool bDrifting, const FBNBoostTuning& Tuning);
 	void UpdateSpeedbreaker(float RealDt, bool bWanted, bool bInputLocked, float SpeedKmh, const FBNBoostTuning& Tuning);
+	void UpdateSlipstream(float RealDt, bool bInDraftPocket, bool bInputLocked, bool bOnGround, float SpeedKmh, const FBNBoostTuning& Tuning);
+	float GetSlipstreamAccelCmPerSec2(const FBNBoostTuning& Tuning) const;
 	void UpdateCountdownLaunch(float RealDt, float PlayerThrottle, const FBNBoostTuning& Tuning);
 	bool TriggerLaunchRelease(const FBNBoostTuning& Tuning);
 	void AddNearMissBonus(const FBNBoostTuning& Tuning);

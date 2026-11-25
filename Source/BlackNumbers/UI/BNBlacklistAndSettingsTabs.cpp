@@ -4,7 +4,10 @@
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/GameUserSettings.h"
+#include "Garage/BNGarageSubsystem.h"
+#include "Garage/BNGarageTypes.h"
 #include "GenericPlatform/GenericWindow.h"
+#include "Race/BNRaceEvent.h"
 #include "Story/BNStorySubsystem.h"
 #include "Story/BNStoryTypes.h"
 #include "Styling/CoreStyle.h"
@@ -17,6 +20,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
+#include "Widgets/Layout/SScaleBox.h"
 #include "Widgets/Layout/SScrollBox.h"
 #include "Widgets/Layout/SSpacer.h"
 #include "Widgets/SBoxPanel.h"
@@ -54,6 +58,8 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 	}
 
 	const FBNStoryState& S = Story->GetState();
+	UWorld* World = GetHUDWorld(OwnerHUD);
+	TSharedRef<SVerticalBox> ProgramRows = SNew(SVerticalBox);
 	if (SelectedBlacklistRank < 1 || SelectedBlacklistRank > 16)
 	{
 		SelectedBlacklistRank = FMath::Clamp(S.NextBossRank, 1, 16);
@@ -71,11 +77,14 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 		const bool bDefeated = S.IsBossDefeated(B.Rank);
 		const bool bNext = !bDefeated && S.NextBossRank == B.Rank && !S.bFinalChaseActive && !S.bCampaignCompleted;
 		const bool bSelected = (B.Rank == SelectedBlacklistRank);
-		const FString Badge = bDefeated ? TEXT("YENİLDİ") : bNext ? TEXT("SIRADAKİ") : TEXT("KİLİTLİ");
-		const FLinearColor BadgeCol = bDefeated ? BNUITheme::CrimsonRed : bNext ? BNUITheme::AmberBright : BNUITheme::SteelMuted;
+		const bool bRuler = FBNStoryState::IsDistrictRulerRank(B.Rank);
+		const FBNDistrictTerritoryInfo BossTerr = S.GetDistrictTerritory(B.HomeDistrict);
+		const FString Badge = bDefeated ? TEXT("YENİLDİ") : bNext ? TEXT("SIRADAKİ") : (bRuler ? TEXT("★ HÜKÜMDAR") : TEXT("KİLİTLİ"));
+		const FLinearColor BadgeCol = bDefeated ? BNUITheme::CrimsonRed : bNext ? BNUITheme::AmberBright : (bRuler ? BNUITheme::NosCyan : BNUITheme::SteelMuted);
 		const FLinearColor RowBg = bSelected ? BNUITheme::AmberDarkCard
 			: bDefeated ? FLinearColor(0.08f, 0.065f, 0.068f, 0.94f)
 			: BNUITheme::GunmetalCard;
+		const FString SubInfo = FString::Printf(TEXT("%s  •  %s"), *B.VehicleName, *BossTerr.BoroughTitle);
 
 		RosterRows->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 6.f, 5.f))
 		[
@@ -121,7 +130,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 						]
 						+ SVerticalBox::Slot().AutoHeight()
 						[
-							SNew(STextBlock).Text(FText::FromString(B.VehicleName)).Font(BNUITheme::Font(9, false)).ColorAndOpacity(BNUITheme::SteelMuted)
+							SNew(STextBlock).Text(FText::FromString(SubInfo)).Font(BNUITheme::Font(9, false)).ColorAndOpacity(BNUITheme::SteelMuted)
 						]
 					]
 					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
@@ -139,11 +148,15 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 	{
 		const bool bDef = S.IsBossDefeated(ActiveBoss->Rank);
 		const bool bCanFight = S.CanChallengeBoss(ActiveBoss->Rank);
+		const bool bDuelReady = S.IsDuelUnlocked(ActiveBoss->Rank);
+		const bool bFinalChase = S.bFinalChaseActive && ActiveBoss->Rank == 1;
+		const int32 QualifierCount = ActiveBoss->Qualifiers.Num();
+		const int32 Wins = bDef ? QualifierCount : bCanFight ? S.QualifiersWon : 0;
 		const FSlateBrush* ArtBrush = BNUITheme::GetArtBrush(ArtForBlacklistRank(ActiveBoss->Rank));
 		const FSlateBrush* VigLeft = BNUITheme::GetVignetteLeftBrush();
 		const bool bHasArt = ArtBrush != BNUITheme::WhiteBrush();
 		const FString StampText = bDef ? TEXT("YENİLDİ  //  DOSYA KAPANDI")
-			: bCanFight ? TEXT("MEYDAN OKUNABİLİR HEDEF")
+			: bDuelReady ? TEXT("DÜELLO AÇIK") : bCanFight ? TEXT("ELEME PROGRAMI")
 			: FString::Printf(TEXT("KİLİTLİ  —  ÖNCE #%02d YENİLMELİ"), S.NextBossRank);
 		const FLinearColor StampCol = bDef ? BNUITheme::CrimsonRed : bCanFight ? BNUITheme::AmberBright : BNUITheme::SteelMuted;
 
@@ -157,15 +170,27 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 					SNew(SOverlay)
 					+ SOverlay::Slot()
 					[
-						SNew(SImage)
-						.Image(ArtBrush)
-						.ColorAndOpacity(bHasArt ? FLinearColor(0.95f, 0.92f, 0.88f, 1.f) : BNUITheme::AsphaltDark)
+						SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(BNUITheme::AsphaltDark)
 					]
-					+ SOverlay::Slot()
+					+ SOverlay::Slot().HAlign(HAlign_Right)
 					[
-						SNew(SImage)
-						.Image(VigLeft)
-						.ColorAndOpacity(VigLeft != BNUITheme::WhiteBrush() ? FLinearColor::White : FLinearColor(0.03f, 0.035f, 0.045f, 0.85f))
+						SNew(SBox).WidthOverride(640.f).Clipping(EWidgetClipping::ClipToBounds)
+						[
+							SNew(SOverlay)
+							+ SOverlay::Slot()
+							[
+								SNew(SScaleBox).Stretch(EStretch::ScaleToFill).VAlign(VAlign_Bottom)
+								[
+									SNew(SImage).Image(ArtBrush)
+									.ColorAndOpacity(bHasArt ? FLinearColor(0.95f, 0.92f, 0.88f, 1.f) : BNUITheme::AsphaltDark)
+								]
+							]
+							+ SOverlay::Slot()
+							[
+								SNew(SImage).Image(VigLeft)
+								.ColorAndOpacity(VigLeft != BNUITheme::WhiteBrush() ? FLinearColor::White : FLinearColor(0.03f, 0.035f, 0.045f, 0.85f))
+							]
+						]
 					]
 					+ SOverlay::Slot().HAlign(HAlign_Right).VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 18.f, 8.f))
 					[
@@ -213,7 +238,8 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Bottom)
 							[
 								BNUITheme::MakeMWButton(
-									FText::FromString(bDef ? TEXT("YENİLDİ") : TEXT("MEYDAN OKU")),
+									FText::FromString(bFinalChase ? TEXT("SON KOVALAMACA")
+										: bDef ? TEXT("YENİLDİ") : bDuelReady ? TEXT("DÜELLOYA ÇIK") : TEXT("SIRADAKİ YARIŞ")),
 									bDef ? EBNButtonVariant::DangerCrimson : EBNButtonVariant::PrimaryAmber,
 									FOnClicked::CreateLambda([this, BossRank = ActiveBoss->Rank]()
 									{
@@ -221,13 +247,18 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 										UBNStorySubsystem* St = GetGI(OwnerHUD) ? GetGI(OwnerHUD)->GetSubsystem<UBNStorySubsystem>() : nullptr;
 										if (Car && St && OwnerHUD.IsValid())
 										{
-											St->OpenDossier(Car);
-											St->MoveDossierSelection((16 - BossRank) - St->GetSelectedBossIndex());
-											OwnerHUD->CloseMenu();
-											St->ChallengeSelectedBoss(Car);
+											if (St->ChallengeSelectedBoss(Car, BossRank))
+											{
+												OwnerHUD->CloseMenu();
+											}
+											else
+											{
+												ActionFeedback = St->GetStatusFeedback();
+												Refresh();
+											}
 										}
 										return FReply::Handled();
-									}), bCanFight, 12, FMargin(18.f, 10.f))
+									}), bCanFight || bFinalChase, 12, FMargin(18.f, 10.f))
 							]
 						]
 					]
@@ -243,21 +274,69 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(FString::Printf(
-						TEXT("DİSİPLİN: %s   |   ÖDÜL: $%s + %d İTİBAR   |   KANIT: %s"),
-						*ActiveBoss->DisciplineLabel, *FString::FormatAsNumber(ActiveBoss->RewardCash), ActiveBoss->RewardRep,
+						TEXT("BÖLGE: %s%s   |   ÖDÜL: $%s + %d İTİBAR   |   KANIT: %s"),
+						*S.GetDistrictTerritory(ActiveBoss->HomeDistrict).BoroughTitle,
+						FBNStoryState::IsDistrictRulerRank(ActiveBoss->Rank) ? TEXT(" (★ HÜKÜMDAR)") : TEXT(""),
+						*FString::FormatAsNumber(ActiveBoss->RewardCash), ActiveBoss->RewardRep,
 						ActiveBoss->EvidenceCode.IsEmpty() ? TEXT("Sokak İstihbaratı") : *ActiveBoss->EvidenceCode)))
 					.Font(BNUITheme::Font(10, true))
 					.ColorAndOpacity(BNUITheme::NosCyan)
 				]
 			]
 		];
+
+		ProgramRows->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 6.f)
+		[
+			BNUITheme::MakeSectionHeader(TEXT("SOKAK YARIŞI PROGRAMI"),
+				FString::Printf(TEXT("%d/%d TAMAM"), Wins + (bDef ? 1 : 0), QualifierCount + 1), BNUITheme::AmberGold)
+		];
+		for (int32 Index = 0; Index <= QualifierCount; ++Index)
+		{
+			const bool bDuel = Index == QualifierCount;
+			const bool bDone = bDef || Index < Wins;
+			const bool bNext = bCanFight && Index == Wins;
+			const FName Asset = bDuel ? FName(*ActiveBoss->RaceAssetName) : ActiveBoss->Qualifiers[Index];
+			const ABNRaceEvent* Event = UBNStorySubsystem::FindProgramRace(World, Asset);
+			const FString RaceName = Event && Event->Definition ? Event->Definition->DisplayName.ToString()
+				: bDuel ? ActiveBoss->DisciplineLabel : TEXT("Karamara sokak yarışı");
+			const bool bDrift = Event && Event->Definition && Event->Definition->Discipline == EBNRaceDiscipline::Drift;
+			const FString Objective = bDrift ? FString::Printf(TEXT("%s PUAN"),
+				*FString::FormatAsNumber(bDuel ? ActiveBoss->DriftTargetScore : S.GetQualifierDriftTarget()))
+				: TEXT("1. OL");
+			ProgramRows->AddSlot().AutoHeight().Padding(0.f, 0.f, 0.f, 4.f)
+			[
+				SNew(SBorder).BorderImage(WhiteBrush())
+				.BorderBackgroundColor(bNext ? BNUITheme::AmberDarkCard : BNUITheme::GunmetalCard).Padding(10.f, 6.f)
+				[
+					SNew(SHorizontalBox)
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+					[
+						SNew(SBox).WidthOverride(85.f)
+						[
+							SNew(STextBlock).Text(FText::FromString(bDuel ? TEXT("DÜELLO") : FString::Printf(TEXT("ELEME %d"), Index + 1)))
+							.Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::AmberGold)
+						]
+					]
+					+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+					[
+						SNew(STextBlock).Text(FText::FromString(RaceName)).Font(BNUITheme::Font(11, true))
+							.ColorAndOpacity(BNUITheme::ChalkWhite).AutoWrapText(true)
+					]
+					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(8.f, 0.f)
+					[
+						SNew(STextBlock).Text(FText::FromString(bDone ? TEXT("TAMAM") : bNext ? Objective : TEXT("KİLİTLİ")))
+							.Font(BNUITheme::Font(9, true)).ColorAndOpacity(bDone ? BNUITheme::EmeraldGreen : BNUITheme::SteelMuted)
+					]
+				]
+			];
+		}
 	}
 
 	// Evidence Ledger + Tarik Kaya & Heat Status (Kanon-accurate: K. Vance is Kerem's alias, never a police rank!)
-	RightPane->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 8.f))
+	ProgramRows->AddSlot().AutoHeight().Padding(FMargin(0.f, 12.f, 0.f, 8.f))
 	[
-		BNUITheme::MakeSectionHeader(TEXT("SORUŞTURMA & KANIT DOSYASI"),
-			FString::Printf(TEXT("TARIK: %s  •  %d/16"), FBNStoryState::TarikAttitudeLabel(S.TarikAttitude), S.GetDefeatedCount()),
+		BNUITheme::MakeSectionHeader(TEXT("SORUŞTURMA & BÖLGE HAKİMİYETİ"),
+			FString::Printf(TEXT("BÖLGE: %d/6  •  TARIK: %s  •  %d/16"), S.GetLiberatedDistrictCount(), FBNStoryState::TarikAttitudeLabel(S.TarikAttitude), S.GetDefeatedCount()),
 			BNUITheme::NosCyan)
 	];
 
@@ -284,7 +363,12 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 			]
 		];
 	}
-	RightPane->AddSlot().FillHeight(1.f)[SNew(SScrollBox) + SScrollBox::Slot()[EvidenceList]];
+	RightPane->AddSlot().FillHeight(1.f)
+	[
+		SNew(SScrollBox)
+		+ SScrollBox::Slot()[ProgramRows]
+		+ SScrollBox::Slot()[EvidenceList]
+	];
 
 	return SNew(SHorizontalBox)
 	+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 16.f, 0.f))
@@ -476,13 +560,53 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildSettingsTab()
 		? FString::Printf(TEXT("Durum: %s  (%d aktif sivil araç)"), bTrafficOn ? TEXT("Açık") : TEXT("Kapalı"), Traffic->GetActiveTrafficCount())
 		: TEXT("Sivil trafik yalnızca Karamara Şehrinde aktiftir.");
 
+	UBNProgressionSubsystem* Prog = GetGI(OwnerHUD) ? GetGI(OwnerHUD)->GetSubsystem<UBNProgressionSubsystem>() : nullptr;
+	const EBNDifficulty CurDiff = Prog ? Prog->GetProfile().Difficulty : EBNDifficulty::StreetAutoTier;
+	TSharedRef<SHorizontalBox> DiffRow = SNew(SHorizontalBox);
+	for (int32 d = 0; d < static_cast<int32>(EBNDifficulty::Count); ++d)
+	{
+		const EBNDifficulty DiffVal = static_cast<EBNDifficulty>(d);
+		DiffRow->AddSlot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, d < 2 ? 5.f : 0.f, 0.f))
+		[
+			BNUITheme::MakeMWButton(FText::FromString(FBNVehicleSpec::DifficultyLabel(DiffVal)),
+				CurDiff == DiffVal ? EBNButtonVariant::PrimaryAmber : EBNButtonVariant::SecondarySteel,
+				FOnClicked::CreateLambda([this, DiffVal]()
+				{
+					if (UBNProgressionSubsystem* Pr = GetGI(OwnerHUD) ? GetGI(OwnerHUD)->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+					{
+						Pr->SetDifficulty(DiffVal);
+						ActionFeedback = FString::Printf(TEXT("Rakip zorluğu: %s"), FBNVehicleSpec::DifficultyLabel(DiffVal));
+						Refresh();
+					}
+					return FReply::Handled();
+				}), true, 9, FMargin(6.f, 7.f))
+		];
+	}
+
 	TSharedRef<SVerticalBox> RightCol = SNew(SVerticalBox)
-	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))[BNUITheme::MakeSectionHeader(TEXT("ŞEHİR & SİVİL TRAFİK"), FString(), BNUITheme::AmberGold)]
+	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))[BNUITheme::MakeSectionHeader(TEXT("ŞEHİR, TRAFİK & ZORLUK"), FString(), BNUITheme::AmberGold)]
 	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 14.f))
 	[
 		SNew(SBorder).BorderImage(BNUITheme::GetPanelBevelBrush()).BorderBackgroundColor(FLinearColor(0.92f, 0.92f, 0.92f, 0.95f)).Padding(FMargin(14.f, 12.f))
 		[
-			MakeToggleRow(TEXT("Sivil Trafik"), TrafficSub, TEXT("AÇIK"), bTrafficOn, SetTrafficAction(true), TEXT("KAPALI"), !bTrafficOn, SetTrafficAction(false), Traffic != nullptr)
+			SNew(SVerticalBox)
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))
+			[
+				MakeToggleRow(TEXT("Sivil Trafik"), TrafficSub, TEXT("AÇIK"), bTrafficOn, SetTrafficAction(true), TEXT("KAPALI"), !bTrafficOn, SetTrafficAction(false), Traffic != nullptr)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 4.f))
+			[
+				SNew(STextBlock).Text(FText::FromString(TEXT("Serbest Yarış Rakip Zorluğu (Oto-Tier Ölçekleme)"))).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::ChalkWhite)
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))[DiffRow]
+			+ SVerticalBox::Slot().AutoHeight()
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(TEXT("YARIŞ İÇİ POLİS MÜDAHALESİ: HER ZAMAN AÇIK (Karamara Kuralı — Kapatılamaz)")))
+				.Font(BNUITheme::Font(9, true))
+				.ColorAndOpacity(BNUITheme::CrimsonRed)
+				.AutoWrapText(true)
+			]
 		]
 	]
 	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))[BNUITheme::MakeSectionHeader(TEXT("SES MİKSERİ"), TEXT("MOTOR • MÜZİK • EFEKT"), BNUITheme::NosCyan)]

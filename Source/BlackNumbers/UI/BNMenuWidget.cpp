@@ -76,7 +76,7 @@ FReply SBNGameMenuWidget::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent
 {
 	if (InKeyEvent.GetKey() == EKeys::Escape && OwnerHUD.IsValid())
 	{
-		OwnerHUD->CloseMenu();
+		OwnerHUD->HandleMenuCloseOrAdvanceCard();
 		return FReply::Handled();
 	}
 	return SCompoundWidget::OnKeyDown(MyGeometry, InKeyEvent);
@@ -410,7 +410,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 8.f, 0.f))[TabBtn(EBNMenuTab::Races, TEXT("YARIŞLAR"))]
 		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 8.f, 0.f))[TabBtn(EBNMenuTab::Garage, TEXT("SELİN'İN GARAJI"))]
-		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 8.f, 0.f))[TabBtn(EBNMenuTab::BlackNumbers, TEXT("16'LIK BLACKLIST"))]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 8.f, 0.f))[TabBtn(EBNMenuTab::BlackNumbers, TEXT("BLACK NUMBERS LİSTESİ"))]
 		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 8.f, 0.f))[TabBtn(EBNMenuTab::Settings, TEXT("AYARLAR"))]
 		+ SHorizontalBox::Slot().AutoWidth()[TabBtn(EBNMenuTab::Controls, TEXT("KONTROLLER"))]
 	];
@@ -583,7 +583,6 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 		}
 		else if (const FBNBossSpec* NextBoss = FBNStoryState::FindBossByRank(S.NextBossRank))
 		{
-			const bool bCanFight = S.CanChallengeBoss(NextBoss->Rank);
 			RaceList->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 14.f))
 			[
 				SNew(SVerticalBox)
@@ -609,35 +608,30 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 							+ SVerticalBox::Slot().AutoHeight()
 							[
 								SNew(STextBlock)
-								.Text(FText::FromString(FString::Printf(TEXT("SIRADAKİ BLACKLIST HEDEFİ  //  %s"), *NextBoss->Name.ToUpper())))
+								.Text(FText::FromString(FString::Printf(TEXT("SIRADAKİ RAKİP  //  %s"), *NextBoss->Name.ToUpper())))
 								.Font(BNUITheme::Font(13, true))
 								.ColorAndOpacity(BNUITheme::ChalkWhite)
 							]
 							+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 3.f, 0.f, 0.f))
 							[
 								SNew(STextBlock)
-								.Text(FText::FromString(FString::Printf(TEXT("%s   •   %s   •   Ödül: $%s + %d İtibar"),
-									*NextBoss->VehicleName, *NextBoss->DisciplineLabel, *FString::FormatAsNumber(NextBoss->RewardCash), NextBoss->RewardRep)))
+								.Text(FText::FromString(FString::Printf(TEXT("%s   •   %d/%d ELEME   •   %s DÜELLOSU"),
+									*NextBoss->VehicleName, S.QualifiersWon, NextBoss->Qualifiers.Num(), *NextBoss->DisciplineLabel)))
 								.Font(BNUITheme::Font(10, false))
 								.ColorAndOpacity(BNUITheme::SteelMuted)
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 						[
-							BNUITheme::MakeMWButton(FText::FromString(TEXT("MEYDAN OKU")), EBNButtonVariant::PrimaryAmber,
-								FOnClicked::CreateLambda([this, NextBossRank = NextBoss->Rank]()
+							BNUITheme::MakeMWButton(FText::FromString(TEXT("PROGRAMI AÇ")), EBNButtonVariant::PrimaryAmber,
+								FOnClicked::CreateLambda([this]()
 								{
-									ABNVehiclePawn* Car = GetPlayerCar(OwnerHUD);
-									UBNStorySubsystem* St = GetGI(OwnerHUD) ? GetGI(OwnerHUD)->GetSubsystem<UBNStorySubsystem>() : nullptr;
-									if (Car && St && OwnerHUD.IsValid())
+									if (OwnerHUD.IsValid())
 									{
-										St->OpenDossier(Car);
-										St->MoveDossierSelection((16 - NextBossRank) - St->GetSelectedBossIndex());
-										OwnerHUD->CloseMenu();
-										St->ChallengeSelectedBoss(Car);
+										OwnerHUD->OpenMenu(EBNMenuTab::BlackNumbers);
 									}
 									return FReply::Handled();
-								}), bCanFight, 12, FMargin(18.f, 11.f))
+								}), true, 12, FMargin(18.f, 11.f))
 						]
 					]
 				]
@@ -765,6 +759,32 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 		+ SHorizontalBox::Slot().FillWidth(1.f)[TimeBtn(TEXT("GECE 22:30"), 22.5f)]
 	];
 
+	auto WeatherBtn = [this](const TCHAR* Label, EBNWeatherMode Mode)
+	{
+		return BNUITheme::MakeMWButton(FText::FromString(Label), EBNButtonVariant::SecondarySteel,
+			FOnClicked::CreateLambda([this, Mode]()
+			{
+				if (UWorld* W = GetHUDWorld(OwnerHUD))
+				{
+					for (TActorIterator<ABNDayNightCycle> It(W); It; ++It)
+					{
+						It->SetWeatherMode(Mode);
+					}
+					ActionFeedback = FString::Printf(TEXT("Hava & zemin modu: %s"), ABNDayNightCycle::WeatherModeLabel(Mode));
+					Refresh();
+				}
+				return FReply::Handled();
+			}), true, 9, FMargin(6.f, 7.f));
+	};
+
+	WorldTools->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 8.f))
+	[
+		SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 5.f, 0.f))[WeatherBtn(TEXT("BÖLGESEL OTO"), EBNWeatherMode::AutoDistrict)]
+		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 5.f, 0.f))[WeatherBtn(TEXT("ISLAK ASFALT"), EBNWeatherMode::WetDamp)]
+		+ SHorizontalBox::Slot().FillWidth(1.f)[WeatherBtn(TEXT("HAFİF YAĞMUR"), EBNWeatherMode::LightRain)]
+	];
+
 	WorldTools->AddSlot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 8.f))
 	[
 		SNew(SHorizontalBox)
@@ -879,13 +899,14 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildControlsTab()
 		{ TEXT("SOL SHIFT / SOL ALT / N"), TEXT("NOS Nitro Takviyesi (kendiliğinden dolar; drift ve yakın geçişlerle hızlanır)") },
 		{ TEXT("E / Q  (Drag Yarışı)"), TEXT("Drag yarışında manuel vites yükselt [E] / düşür [Q] (kırmızı bölgede motor patlar!)") },
 		{ TEXT("M / TAB"), TEXT("Karamara Şehir Haritası & A* GPS Navigasyon (tıklayıp rota çiz)") },
-		{ TEXT("ENTER"), TEXT("Yarış halkasındayken Yarış Özeti ve onay ekranını aç") },
+		{ TEXT("ENTER"), TEXT("Yarış halkasındayken Yarış Özeti, garaj avlusundayken Selin'in Garajı'nı aç") },
 		{ TEXT("X / LEFT CTRL"), TEXT("Speedbreaker — zaman yavaşlatma ve yüksek hızlı manevra kontrolü") },
-		{ TEXT("C"), TEXT("Kamera modunu değiştir (Yakın Takip / Uzak Takip / Kaput)") },
+		{ TEXT("C"), TEXT("Kamera modunu değiştir (Yakın / Uzak / Kaput / Tampon Kamera)") },
+		{ TEXT("V / ORTA FARE (L3)"), TEXT("Arka Bakış — basılı tutarak arkadaki polis ve rakipleri kontrol et") },
 		{ TEXT("R"), TEXT("Aracı yolda düzelt") },
 		{ TEXT("P"), TEXT("Serbest sürüşte Polis Takibi başlat / Heat yükselt (yarışta kilitli)") },
 		{ TEXT("G"), TEXT("Selin'in Garajı (360° canlı araç vitrini, parça Tier 1-6 ve 6 araç)") },
-		{ TEXT("B"), TEXT("16'lık BLACK NUMBERS Blacklist ve Kanıt Dosyası") },
+		{ TEXT("B"), TEXT("Black Numbers Listesi ve yarış programı") },
 		{ TEXT("ESC"), TEXT("Menüyü aç / kapat veya hikaye kartını geç") },
 		{ TEXT("BACKSPACE"), TEXT("Aktif yarışı iptal et") },
 	};

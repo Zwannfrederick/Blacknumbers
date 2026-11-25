@@ -31,7 +31,27 @@ enum class EBNBodyStyle : uint8
 {
 	StreetCoupe = 0,
 	RallyOffroad = 1,
-	HyperConcept = 2
+	HyperConcept = 2,
+	GrandTourer = 3
+};
+
+UENUM(BlueprintType)
+enum class EBNPaintFinish : uint8
+{
+	Gloss = 0,
+	Metallic = 1,
+	Satin = 2,
+	MatteCarbon = 3,
+	Count UMETA(Hidden)
+};
+
+UENUM(BlueprintType)
+enum class EBNDifficulty : uint8
+{
+	Easy = 0,
+	StreetAutoTier = 1,
+	Legend = 2,
+	Count UMETA(Hidden)
 };
 
 UENUM(BlueprintType)
@@ -67,7 +87,12 @@ struct BLACKNUMBERS_API FBNVehicleSpec
 
 	static FBNVehicleSpec ForCar(EBNCarId Id);
 	static const TCHAR* BodyStyleLabel(EBNBodyStyle Style);
+	static const TCHAR* PaintFinishLabel(EBNPaintFinish Finish);
+	static const TCHAR* DifficultyLabel(EBNDifficulty Diff);
+	static float DifficultySkillScale(EBNDifficulty Diff);
 	static const TArray<TPair<FString, FLinearColor>>& GetPaintPalette();
+	static const TArray<TPair<FString, FLinearColor>>& GetRimPaintPalette();
+	static const TArray<TPair<FString, FLinearColor>>& GetUnderglowPalette();
 };
 
 struct BLACKNUMBERS_API FBNUpgradeSpec
@@ -115,18 +140,45 @@ struct BLACKNUMBERS_API FBNPlayerProfile
 	int32 Upgrades[FBNUpgradeSpec::NumCars][FBNUpgradeSpec::NumSlots] = {};
 	/** -1 = stock factory paint; 0..9 = custom index into FBNVehicleSpec::GetPaintPalette(). */
 	int32 CustomPaintIndices[FBNUpgradeSpec::NumCars] = { -1, -1, -1, -1, -1, -1 };
+	EBNPaintFinish PaintFinishes[FBNUpgradeSpec::NumCars] = {
+		EBNPaintFinish::Metallic, EBNPaintFinish::Metallic, EBNPaintFinish::Metallic,
+		EBNPaintFinish::Gloss, EBNPaintFinish::Metallic, EBNPaintFinish::Metallic
+	};
+	int32 RimPaintIndices[FBNUpgradeSpec::NumCars] = { 0, 0, 0, 0, 0, 0 };
+	int32 UnderglowIndices[FBNUpgradeSpec::NumCars] = { 0, 0, 0, 0, 0, 0 };
+	EBNDifficulty Difficulty = EBNDifficulty::StreetAutoTier;
+
+	/** Personal Best records keyed by race asset name or world activity ID. */
+	TMap<FString, float> BestRaceTimes;
+	TMap<FString, int32> BestDriftScores;
+	TMap<FString, float> BestSpeedTrapKmh;
+	TMap<FString, float> BestJumpMeters;
 
 	int32 GetMaxAllowedUpgradeTier() const { return bTier6Unlocked ? 6 : 5; }
 	int32 GetUpgradeTier(EBNUpgradeSlot Slot) const;
+	int32 GetActiveAverageUpgradeTier() const;
 	int32 GetActivePaintIndex() const;
 	FLinearColor GetActivePaintTint() const;
 	void SetActivePaintIndex(int32 PaletteIndex);
+	EBNPaintFinish GetActivePaintFinish() const;
+	void SetActivePaintFinish(EBNPaintFinish Finish);
+	int32 GetActiveRimPaintIndex() const;
+	FLinearColor GetActiveRimPaintTint() const;
+	void SetActiveRimPaintIndex(int32 RimIndex);
+	int32 GetActiveUnderglowIndex() const;
+	FLinearColor GetActiveUnderglowColor() const;
+	void SetActiveUnderglowIndex(int32 NeonIndex);
 	bool IsCarOwned(EBNCarId CarId) const;
 	bool CanBuyCar(EBNCarId CarId) const;
 	bool BuyOrSelectCar(EBNCarId CarId);
 	bool CanBuyUpgrade(EBNUpgradeSlot Slot) const;
 	bool BuyUpgrade(EBNUpgradeSlot Slot);
+	static void EstimateRacePayout(bool bDrift, int32 Place, int32 TotalRacers, int32 DriftPoints, int32& OutCash, int32& OutRep);
 	void AwardRaceResult(int32 Place, int32 TotalRacers, bool bDrift, int32 DriftPoints, int32& OutCash, int32& OutRep);
 	void AwardPursuitEscape(int32 Bounty, int32 HeatLevel, int32& OutRep);
+	bool RecordBestRaceTime(const FString& RaceKey, float FinishSeconds, float* OutPrevBest = nullptr);
+	bool RecordBestDriftScore(const FString& RaceKey, int32 Score, int32* OutPrevBest = nullptr);
+	bool RecordSpeedTrap(const FString& TrapKey, float SpeedKmh, float& OutPrevBest, int32& OutCash, int32& OutRep);
+	bool RecordStuntJump(const FString& JumpKey, float DistanceMeters, float& OutPrevBest, int32& OutCash, int32& OutRep);
 	FBNComputedVehicleStats GetActiveStats() const;
 };

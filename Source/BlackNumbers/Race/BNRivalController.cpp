@@ -1,4 +1,5 @@
 #include "Race/BNRivalController.h"
+#include "Story/BNStoryTypes.h"
 
 #include "ChaosVehicleWheel.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
@@ -68,8 +69,9 @@ ABNRivalController::ABNRivalController()
 	PrimaryActorTick.bCanEverTick = true;
 }
 
-void ABNRivalController::Setup(ABNRaceEvent* InRace, float InSkill, float InLaneOffset)
+void ABNRivalController::Setup(ABNRaceEvent* InRace, float InSkill, float InLaneOffset, EBNRivalStyle InStyle)
 {
+	Style = InStyle;
 	Race = InRace;
 	Skill = FMath::Clamp(InSkill, 0.f, 1.f);
 	LaneOffset = InLaneOffset;
@@ -161,7 +163,7 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 
 	const float GripG = FMath::Lerp(GripRange.X, GripRange.Y, Skill);
 	const float BrakeG = FMath::Lerp(BrakeRange.X, BrakeRange.Y, Skill);
-	const float Safe = SafeSpeed(Line, Distance, GripG, BrakeG);
+	const float Safe = SafeSpeed(Line, Distance, GripG, BrakeG * (Style == EBNRivalStyle::LateBrake ? 1.08f : 1.f));
 
 	// Center toward the apex in tight corners so rivals never clip inside/outside barriers at ±300..400 cm offset.
 	const float CornerCenterScale = FMath::GetMappedRangeValueClamped(FVector2f(1400.f, 3400.f), FVector2f(0.15f, 1.f), Safe);
@@ -197,7 +199,8 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 	// slower car with the other lane clear (beside and ahead), move over to pass.
 	const float Ahead = LaneSpeed(Car, 0.f, 0.f);
 	LaneChangeCooldown = FMath::Max(LaneChangeCooldown - DeltaSeconds, 0.f);
-	if (Ahead < Safe - OvertakeMargin && Safe >= MinLaneChangeSafeSpeed && LaneChangeCooldown <= 0.f && LaneOffset == TargetLaneOffset
+	const float PassMargin = OvertakeMargin * (Style == EBNRivalStyle::DefendLine ? 1.55f : 1.f);
+	if (Ahead < Safe - PassMargin && Safe >= MinLaneChangeSafeSpeed && LaneChangeCooldown <= 0.f && LaneOffset == TargetLaneOffset
 		&& LaneSpeed(Car, -2.f * LaneOffset, -BesideDistance) >= MaxSpeed)
 	{
 		TargetLaneOffset = -TargetLaneOffset;
@@ -206,7 +209,8 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 	LaneOffset = FMath::FInterpConstantTo(LaneOffset, TargetLaneOffset, DeltaSeconds, LaneShiftSpeed);
 	const float Target = FMath::Min(Safe, Ahead);
 	const float Error = Target - Speed;
-	Move->SetThrottleInput(FMath::Clamp(Error / FullThrottleError, 0.f, 1.f));
+	const float ThrottleError = FullThrottleError * (Style == EBNRivalStyle::FastExit ? 0.72f : 1.f);
+	Move->SetThrottleInput(FMath::Clamp(Error / ThrottleError, 0.f, 1.f));
 	Move->SetBrakeInput(Speed > MinBrakingSpeed ? FMath::Clamp(-Error / FullBrakeError, 0.f, 1.f) : 0.f);
 	Move->SetHandbrakeInput(false);
 	ApplyGripAssist(Car, DeltaSeconds);

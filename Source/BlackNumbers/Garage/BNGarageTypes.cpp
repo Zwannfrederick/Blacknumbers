@@ -66,7 +66,7 @@ FBNVehicleSpec FBNVehicleSpec::ForCar(EBNCarId Id)
 		Spec.DisplayName = TEXT("Draco RS-T");
 		Spec.Subtitle = TEXT("Widebody Çift Turbo GT");
 		Spec.PurchaseCost = 62000;
-		Spec.BodyStyle = EBNBodyStyle::StreetCoupe;
+		Spec.BodyStyle = EBNBodyStyle::GrandTourer;
 		Spec.AeroKit = EBNAeroKit::WidebodyGT;
 		Spec.PaintTint = FLinearColor(0.05f, 0.36f, 0.34f, 1.f);
 		Spec.AccentTint = FLinearColor(0.04f, 0.04f, 0.05f, 1.f);
@@ -126,7 +126,39 @@ const TCHAR* FBNVehicleSpec::BodyStyleLabel(EBNBodyStyle Style)
 	{
 	case EBNBodyStyle::RallyOffroad: return TEXT("RALLİ / ARAZİ");
 	case EBNBodyStyle::HyperConcept: return TEXT("KARBON HİPER-GT");
+	case EBNBodyStyle::GrandTourer:  return TEXT("ÇİFT TURBO GT");
 	default: return TEXT("SOKAK COUPE");
+	}
+}
+
+const TCHAR* FBNVehicleSpec::PaintFinishLabel(EBNPaintFinish Finish)
+{
+	switch (Finish)
+	{
+	case EBNPaintFinish::Gloss:       return TEXT("PARLAK");
+	case EBNPaintFinish::Satin:       return TEXT("SATEN");
+	case EBNPaintFinish::MatteCarbon: return TEXT("MAT KARBON");
+	default:                          return TEXT("METALİK");
+	}
+}
+
+const TCHAR* FBNVehicleSpec::DifficultyLabel(EBNDifficulty Diff)
+{
+	switch (Diff)
+	{
+	case EBNDifficulty::Easy:   return TEXT("RAHAT");
+	case EBNDifficulty::Legend: return TEXT("EFSANE");
+	default:                    return TEXT("SOKAK (OTO-TİER)");
+	}
+}
+
+float FBNVehicleSpec::DifficultySkillScale(EBNDifficulty Diff)
+{
+	switch (Diff)
+	{
+	case EBNDifficulty::Easy:   return 0.86f;
+	case EBNDifficulty::Legend: return 1.10f;
+	default:                    return 1.00f;
 	}
 }
 
@@ -145,6 +177,30 @@ const TArray<TPair<FString, FLinearColor>>& FBNVehicleSpec::GetPaintPalette()
 		{ TEXT("GECE MORU"),         FLinearColor(0.24f, 0.06f, 0.38f, 1.f) },
 	};
 	return Palette;
+}
+
+const TArray<TPair<FString, FLinearColor>>& FBNVehicleSpec::GetRimPaintPalette()
+{
+	static const TArray<TPair<FString, FLinearColor>> Rims = {
+		{ TEXT("GÜMÜŞ ALAŞIM"), FLinearColor(0.68f, 0.70f, 0.74f, 1.f) },
+		{ TEXT("KARBON SİYAH"), FLinearColor(0.06f, 0.065f, 0.075f, 1.f) },
+		{ TEXT("BRONZ YARIŞ"),  FLinearColor(0.54f, 0.36f, 0.16f, 1.f) },
+		{ TEXT("ALTIN RALLİ"),  FLinearColor(0.82f, 0.62f, 0.14f, 1.f) },
+		{ TEXT("BEYAZ PİST"),   FLinearColor(0.86f, 0.86f, 0.88f, 1.f) },
+	};
+	return Rims;
+}
+
+const TArray<TPair<FString, FLinearColor>>& FBNVehicleSpec::GetUnderglowPalette()
+{
+	static const TArray<TPair<FString, FLinearColor>> Neons = {
+		{ TEXT("KAPALI"),           FLinearColor(0.f, 0.f, 0.f, 0.f) },
+		{ TEXT("KOBALT NEON"),      FLinearColor(0.10f, 0.62f, 1.00f, 1.f) },
+		{ TEXT("KEHRİBAR NEON"),    FLinearColor(1.00f, 0.56f, 0.08f, 1.f) },
+		{ TEXT("SİNDİKA KIRMIZI"),  FLinearColor(1.00f, 0.12f, 0.18f, 1.f) },
+		{ TEXT("ZÜMRÜT NEON"),      FLinearColor(0.12f, 0.96f, 0.48f, 1.f) },
+	};
+	return Neons;
 }
 
 int32 FBNUpgradeSpec::CostForTier(int32 TargetTier)
@@ -211,6 +267,17 @@ int32 FBNPlayerProfile::GetUpgradeTier(EBNUpgradeSlot Slot) const
 	return Upgrades[CarIdx][SlotIdx];
 }
 
+int32 FBNPlayerProfile::GetActiveAverageUpgradeTier() const
+{
+	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
+	int32 Sum = 0;
+	for (int32 s = 0; s < FBNUpgradeSpec::NumSlots; ++s)
+	{
+		Sum += Upgrades[CarIdx][s];
+	}
+	return FMath::RoundToInt(static_cast<float>(Sum) / static_cast<float>(FBNUpgradeSpec::NumSlots));
+}
+
 int32 FBNPlayerProfile::GetActivePaintIndex() const
 {
 	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
@@ -233,6 +300,58 @@ void FBNPlayerProfile::SetActivePaintIndex(int32 PaletteIndex)
 	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
 	const int32 MaxIdx = FBNVehicleSpec::GetPaintPalette().Num() - 1;
 	CustomPaintIndices[CarIdx] = (PaletteIndex < 0) ? -1 : FMath::Clamp(PaletteIndex, 0, MaxIdx);
+}
+
+EBNPaintFinish FBNPlayerProfile::GetActivePaintFinish() const
+{
+	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
+	return PaintFinishes[CarIdx];
+}
+
+void FBNPlayerProfile::SetActivePaintFinish(EBNPaintFinish Finish)
+{
+	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
+	PaintFinishes[CarIdx] = Finish;
+}
+
+int32 FBNPlayerProfile::GetActiveRimPaintIndex() const
+{
+	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
+	return RimPaintIndices[CarIdx];
+}
+
+FLinearColor FBNPlayerProfile::GetActiveRimPaintTint() const
+{
+	const TArray<TPair<FString, FLinearColor>>& Rims = FBNVehicleSpec::GetRimPaintPalette();
+	const int32 Idx = GetActiveRimPaintIndex();
+	return Rims.IsValidIndex(Idx) ? Rims[Idx].Value : Rims[0].Value;
+}
+
+void FBNPlayerProfile::SetActiveRimPaintIndex(int32 RimIndex)
+{
+	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
+	const int32 MaxIdx = FBNVehicleSpec::GetRimPaintPalette().Num() - 1;
+	RimPaintIndices[CarIdx] = FMath::Clamp(RimIndex, 0, MaxIdx);
+}
+
+int32 FBNPlayerProfile::GetActiveUnderglowIndex() const
+{
+	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
+	return UnderglowIndices[CarIdx];
+}
+
+FLinearColor FBNPlayerProfile::GetActiveUnderglowColor() const
+{
+	const TArray<TPair<FString, FLinearColor>>& Neons = FBNVehicleSpec::GetUnderglowPalette();
+	const int32 Idx = GetActiveUnderglowIndex();
+	return Neons.IsValidIndex(Idx) ? Neons[Idx].Value : FLinearColor(0.f, 0.f, 0.f, 0.f);
+}
+
+void FBNPlayerProfile::SetActiveUnderglowIndex(int32 NeonIndex)
+{
+	const int32 CarIdx = FMath::Clamp(static_cast<int32>(ActiveCar), 0, FBNUpgradeSpec::NumCars - 1);
+	const int32 MaxIdx = FBNVehicleSpec::GetUnderglowPalette().Num() - 1;
+	UnderglowIndices[CarIdx] = FMath::Clamp(NeonIndex, 0, MaxIdx);
 }
 
 bool FBNPlayerProfile::IsCarOwned(EBNCarId CarId) const
@@ -297,32 +416,43 @@ bool FBNPlayerProfile::BuyUpgrade(EBNUpgradeSlot Slot)
 	return true;
 }
 
-void FBNPlayerProfile::AwardRaceResult(int32 Place, int32 TotalRacers, bool bDrift, int32 DriftPoints, int32& OutCash, int32& OutRep)
+void FBNPlayerProfile::EstimateRacePayout(bool bDrift, int32 Place, int32 TotalRacers, int32 DriftPoints, int32& OutCash, int32& OutRep)
 {
 	if (bDrift)
 	{
 		OutCash = FMath::Clamp(500 + DriftPoints / 5, 500, 12000);
 		OutRep = FMath::Clamp(50 + DriftPoints / 50, 50, 1000);
-		if (DriftPoints >= 5000)
-		{
-			++RacesWon;
-		}
 	}
 	else if (TotalRacers <= 1)
 	{
 		OutCash = 1500;
 		OutRep = 120;
-		++RacesWon;
 	}
 	else
 	{
 		switch (Place)
 		{
-		case 1: OutCash = 5000; OutRep = 400; ++RacesWon; break;
+		case 1: OutCash = 5000; OutRep = 400; break;
 		case 2: OutCash = 2500; OutRep = 220; break;
 		case 3: OutCash = 1200; OutRep = 120; break;
 		default: OutCash = 600; OutRep = 60; break;
 		}
+	}
+}
+
+void FBNPlayerProfile::AwardRaceResult(int32 Place, int32 TotalRacers, bool bDrift, int32 DriftPoints, int32& OutCash, int32& OutRep)
+{
+	EstimateRacePayout(bDrift, Place, TotalRacers, DriftPoints, OutCash, OutRep);
+	if (bDrift)
+	{
+		if (DriftPoints >= 5000)
+		{
+			++RacesWon;
+		}
+	}
+	else if (TotalRacers <= 1 || Place == 1)
+	{
+		++RacesWon;
 	}
 	++RacesCompleted;
 	Cash += OutCash;
@@ -333,6 +463,90 @@ void FBNPlayerProfile::AwardPursuitEscape(int32 Bounty, int32 HeatLevel, int32& 
 {
 	OutRep = FMath::Max(100, HeatLevel * 180 + Bounty / 40);
 	Reputation += OutRep;
+}
+
+bool FBNPlayerProfile::RecordBestRaceTime(const FString& RaceKey, float FinishSeconds, float* OutPrevBest)
+{
+	if (RaceKey.IsEmpty() || FinishSeconds <= 0.1f)
+	{
+		return false;
+	}
+	const float* Existing = BestRaceTimes.Find(RaceKey);
+	if (OutPrevBest)
+	{
+		*OutPrevBest = Existing ? *Existing : 0.f;
+	}
+	if (!Existing || FinishSeconds < *Existing)
+	{
+		BestRaceTimes.Add(RaceKey, FinishSeconds);
+		return true;
+	}
+	return false;
+}
+
+bool FBNPlayerProfile::RecordBestDriftScore(const FString& RaceKey, int32 Score, int32* OutPrevBest)
+{
+	if (RaceKey.IsEmpty() || Score <= 0)
+	{
+		return false;
+	}
+	const int32* Existing = BestDriftScores.Find(RaceKey);
+	if (OutPrevBest)
+	{
+		*OutPrevBest = Existing ? *Existing : 0;
+	}
+	if (!Existing || Score > *Existing)
+	{
+		BestDriftScores.Add(RaceKey, Score);
+		return true;
+	}
+	return false;
+}
+
+bool FBNPlayerProfile::RecordSpeedTrap(const FString& TrapKey, float SpeedKmh, float& OutPrevBest, int32& OutCash, int32& OutRep)
+{
+	OutPrevBest = 0.f;
+	OutCash = 0;
+	OutRep = 0;
+	if (TrapKey.IsEmpty() || SpeedKmh < 100.f)
+	{
+		return false;
+	}
+	const float* Existing = BestSpeedTrapKmh.Find(TrapKey);
+	OutPrevBest = Existing ? *Existing : 0.f;
+	const bool bNewRecord = !Existing || SpeedKmh > *Existing + 0.5f;
+	if (bNewRecord)
+	{
+		BestSpeedTrapKmh.Add(TrapKey, SpeedKmh);
+		OutCash = FMath::Clamp(FMath::RoundToInt(SpeedKmh * 3.5f), 400, 1500);
+		OutRep = FMath::Clamp(FMath::RoundToInt(SpeedKmh * 0.30f), 30, 140);
+		Cash += OutCash;
+		Reputation += OutRep;
+	}
+	return bNewRecord;
+}
+
+bool FBNPlayerProfile::RecordStuntJump(const FString& JumpKey, float DistanceMeters, float& OutPrevBest, int32& OutCash, int32& OutRep)
+{
+	OutPrevBest = 0.f;
+	OutCash = 0;
+	OutRep = 0;
+	if (JumpKey.IsEmpty() || DistanceMeters < 10.f)
+	{
+		return false;
+	}
+	const float* Existing = BestJumpMeters.Find(JumpKey);
+	OutPrevBest = Existing ? *Existing : 0.f;
+	const bool bNewRecord = !Existing || DistanceMeters > *Existing + 0.5f;
+	if (bNewRecord)
+	{
+		BestJumpMeters.Add(JumpKey, DistanceMeters);
+		OutCash = FMath::Clamp(FMath::RoundToInt(DistanceMeters * 14.f), 350, 1800);
+		OutRep = FMath::Clamp(FMath::RoundToInt(DistanceMeters * 1.2f), 25, 160);
+		Cash += OutCash;
+		Reputation += OutRep;
+	}
+	return bNewRecord;
 }
 
 FBNComputedVehicleStats FBNPlayerProfile::GetActiveStats() const

@@ -38,6 +38,10 @@ void UBNProgressionSubsystem::ApplyProfileToCar(ABNVehiclePawn& Car) const
 	{
 		Car.ApplyPaintTint(Profile.GetActivePaintTint());
 	}
+	Car.ApplyPaintFinish(Profile.GetActivePaintFinish());
+	Car.ApplyRimPaint(Profile.GetActiveRimPaintTint());
+	const int32 NeonIdx = Profile.GetActiveUnderglowIndex();
+	Car.ApplyUnderglow(Profile.GetActiveUnderglowColor(), NeonIdx > 0);
 }
 
 bool UBNProgressionSubsystem::TrySetCustomPaint(int32 PaletteIndex, ABNVehiclePawn* Car)
@@ -46,6 +50,7 @@ bool UBNProgressionSubsystem::TrySetCustomPaint(int32 PaletteIndex, ABNVehiclePa
 	if (Car)
 	{
 		Car->ApplyPaintTint(Profile.GetActivePaintTint());
+		Car->ApplyPaintFinish(Profile.GetActivePaintFinish());
 	}
 	const TArray<TPair<FString, FLinearColor>>& Palette = FBNVehicleSpec::GetPaintPalette();
 	FeedbackText = Palette.IsValidIndex(PaletteIndex)
@@ -56,6 +61,137 @@ bool UBNProgressionSubsystem::TrySetCustomPaint(int32 PaletteIndex, ABNVehiclePa
 		SaveProfile();
 	}
 	return true;
+}
+
+bool UBNProgressionSubsystem::TrySetPaintFinish(EBNPaintFinish Finish, ABNVehiclePawn* Car)
+{
+	Profile.SetActivePaintFinish(Finish);
+	if (Car)
+	{
+		Car->ApplyPaintFinish(Finish);
+	}
+	FeedbackText = FString::Printf(TEXT("Boya yüzeyi: %s"), FBNVehicleSpec::PaintFinishLabel(Finish));
+	if (ShouldAutoPersist())
+	{
+		SaveProfile();
+	}
+	return true;
+}
+
+bool UBNProgressionSubsystem::TrySetRimPaint(int32 RimIndex, ABNVehiclePawn* Car)
+{
+	Profile.SetActiveRimPaintIndex(RimIndex);
+	if (Car)
+	{
+		Car->ApplyRimPaint(Profile.GetActiveRimPaintTint());
+	}
+	const auto& Rims = FBNVehicleSpec::GetRimPaintPalette();
+	const int32 Clamped = Profile.GetActiveRimPaintIndex();
+	FeedbackText = Rims.IsValidIndex(Clamped)
+		? FString::Printf(TEXT("Jant rengi: %s"), *Rims[Clamped].Key)
+		: TEXT("Jant rengi güncellendi.");
+	if (ShouldAutoPersist())
+	{
+		SaveProfile();
+	}
+	return true;
+}
+
+bool UBNProgressionSubsystem::TrySetUnderglow(int32 NeonIndex, ABNVehiclePawn* Car)
+{
+	Profile.SetActiveUnderglowIndex(NeonIndex);
+	const int32 Clamped = Profile.GetActiveUnderglowIndex();
+	if (Car)
+	{
+		Car->ApplyUnderglow(Profile.GetActiveUnderglowColor(), Clamped > 0);
+	}
+	const auto& Neons = FBNVehicleSpec::GetUnderglowPalette();
+	FeedbackText = Neons.IsValidIndex(Clamped)
+		? FString::Printf(TEXT("Alt neon: %s"), *Neons[Clamped].Key)
+		: TEXT("Alt neon güncellendi.");
+	if (ShouldAutoPersist())
+	{
+		SaveProfile();
+	}
+	return true;
+}
+
+void UBNProgressionSubsystem::SetDifficulty(EBNDifficulty NewDifficulty)
+{
+	Profile.Difficulty = NewDifficulty;
+	if (ShouldAutoPersist())
+	{
+		SaveProfile();
+	}
+}
+
+bool UBNProgressionSubsystem::RecordRacePersonalBest(const FString& RaceKey, bool bDrift, float FinishSeconds, int32 DriftPoints, int32& OutBonusCash)
+{
+	OutBonusCash = 0;
+	bool bImproved = false;
+	if (bDrift)
+	{
+		int32 Prev = 0;
+		bImproved = Profile.RecordBestDriftScore(RaceKey, DriftPoints, &Prev);
+		if (bImproved && Prev > 0)
+		{
+			OutBonusCash = 1000;
+			Profile.Cash += OutBonusCash;
+		}
+	}
+	else
+	{
+		float Prev = 0.f;
+		bImproved = Profile.RecordBestRaceTime(RaceKey, FinishSeconds, &Prev);
+		if (bImproved && Prev > 0.f)
+		{
+			OutBonusCash = 1000;
+			Profile.Cash += OutBonusCash;
+		}
+	}
+	if (bImproved && ShouldAutoPersist())
+	{
+		SaveProfile();
+	}
+	return bImproved;
+}
+
+bool UBNProgressionSubsystem::RecordSpeedTrapResult(const FString& TrapKey, const FString& TrapLabel, float SpeedKmh, float& OutPrevBest, int32& OutCash, int32& OutRep)
+{
+	const bool bNewRecord = Profile.RecordSpeedTrap(TrapKey, SpeedKmh, OutPrevBest, OutCash, OutRep);
+	if (bNewRecord)
+	{
+		RewardBanner = FString::Printf(TEXT("HIZ TUZAĞI REKORU: %s — %.0f KM/H  (+$%s  +%d İTİBAR)"),
+			*TrapLabel, SpeedKmh, *FString::FormatAsNumber(OutCash), OutRep);
+		RewardBannerRemaining = RewardBannerDuration;
+		if (ShouldAutoPersist())
+		{
+			SaveProfile();
+		}
+	}
+	return bNewRecord;
+}
+
+bool UBNProgressionSubsystem::RecordStuntJumpResult(const FString& JumpKey, const FString& JumpLabel, float DistanceMeters, float& OutPrevBest, int32& OutCash, int32& OutRep)
+{
+	const bool bNewRecord = Profile.RecordStuntJump(JumpKey, DistanceMeters, OutPrevBest, OutCash, OutRep);
+	if (bNewRecord)
+	{
+		RewardBanner = FString::Printf(TEXT("SIÇRAMA REKORU: %s — %.0fm  (+$%s  +%d İTİBAR)"),
+			*JumpLabel, DistanceMeters, *FString::FormatAsNumber(OutCash), OutRep);
+		RewardBannerRemaining = RewardBannerDuration;
+		if (ShouldAutoPersist())
+		{
+			SaveProfile();
+		}
+	}
+	return bNewRecord;
+}
+
+void UBNProgressionSubsystem::ShowNotificationBanner(const FString& BannerText, float DurationSeconds)
+{
+	RewardBanner = BannerText;
+	RewardBannerRemaining = FMath::Max(0.5f, DurationSeconds);
 }
 
 bool UBNProgressionSubsystem::TryBuyOrSelectCar(EBNCarId CarId, ABNVehiclePawn* Car)
@@ -184,10 +320,21 @@ bool UBNProgressionSubsystem::SaveProfile(const FString& SlotName) const
 	SaveObj->OwnedCars.SetNum(FBNUpgradeSpec::NumCars);
 	SaveObj->FlatUpgrades.SetNum(FBNUpgradeSpec::NumCars * FBNUpgradeSpec::NumSlots);
 	SaveObj->CustomPaintIndices.SetNum(FBNUpgradeSpec::NumCars);
+	SaveObj->PaintFinishes.SetNum(FBNUpgradeSpec::NumCars);
+	SaveObj->RimPaintIndices.SetNum(FBNUpgradeSpec::NumCars);
+	SaveObj->UnderglowIndices.SetNum(FBNUpgradeSpec::NumCars);
+	SaveObj->Difficulty = static_cast<uint8>(Profile.Difficulty);
+	SaveObj->BestRaceTimes = Profile.BestRaceTimes;
+	SaveObj->BestDriftScores = Profile.BestDriftScores;
+	SaveObj->BestSpeedTrapKmh = Profile.BestSpeedTrapKmh;
+	SaveObj->BestJumpMeters = Profile.BestJumpMeters;
 	for (int32 c = 0; c < FBNUpgradeSpec::NumCars; ++c)
 	{
 		SaveObj->OwnedCars[c] = Profile.OwnedCars[c];
 		SaveObj->CustomPaintIndices[c] = Profile.CustomPaintIndices[c];
+		SaveObj->PaintFinishes[c] = static_cast<uint8>(Profile.PaintFinishes[c]);
+		SaveObj->RimPaintIndices[c] = Profile.RimPaintIndices[c];
+		SaveObj->UnderglowIndices[c] = Profile.UnderglowIndices[c];
 		for (int32 s = 0; s < FBNUpgradeSpec::NumSlots; ++s)
 		{
 			SaveObj->FlatUpgrades[c * FBNUpgradeSpec::NumSlots + s] = Profile.Upgrades[c][s];
@@ -218,10 +365,23 @@ bool UBNProgressionSubsystem::LoadProfile(const FString& SlotName)
 	Profile.RacesCompleted = Loaded->RacesCompleted;
 	Profile.bTier6Unlocked = Loaded->bTier6Unlocked;
 	Profile.ActiveCar = static_cast<EBNCarId>(FMath::Clamp(Loaded->ActiveCarIndex, 0, FBNUpgradeSpec::NumCars - 1));
+	Profile.Difficulty = static_cast<EBNDifficulty>(FMath::Clamp<int32>(Loaded->Difficulty, 0, static_cast<int32>(EBNDifficulty::Count) - 1));
+	Profile.BestRaceTimes = Loaded->BestRaceTimes;
+	Profile.BestDriftScores = Loaded->BestDriftScores;
+	Profile.BestSpeedTrapKmh = Loaded->BestSpeedTrapKmh;
+	Profile.BestJumpMeters = Loaded->BestJumpMeters;
 	for (int32 c = 0; c < FBNUpgradeSpec::NumCars; ++c)
 	{
 		Profile.OwnedCars[c] = Loaded->OwnedCars.IsValidIndex(c) ? Loaded->OwnedCars[c] : false;
 		Profile.CustomPaintIndices[c] = Loaded->CustomPaintIndices.IsValidIndex(c) ? Loaded->CustomPaintIndices[c] : -1;
+		if (Loaded->PaintFinishes.IsValidIndex(c))
+		{
+			Profile.PaintFinishes[c] = static_cast<EBNPaintFinish>(FMath::Clamp<int32>(Loaded->PaintFinishes[c], 0, static_cast<int32>(EBNPaintFinish::Count) - 1));
+		}
+		Profile.RimPaintIndices[c] = Loaded->RimPaintIndices.IsValidIndex(c)
+			? FMath::Clamp(Loaded->RimPaintIndices[c], 0, FBNVehicleSpec::GetRimPaintPalette().Num() - 1) : 0;
+		Profile.UnderglowIndices[c] = Loaded->UnderglowIndices.IsValidIndex(c)
+			? FMath::Clamp(Loaded->UnderglowIndices[c], 0, FBNVehicleSpec::GetUnderglowPalette().Num() - 1) : 0;
 		for (int32 s = 0; s < FBNUpgradeSpec::NumSlots; ++s)
 		{
 			const int32 FlatIdx = c * FBNUpgradeSpec::NumSlots + s;

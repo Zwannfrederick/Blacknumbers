@@ -6,6 +6,8 @@
 class ABNHUD;
 class SVerticalBox;
 
+enum class EBNMapFilter : uint8 { Program, Races, All };
+
 /**
  * Full-screen interactive Karamara City Map opened with [M] / [TAB]:
  * Renders the complete 2 km x 2 km UBNRoadGraphSubsystem road network, Mara Sea,
@@ -28,9 +30,12 @@ public:
 
 private:
 	void SetDestination(const FVector& WorldPos, const FString& Label);
+	FReply HandlePlotNextBossGps();
+	FReply HandleFastTravel();
 	FReply HandleClearGps();
 	FReply HandleClose();
 
 	TWeakObjectPtr<ABNHUD> OwnerHUD;
 	TSharedPtr<SVerticalBox> GpsStatusBox;
+	EBNMapFilter MapFilter = EBNMapFilter::All;
 };

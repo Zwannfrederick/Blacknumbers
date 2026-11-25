@@ -33,17 +33,23 @@ CC0_SURFACE_MAP = [
     ("Grass",       "sparse_grass",         "direct"),
     ("Rock",        "aerial_rocks_04",      "direct"),
     ("Container",   "corrugated_iron_02",   "neutralize"),
+    ("BridgeSteel", "rusty_metal_02",       "neutralize"),
     ("WoodCrate",   "wood_planks",          "direct"),
     ("Bark",        "bark_brown_02",        "direct"),
-    ("Brick",       "red_brick_03",         "facade"),
-    ("Plaster",     "clay_plaster",         "facade"),
+    ("Brick",         "red_brick_03",             "facade"),
+    ("Plaster",       "clay_plaster",             "facade"),
+    ("Cladding",      "exterior_wall_cladding_02","facade"),
+    ("ConcreteTower", "concrete_tile_facade",     "facade"),
+    ("PitAsphalt",    "asphalt_pit_lane",         "direct"),
+    ("CliffRock",     "cliff_side",               "direct"),
+    ("MountainGrass", "aerial_grass_rock",        "direct"),
 ]
 
 UA = {"User-Agent": "BlackNumbers-UE5-CC0Fetcher/1.0"}
 
 
 def _manifest_signature():
-    payload = json.dumps(CC0_SURFACE_MAP, sort_keys=True) + "|v1"
+    payload = json.dumps(CC0_SURFACE_MAP, sort_keys=True) + "|v2_puresky"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
@@ -55,7 +61,9 @@ def _download_bytes(url, timeout=20):
 
 def _pick_1k_url(file_tree, map_key):
     entry = file_tree.get(map_key, {}).get("1k", {})
-    for fmt in ("png", "jpg"):
+    # Poly Haven roughness PNGs can be 16-bit, which Pillow clips when converting to L.
+    formats = ("jpg", "png") if map_key == "Rough" else ("png", "jpg")
+    for fmt in formats:
         if fmt in entry and "url" in entry[fmt]:
             return entry[fmt]["url"], fmt
     return None, None
@@ -223,6 +231,42 @@ def _composite_karamara_windows(wall_d, wall_n, wall_r, is_brick):
     return albedo, normal, rough, emissive
 
 
+def _fetch_puresky_clouds():
+    """Downloads Poly Haven CC0 autumn_field_puresky tonemapped sky panorama and extracts a clean
+    upper-hemisphere cloud layer into T_SkyClouds_D.png for M_BN_SkyClouds."""
+    import numpy as np
+    from PIL import Image
+
+    cache_path = os.path.join(CACHE_DIR, "autumn_field_puresky_tonemapped.jpg")
+    if not (os.path.isfile(cache_path) and os.path.getsize(cache_path) > 10000):
+        meta = json.loads(_download_bytes("https://api.polyhaven.com/files/autumn_field_puresky", timeout=15).decode("utf-8"))
+        url = meta.get("tonemapped", {}).get("url")
+        if not url:
+            raise RuntimeError("autumn_field_puresky missing tonemapped url")
+        raw = _download_bytes(url, timeout=30)
+        with open(cache_path, "wb") as f:
+            f.write(raw)
+
+    img = Image.open(cache_path).convert("RGB")
+    w, h = img.size
+    # Upper 50% of equirectangular panorama is the pure sky & sunset clouds (above horizon)
+    sky = img.crop((0, 0, w, h // 2)).resize((TEX_SIZE, TEX_SIZE // 2), Image.Resampling.LANCZOS)
+    arr = np.asarray(sky, dtype=np.float32) / 255.0
+    # Extract soft cloud luminosity above clear sky blue so clouds blend additively without greying SkyAtmosphere
+    lum = 0.299 * arr[:, :, 0] + 0.587 * arr[:, :, 1] + 0.114 * arr[:, :, 2]
+    blue_excess = np.maximum(0.0, arr[:, :, 2] - 0.5 * (arr[:, :, 0] + arr[:, :, 1]))
+    cloud_mask = np.clip((lum - 0.42 - blue_excess * 1.4) * 2.2, 0.0, 1.0)
+    # Soft fade near bottom horizon seam so it blends invisibly into ExponentialHeightFog
+    rows = np.linspace(0.0, 1.0, arr.shape[0], dtype=np.float32)[:, None]
+    horizon_fade = np.clip((0.96 - rows) / 0.24, 0.0, 1.0)
+    clouds = arr * (cloud_mask * horizon_fade)[:, :, None]
+    # Pad/mirror to 1024x1024 square for clean spherical dome sampling
+    full = np.zeros((TEX_SIZE, TEX_SIZE, 3), dtype=np.float32)
+    full[:TEX_SIZE // 2, :, :] = clouds
+    full[TEX_SIZE // 2:, :, :] = clouds[::-1, :, :] * 0.25
+    _save_rgb("T_SkyClouds_D", full)
+
+
 def fetch_and_apply(force=False):
     """Downloads CC0 PolyHaven textures (or uses local cache) and updates Saved/GeneratedTextures/."""
     import numpy as np
@@ -233,8 +277,8 @@ def fetch_and_apply(force=False):
     sig = _manifest_signature()
     if not force and os.path.isfile(STAMP_PATH):
         with open(STAMP_PATH, "r", encoding="utf-8") as f:
-            if f.read().strip() == sig and os.path.isfile(os.path.join(OUT_DIR, "T_Rock_D.png")):
-                print("BN: CC0 PBR textures already up to date (%d sets)" % len(CC0_SURFACE_MAP))
+            if f.read().strip() == sig and os.path.isfile(os.path.join(OUT_DIR, "T_SkyClouds_D.png")):
+                print("BN: CC0 PBR textures already up to date (%d sets + PureSky)" % len(CC0_SURFACE_MAP))
                 return 0
 
     applied = 0
@@ -247,7 +291,7 @@ def fetch_and_apply(force=False):
             rgh = _load_gray_f32(files["Rough"])
 
             if mode == "neutralize":
-                # Convert corrugated steel to clean tintable luminance with subtle rust retained
+                # Convert metal albedo to tintable luminance while retaining surface wear.
                 lum = 0.299 * diff[:, :, 0] + 0.587 * diff[:, :, 1] + 0.114 * diff[:, :, 2]
                 mean_l = max(float(lum.mean()), 0.15)
                 scaled = np.clip(lum * (0.78 / mean_l), 0.22, 0.98)
@@ -260,7 +304,7 @@ def fetch_and_apply(force=False):
                 tile_d = np.tile(diff[::2, ::2, :], (2, 2, 1))
                 tile_n = np.tile(nrm[::2, ::2, :], (2, 2, 1))
                 tile_r = np.tile(rgh[::2, ::2], (2, 2))
-                bd, bn, br, be = _composite_karamara_windows(tile_d, tile_n, tile_r, is_brick=(prefix == "Brick"))
+                bd, bn, br, be = _composite_karamara_windows(tile_d, tile_n, tile_r, is_brick=(prefix in ("Brick", "Cladding")))
                 _save_rgb("T_%s_D" % prefix, bd)
                 _save_rgb("T_%s_N" % prefix, bn)
                 _save_gray("T_%s_R" % prefix, br)
@@ -274,10 +318,16 @@ def fetch_and_apply(force=False):
             failed += 1
             print("BN: CC0 fallback to procedural for %s (%s): %s" % (prefix, asset_id, exc), file=sys.stderr)
 
+    try:
+        _fetch_puresky_clouds()
+    except Exception as exc:
+        failed += 1
+        print("BN: CC0 fallback to procedural clouds (autumn_field_puresky): %s" % exc, file=sys.stderr)
+
     if failed == 0:
         with open(STAMP_PATH, "w", encoding="utf-8") as f:
             f.write(sig + "\n")
-    print("BN: applied %d/%d CC0 1.0 PolyHaven PBR texture sets into %s" % (applied, len(CC0_SURFACE_MAP), OUT_DIR))
+    print("BN: applied %d/%d CC0 1.0 PolyHaven PBR texture sets + PureSky into %s" % (applied, len(CC0_SURFACE_MAP), OUT_DIR))
     return applied
 
 

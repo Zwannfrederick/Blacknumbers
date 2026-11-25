@@ -88,6 +88,9 @@ private:
 	TObjectPtr<UStaticMeshComponent> PushBarMesh;
 
 	UPROPERTY(Transient)
+	TArray<TObjectPtr<UStaticMeshComponent>> LiveryPanels;
+
+	UPROPERTY(Transient)
 	TObjectPtr<UPointLightComponent> RedLight;
 
 	UPROPERTY(Transient)

@@ -37,6 +37,10 @@ enum class EBNSfxId : uint8
 	ShiftPop,
 	EngineBlown,
 	GpsArrive,
+	CameraFlash,
+	GarageRepair,
+	NewRecord,
+	RainAmbient,
 	Count UMETA(Hidden)
 };
 
