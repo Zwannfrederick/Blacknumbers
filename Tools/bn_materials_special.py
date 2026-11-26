@@ -540,6 +540,10 @@ def build_special_materials(mat_dir, textures, mpc, helpers):
     )
     # Civilian traffic & police vehicle slots
     make_mi("MI_Traffic_Paint", m_mesh, {"Roughness": 0.22, "Specular": 0.65, "Metallic": 0.68}, {"BaseColor": (0.78, 0.78, 0.80)})
+    # Parked-car paints (HISM material slot 0 override) so kerbside cars are not all one colour.
+    for pname, pcol in (("Red", (0.42, 0.04, 0.03)), ("Blue", (0.04, 0.10, 0.30)), ("White", (0.82, 0.82, 0.80)),
+                        ("Black", (0.02, 0.02, 0.025)), ("Green", (0.05, 0.16, 0.09)), ("Taxi", (0.80, 0.55, 0.04))):
+        make_mi("MI_Parked_" + pname, m_mesh, {"Roughness": 0.26, "Specular": 0.62, "Metallic": 0.55}, {"BaseColor": pcol})
     make_mi("MI_Traffic_Glass", m_mesh, {"Roughness": 0.08, "Specular": 0.82, "Metallic": 0.20}, {"BaseColor": (0.04, 0.06, 0.08)})
     make_mi("MI_Traffic_Trim", m_mesh, {"Roughness": 0.76, "Specular": 0.32, "Metallic": 0.10}, {"BaseColor": (0.06, 0.06, 0.07)})
     make_mi("MI_Traffic_Headlight", m_mesh, {"Roughness": 0.12, "Specular": 0.80},

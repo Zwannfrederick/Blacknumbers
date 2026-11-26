@@ -204,8 +204,8 @@ SURFACES = {
         normal_strength=0.95, macro_var=0.12,
     ),
     "MI_Building_Terracotta": dict(
-        base_color=(0.74, 0.30, 0.17), albedo="T_Brick_D", normal="T_Brick_N", roughness_map="T_Brick_R",
-        tile_scale=0.06, roughness=0.84, roughness_min=0.42, specular=0.44, normal_strength=0.95, macro_var=0.14,
+        base_color=(1.0, 0.92, 0.86), albedo="T_RoofTiles_D", normal="T_RoofTiles_N", roughness_map="T_RoofTiles_R",
+        tile_scale=0.4, roughness=0.84, roughness_min=0.42, specular=0.44, normal_strength=0.95, macro_var=0.14,
     ),
     "MI_CrownGlow_Amber": dict(
         base_color=(1.0, 0.68, 0.22), roughness=0.35, roughness_min=0.35,

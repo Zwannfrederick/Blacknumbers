@@ -43,6 +43,7 @@ CC0_SURFACE_MAP = [
     ("PitAsphalt",    "asphalt_pit_lane",         "direct"),
     ("CliffRock",     "cliff_side",               "direct"),
     ("MountainGrass", "aerial_grass_rock",        "direct"),
+    ("RoofTiles",     "clay_roof_tiles_02",       "direct"),
 ]
 
 # Photographic building facades (real window frames, sills, night-lit window emission), CC0 1.0 from

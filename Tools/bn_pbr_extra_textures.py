@@ -58,6 +58,9 @@ EXTRA_TEXTURE_MANIFEST = [
     ("T_MountainGrass_N", "normal"),
     ("T_MountainGrass_R", "roughness"),
     ("T_CarbonWeave_D", "albedo"),
+    ("T_RoofTiles_D", "albedo"),
+    ("T_RoofTiles_N", "normal"),
+    ("T_RoofTiles_R", "roughness"),
     ("T_CarbonWeave_N", "normal"),
     ("T_CarbonWeave_R", "roughness"),
     ("T_SkyClouds_D", "albedo"),
@@ -504,5 +507,17 @@ def generate_extra_pngs(out_dir, save_rgb, save_gray, save_normal, periodic_nois
         0.44 + 0.36 * cloud_density,
     ], axis=-1) * cloud_density[:, :, None]
     save_rgb("T_SkyClouds_D", cloud_col)
+
+    # Clay roof tiles (overridden by Poly Haven clay_roof_tiles_02 when online): 16 overlapping barrel rows
+    v = (np.arange(C, dtype=np.float32) / C)[:, None] * 16.0
+    u = (np.arange(C, dtype=np.float32) / C)[None, :] * 12.0
+    row = np.floor(v)
+    barrel = np.abs(np.sin(np.pi * (u + 0.5 * (row % 2))))
+    lap = 1.0 - np.mod(v, 1.0)
+    tile_h = (0.65 * barrel + 0.35 * lap) * np.ones((C, C), dtype=np.float32)
+    shade = 0.78 + 0.22 * tile_h
+    save_rgb("T_RoofTiles_D", np.stack([0.62 * shade, 0.30 * shade, 0.20 * shade], axis=-1))
+    save_normal("T_RoofTiles_N", tile_h, strength=4.0)
+    save_gray("T_RoofTiles_R", 0.62 + 0.2 * (1.0 - tile_h))
 
     return len(EXTRA_TEXTURE_MANIFEST)

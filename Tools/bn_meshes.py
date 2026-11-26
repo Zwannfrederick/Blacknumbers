@@ -533,6 +533,7 @@ MESH_MANIFEST = [
     ("SM_BN_PushBar", bm_extra.build_police_pushbar, ["MI_Police_Chrome", "MI_Traffic_Trim"], "none"),
     ("SM_BN_PoliceHeli", bm_extra.build_police_heli_body, ["MI_Traffic_Paint", "MI_Traffic_Glass", "MI_Traffic_Trim", "MI_Police_LightRed", "MI_Police_LightBlue"], "none"),
     ("SM_BN_PoliceHeliRotor", bm_extra.build_police_heli_rotor, ["MI_Metal_Dark"], "none"),
+    ("SM_BN_HipRoof", bm_extra.build_hip_roof, ["MI_Building_Terracotta"], "none"),
     ("SM_BN_RaceRing", bm_extra.build_race_ring, ["MI_RaceHolo_Start"], "none"),
     ("SM_BN_CheckpointChevron", bm_extra.build_checkpoint_chevron, ["MI_RaceHolo_Gate"], "none"),
     ("SM_BN_Aero_Splitter", bm_extra.build_aero_splitter, ["MI_CarCarbon"], "none"),

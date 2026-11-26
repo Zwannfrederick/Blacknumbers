@@ -584,7 +584,38 @@ namespace
 						Advance(18);
 					}
 					break;
-				case 18:
+				case 18: // Setup Shot 9: Yamac hillside villas (hip clay-tile roofs) in afternoon light
+					if (Elapsed >= 1.2)
+					{
+						SetHour(15.5f);
+						if (St->Cam.IsValid())
+						{
+							St->Cam->SetActorLocationAndRotation(FVector(-30000.f, 16000.f, 3600.f), FRotator(-9.f, 128.f, 0.f));
+							PC->SetViewTarget(St->Cam.Get());
+						}
+						Advance(19);
+					}
+					break;
+				case 19:
+				case 21:
+					if (Elapsed >= 2.0 && RemainingShaderJobs() == 0)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(St->Stage + 1);
+					}
+					break;
+				case 20: // Setup Shot 10: Dogu Sanayi warehouses (corrugated cladding, plinths, gutters) + downtown roofline
+					if (Elapsed >= 1.2)
+					{
+						if (St->Cam.IsValid())
+						{
+							St->Cam->SetActorLocationAndRotation(FVector(-2000.f, 38000.f, 2600.f), FRotator(-8.f, 52.f, 0.f));
+							PC->SetViewTarget(St->Cam.Get());
+						}
+						Advance(21);
+					}
+					break;
+				case 22:
 					if (Elapsed >= 1.2)
 					{
 						UE_LOG(LogTemp, Display, TEXT("bn.VisualShots: Karamara screenshot sequence complete."));

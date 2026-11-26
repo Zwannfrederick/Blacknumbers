@@ -771,3 +771,8 @@ def build_police_heli_rotor(b):
         a = i * math.pi * 0.5
         tip = (math.cos(a) * 5.5, math.sin(a) * 5.5, 0.02)
         b.add_beam(0, (0.0, 0.0, 0.02), tip, 0.16)
+
+
+def build_hip_roof(b):
+    """Unit hip roof: 1 m x 1 m eaves footprint centred on origin, ridge 0.45 m up along X."""
+    b.add_frustum_box(0, (0.0, 0.0, 0.0), (1.0, 1.0), (0.55, 0.02), 0.45)

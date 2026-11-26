@@ -252,6 +252,31 @@ def build_landmarks(ctx):
                      collision=False, yaw=0.0, mesh=cc0["SM_CC0_ChainlinkFence"], cast_shadow=False, cull_cm=28000)
 
 
+def build_roofline(hism, cc0, brng, px, py, w, d, h, mat):
+    """Breaks the flat-box skyline of one downtown building: an optional stepped upper tier on mid-rises,
+    rooftop plant (aircon units, plant room) and antenna masts on tall towers."""
+    roof_z = h
+    if 1800.0 <= h < 2800.0 and brng.random() < 0.55:
+        th = h * brng.uniform(0.18, 0.32)
+        tw, td = w * brng.uniform(0.7, 0.85), d * brng.uniform(0.7, 0.85)
+        ox, oy = brng.uniform(-0.08, 0.08) * w, brng.uniform(-0.08, 0.08) * d
+        hism.add("Bldg_Tier", (px + ox, py + oy, h + th * 0.5), (tw / 100.0, td / 100.0, th / 100.0),
+                 mat, None, collision=False, cast_shadow=True, cull_cm=95000)
+        hism.add("RoofCap", (px + ox, py + oy, h + th + 35.0), (tw / 100.0 + 0.3, td / 100.0 + 0.3, 0.7),
+                 "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=65000)
+        roof_z = h + th
+    hism.add("RoofPlant", (px - w * 0.22, py + d * 0.2, h + 160.0), (brng.uniform(5.0, 9.0), brng.uniform(4.0, 7.0), 2.4),
+             "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=50000)
+    if "SM_CC0_AirconUnit" in cc0:
+        for _ in range(brng.randint(1, 3)):
+            hism.add("Roof_Aircon", (px + brng.uniform(0.05, 0.4) * w, py + brng.uniform(-0.4, 0.4) * d, h + 60.0),
+                     (2.2, 2.2, 2.2), None, None, collision=False, yaw=brng.choice((0.0, 90.0)),
+                     mesh=cc0["SM_CC0_AirconUnit"], cast_shadow=False, cull_cm=30000)
+    if h >= 2800.0 and brng.random() < 0.5:
+        hism.add("Roof_Antenna", (px + w * 0.3, py - d * 0.3, roof_z + 900.0), (0.18, 0.18, 18.0),
+                 "MI_Metal_Dark", None, collision=False, cast_shadow=False, cull_cm=90000)
+
+
 def build_buildings_and_storefronts(ctx, clearance):
     """Populates varied urban skyline blocks across Merkez, Sanayi, Liman, and Yamac via HISM batching
     while strictly respecting road clearance so zero buildings ever clip a road."""
@@ -309,6 +334,8 @@ def build_buildings_and_storefronts(ctx, clearance):
                     for sy in (-0.5, 0.5):
                         hism.add("Bldg_Pilaster", (px + sx * w, py + sy * d, h * 0.5), (0.9, 0.9, h / 100.0),
                                  "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=60000)
+                build_roofline(hism, cc0, random.Random(bi * 4099 + int(dx > 0) * 31 + int(dy > 0) * 7),
+                               px, py, w, d, h, mat)
                 # Rooftop parapet, stepped architectural setback penthouse on tall core towers, & water tanks
                 hism.add("RoofCap", (px, py, h + 40.0), (w / 100.0 + 0.4, d / 100.0 + 0.4, 0.8),
                          "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=55000)
@@ -383,9 +410,16 @@ def build_buildings_and_storefronts(ctx, clearance):
     for wx, wy, ww, wd, wh in sanayi_lots:
         clr, _ = clearance(wx, wy)
         if clr > max(ww, wd) * 45.0:
+            # rng.choice kept so the seeded layout after this line is unchanged; brick facade now has
+            # apartment windows, so those sheds get coloured corrugated cladding instead.
+            shed_mat = {"MI_Building_Brick": "MI_Container_Blue"}.get(
+                rng.choice(["MI_Building_Steel", "MI_Building_Brick"]), "MI_Building_Steel")
             hism.add("Warehouse_Sanayi", (wx, wy, wh * 50.0), (ww, wd, wh),
-                     rng.choice(["MI_Building_Steel", "MI_Building_Brick"]), "PM_Concrete",
-                     collision=True, cast_shadow=True)
+                     shed_mat, "PM_Concrete", collision=True, cast_shadow=True)
+            hism.add("Warehouse_Plinth", (wx, wy, 75.0), (ww + 0.3, wd + 0.3, 1.5),
+                     "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=40000)
+            hism.add("Warehouse_Gutter", (wx, wy, wh * 100.0 + 20.0), (ww + 0.5, wd + 0.5, 0.4),
+                     "MI_Metal_Dark", None, collision=False, cast_shadow=True, cull_cm=55000)
             # Industrial sawtooth/monitor skylight clerestory + hazard trim
             hism.add("Warehouse_Monitor", (wx, wy, wh * 100.0 + 110.0), (ww * 0.78, wd * 0.34, 2.2),
                      "MI_Metal_Dark", None, collision=False, cast_shadow=False, cull_cm=55000)
@@ -405,6 +439,8 @@ def build_buildings_and_storefronts(ctx, clearance):
         if clr > 650.0:
             hism.add("Depot_Liman", (lx, ly, 600.0), (14.0, 18.0, 12.0),
                      "MI_Building_Steel", "PM_Concrete", collision=True, cast_shadow=True)
+            hism.add("Depot_Plinth", (lx, ly, 75.0), (14.3, 18.3, 1.5),
+                     "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=40000)
             hism.add("Depot_Trim", (lx, ly, 1220.0), (14.4, 18.4, 0.5),
                      "MI_BridgeSteel", None, collision=False, cast_shadow=False, cull_cm=55000)
 
@@ -427,13 +463,16 @@ def build_buildings_and_storefronts(ctx, clearance):
                      (vw, vd, (h + 600.0) / 100.0),
                      rng.choice(["MI_Building_Plaster", "MI_Building_Brick"]), "PM_Concrete",
                      collision=True, cast_shadow=True)
-            # Iconic overhanging Anatolian/Mediterranean terracotta tile roof cap!
-            hism.add("Roof_Terracotta", (yx, yy, yz + h + 45.0),
-                     (vw + 0.9, vd + 0.9, 0.9),
-                     "MI_Building_Terracotta", None, collision=False, cast_shadow=False, cull_cm=75000)
-            hism.add("Roof_TerracottaRidge", (yx, yy, yz + h + 135.0),
-                     (vw * 0.65, vd * 0.65, 0.9),
-                     "MI_Building_Terracotta", None, collision=False, cast_shadow=False, cull_cm=65000)
+            # Overhanging Anatolian hip roof in clay tiles; ridge runs along the longer side.
+            long_x = vw >= vd
+            span_l, span_s = (vw, vd) if long_x else (vd, vw)
+            roof_h = 0.38 * span_s / 0.45
+            if "SM_BN_HipRoof" in meshes:
+                hism.add("Roof_Hip", (yx, yy, yz + h - 10.0), (span_l + 1.2, span_s + 1.2, roof_h),
+                         None, None, collision=False, yaw=0.0 if long_x else 90.0,
+                         mesh=meshes["SM_BN_HipRoof"], cast_shadow=True, cull_cm=90000)
+            hism.add("House_Eave", (yx, yy, yz + h - 15.0), (vw + 0.5, vd + 0.5, 0.3),
+                     "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=60000)
 
 
 def build_street_furniture_and_foliage(ctx, nodes, edges, clearance):
@@ -762,6 +801,10 @@ def build_street_furniture_and_foliage(ctx, nodes, edges, clearance):
         ring.set_actor_scale3d(unreal.Vector(1.4, 1.4, 0.65))
 
 
+PARKED_PAINTS = ("MI_Traffic_Paint", "MI_Parked_Red", "MI_Parked_Blue", "MI_Parked_White",
+                 "MI_Parked_Black", "MI_Parked_Green", "MI_Parked_Taxi")
+
+
 def build_parked_cars(ctx, edges, clearance):
     """Parked cars in kerbside lots just off city streets: fills empty pavements without touching any lane."""
     meshes = ctx["meshes"]
@@ -803,7 +846,102 @@ def build_parked_cars(ctx, edges, clearance):
             placed.append((px, py))
             key = car_keys[rng.randrange(len(car_keys))]
             yaw = math.degrees(math.atan2(dy, dx)) + (180.0 if rng.random() < 0.5 else 0.0) + rng.uniform(-6.0, 6.0)
-            hism.add("Parked_" + key, (px, py, a[2] + 2.0), (1.0, 1.0, 1.0), None, None, collision=True,
+            paint = rng.choice(PARKED_PAINTS)
+            hism.add("Parked_" + key, (px, py, a[2] + 2.0), (1.0, 1.0, 1.0), paint, None, collision=True,
                      yaw=yaw, mesh=meshes[key], cast_shadow=True, cull_cm=24000)
     unreal.log("BN: placed %d parked cars" % len(placed))
     return len(placed)
+
+
+# District frontage styles: (materials, height range cm, width range cm, depth range cm, setback cm, kind)
+_INFILL_STYLES = {
+    knet.DIST_MERKEZ: (("MI_Building_Brick", "MI_Building_Plaster", "MI_Building_ConcreteTower", "MI_Building_Modern"),
+                       (1300.0, 2700.0), (1600.0, 2800.0), (1400.0, 2200.0), 650.0, "block"),
+    knet.DIST_SANAYI: (("MI_Building_Steel", "MI_Container_Blue", "MI_Container_Red", "MI_Container_Amber"),
+                       (650.0, 1100.0), (1800.0, 3200.0), (1400.0, 2400.0), 900.0, "shed"),
+    knet.DIST_LIMAN:  (("MI_Building_Steel", "MI_Container_Blue", "MI_Building_Plaster"),
+                       (800.0, 1400.0), (1800.0, 3000.0), (1400.0, 2200.0), 850.0, "shed"),
+    knet.DIST_YAMAC:  (("MI_Building_Plaster", "MI_Building_Brick"),
+                       (650.0, 1050.0), (900.0, 1400.0), (850.0, 1250.0), 700.0, "house"),
+}
+
+
+def _rect_aabb(px, py, w, d, yaw_deg):
+    c, s = abs(math.cos(math.radians(yaw_deg))), abs(math.sin(math.radians(yaw_deg)))
+    hx, hy = 0.5 * (w * c + d * s), 0.5 * (w * s + d * c)
+    return (px - hx, px + hx, py - hy, py + hy)
+
+
+def build_frontage_infill(ctx, edges, clearance):
+    """Lines city streets with district-styled buildings so the land between landmarks is not empty.
+    Lots sit behind the sidewalk, clear every road (all 4 corners) and every building already placed.
+    Each edge uses its own rng, so the rest of the seeded layout is unchanged."""
+    hism = ctx["hism"]
+    meshes = ctx["meshes"]
+    solid = hism.solid_boxes
+    placed = 0
+    # Gameplay spaces are spawned after scenery, so keep lots out of them explicitly: (x, y, radius cm).
+    keep_out = [(c["loc"][0], c["loc"][1], c["radius"] + 900.0) for c in knet.COOLDOWN_SPOTS]
+    keep_out += [(knet.SELIN_GARAGE_POS[0], knet.SELIN_GARAGE_POS[1], 3500.0)]
+    keep_out += [(b[1], b[2], 2200.0) for b in knet.PURSUIT_BREAKERS]
+    keep_out += [(t[1], t[2], 1800.0) for t in knet.SPEED_TRAPS]
+    keep_out += [(j[1], j[2], 6500.0) for j in knet.STUNT_JUMPS]  # runway + landing zone
+    keep_out += [(r[0], r[1], 2500.0) for r in (knet.ESCAPE_ROUTE_A, knet.ESCAPE_ROUTE_B)]
+    for e in edges:
+        style = _INFILL_STYLES.get(e["district"])
+        if style is None or e["dirt"] or e["highway"]:
+            continue
+        mats, h_rng, w_rng, d_rng, setback, kind = style
+        rng = random.Random(7001 + e["index"] * 131)
+        pts = e["points"]
+        hw = e["width"] * 0.5
+        for i in range(len(pts) - 1):
+            a, b = pts[i], pts[i + 1]
+            seg = math.hypot(b[0] - a[0], b[1] - a[1])
+            if seg < 1200.0:
+                continue
+            dx, dy = (b[0] - a[0]) / seg, (b[1] - a[1]) / seg
+            road_yaw = math.degrees(math.atan2(dy, dx))
+            for side in (-1.0, 1.0):
+                t = rng.uniform(300.0, 900.0)
+                while t < seg - 600.0:
+                    w, d, h = rng.uniform(*w_rng), rng.uniform(*d_rng), rng.uniform(*h_rng)
+                    off = hw + setback + d * 0.5
+                    cx = a[0] + dx * (t + w * 0.5) - dy * off * side
+                    cy = a[1] + dy * (t + w * 0.5) + dx * off * side
+                    t += w + rng.uniform(250.0, 900.0)
+                    # Box-projected facades skew on diagonal walls: snap windowed buildings to the grid.
+                    yaw = road_yaw if kind == "shed" else round(road_yaw / 90.0) * 90.0
+                    box = _rect_aabb(cx, cy, w, d, yaw)
+                    corners = ((box[0], box[2]), (box[0], box[3]), (box[1], box[2]), (box[1], box[3]), (cx, cy))
+                    if any(clearance(x, y)[0] < 320.0 for x, y in corners):
+                        continue
+                    reach = 0.5 * math.hypot(w, d)
+                    if any(math.hypot(cx - kx, cy - ky) < kr + reach for kx, ky, kr in keep_out):
+                        continue
+                    if any(box[0] - 250.0 < x1 and box[1] + 250.0 > x0 and box[2] - 250.0 < y1 and box[3] + 250.0 > y0
+                           for x0, x1, y0, y1 in solid):
+                        continue
+                    z = clearance(cx, cy)[1]
+                    mat = rng.choice(mats)
+                    # Skirt extends 4 m below grade so lots on sloped ground never float.
+                    hism.add("Infill_" + kind, (cx, cy, z + (h - 400.0) * 0.5), (w / 100.0, d / 100.0, (h + 400.0) / 100.0),
+                             mat, "PM_Concrete", collision=True, yaw=yaw, cast_shadow=True)
+                    solid.append(box)
+                    if kind == "house":
+                        long_x = w >= d
+                        span_l, span_s = (w, d) if long_x else (d, w)
+                        if "SM_BN_HipRoof" in meshes:
+                            hism.add("Roof_Hip", (cx, cy, z + h - 10.0),
+                                     (span_l / 100.0 + 1.0, span_s / 100.0 + 1.0, 0.38 * span_s / 100.0 / 0.45),
+                                     None, None, collision=False, yaw=yaw + (0.0 if long_x else 90.0),
+                                     mesh=meshes["SM_BN_HipRoof"], cast_shadow=True, cull_cm=70000)
+                    else:
+                        hism.add("Infill_Plinth", (cx, cy, z + 75.0), (w / 100.0 + 0.3, d / 100.0 + 0.3, 1.5),
+                                 "MI_Concrete", None, collision=False, yaw=yaw, cast_shadow=False, cull_cm=40000)
+                        hism.add("Infill_Cap", (cx, cy, z + h + 25.0), (w / 100.0 + 0.4, d / 100.0 + 0.4, 0.5),
+                                 "MI_Concrete" if kind == "block" else "MI_Metal_Dark", None, collision=False,
+                                 yaw=yaw, cast_shadow=False, cull_cm=60000)
+                    placed += 1
+    unreal.log("BN: placed %d frontage infill buildings" % placed)
+    return placed
