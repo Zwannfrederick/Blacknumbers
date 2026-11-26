@@ -57,7 +57,7 @@ SURFACES = {
         tile_scale=0.14, roughness=0.95, roughness_min=0.66, specular=0.30, normal_strength=1.05, macro_var=0.22,
     ),
     "MI_Grass": dict(
-        base_color=(0.82, 0.88, 0.78), albedo="T_Grass_D", normal="T_Grass_N", roughness_map="T_Grass_R",
+        base_color=(0.66, 0.92, 0.50), albedo="T_Grass_D", normal="T_Grass_N", roughness_map="T_Grass_R",
         tile_scale=0.14, roughness=0.94, roughness_min=0.64, specular=0.28, normal_strength=0.95, macro_var=0.24,
     ),
     "MI_LineWhite": dict(

@@ -872,6 +872,37 @@ def _rect_aabb(px, py, w, d, yaw_deg):
     return (px - hx, px + hx, py - hy, py + hy)
 
 
+def _add_district_building(hism, meshes, kind, mat, cx, cy, z, w, d, h, yaw):
+    """One district-styled building (block / shed / house) with its trim; skirt runs 4 m below grade."""
+    hism.add("Infill_" + kind, (cx, cy, z + (h - 400.0) * 0.5), (w / 100.0, d / 100.0, (h + 400.0) / 100.0),
+             mat, "PM_Concrete", collision=True, yaw=yaw, cast_shadow=True)
+    if kind == "house":
+        long_x = w >= d
+        span_l, span_s = (w, d) if long_x else (d, w)
+        if "SM_BN_HipRoof" in meshes:
+            hism.add("Roof_Hip", (cx, cy, z + h - 10.0),
+                     (span_l / 100.0 + 1.0, span_s / 100.0 + 1.0, 0.38 * span_s / 100.0 / 0.45),
+                     None, None, collision=False, yaw=yaw + (0.0 if long_x else 90.0),
+                     mesh=meshes["SM_BN_HipRoof"], cast_shadow=True, cull_cm=70000)
+        return
+    hism.add("Infill_Plinth", (cx, cy, z + 75.0), (w / 100.0 + 0.3, d / 100.0 + 0.3, 1.5),
+             "MI_Concrete", None, collision=False, yaw=yaw, cast_shadow=False, cull_cm=40000)
+    hism.add("Infill_Cap", (cx, cy, z + h + 25.0), (w / 100.0 + 0.4, d / 100.0 + 0.4, 0.5),
+             "MI_Concrete" if kind == "block" else "MI_Metal_Dark", None, collision=False,
+             yaw=yaw, cast_shadow=False, cull_cm=60000)
+
+
+def _gameplay_keep_out():
+    """Gameplay spaces are spawned after scenery, so lots must avoid them explicitly: (x, y, radius cm)."""
+    keep_out = [(c["loc"][0], c["loc"][1], c["radius"] + 900.0) for c in knet.COOLDOWN_SPOTS]
+    keep_out += [(knet.SELIN_GARAGE_POS[0], knet.SELIN_GARAGE_POS[1], 3500.0)]
+    keep_out += [(b[1], b[2], 2200.0) for b in knet.PURSUIT_BREAKERS]
+    keep_out += [(t[1], t[2], 1800.0) for t in knet.SPEED_TRAPS]
+    keep_out += [(j[1], j[2], 6500.0) for j in knet.STUNT_JUMPS]  # runway + landing zone
+    keep_out += [(r[0], r[1], 2500.0) for r in (knet.ESCAPE_ROUTE_A, knet.ESCAPE_ROUTE_B)]
+    return keep_out
+
+
 def build_frontage_infill(ctx, edges, clearance):
     """Lines city streets with district-styled buildings so the land between landmarks is not empty.
     Lots sit behind the sidewalk, clear every road (all 4 corners) and every building already placed.
@@ -880,13 +911,7 @@ def build_frontage_infill(ctx, edges, clearance):
     meshes = ctx["meshes"]
     solid = hism.solid_boxes
     placed = 0
-    # Gameplay spaces are spawned after scenery, so keep lots out of them explicitly: (x, y, radius cm).
-    keep_out = [(c["loc"][0], c["loc"][1], c["radius"] + 900.0) for c in knet.COOLDOWN_SPOTS]
-    keep_out += [(knet.SELIN_GARAGE_POS[0], knet.SELIN_GARAGE_POS[1], 3500.0)]
-    keep_out += [(b[1], b[2], 2200.0) for b in knet.PURSUIT_BREAKERS]
-    keep_out += [(t[1], t[2], 1800.0) for t in knet.SPEED_TRAPS]
-    keep_out += [(j[1], j[2], 6500.0) for j in knet.STUNT_JUMPS]  # runway + landing zone
-    keep_out += [(r[0], r[1], 2500.0) for r in (knet.ESCAPE_ROUTE_A, knet.ESCAPE_ROUTE_B)]
+    keep_out = _gameplay_keep_out()
     for e in edges:
         style = _INFILL_STYLES.get(e["district"])
         if style is None or e["dirt"] or e["highway"]:
@@ -922,26 +947,77 @@ def build_frontage_infill(ctx, edges, clearance):
                     if any(box[0] - 250.0 < x1 and box[1] + 250.0 > x0 and box[2] - 250.0 < y1 and box[3] + 250.0 > y0
                            for x0, x1, y0, y1 in solid):
                         continue
-                    z = clearance(cx, cy)[1]
-                    mat = rng.choice(mats)
-                    # Skirt extends 4 m below grade so lots on sloped ground never float.
-                    hism.add("Infill_" + kind, (cx, cy, z + (h - 400.0) * 0.5), (w / 100.0, d / 100.0, (h + 400.0) / 100.0),
-                             mat, "PM_Concrete", collision=True, yaw=yaw, cast_shadow=True)
+                    _add_district_building(hism, meshes, kind, rng.choice(mats), cx, cy, clearance(cx, cy)[1], w, d, h, yaw)
                     solid.append(box)
-                    if kind == "house":
-                        long_x = w >= d
-                        span_l, span_s = (w, d) if long_x else (d, w)
-                        if "SM_BN_HipRoof" in meshes:
-                            hism.add("Roof_Hip", (cx, cy, z + h - 10.0),
-                                     (span_l / 100.0 + 1.0, span_s / 100.0 + 1.0, 0.38 * span_s / 100.0 / 0.45),
-                                     None, None, collision=False, yaw=yaw + (0.0 if long_x else 90.0),
-                                     mesh=meshes["SM_BN_HipRoof"], cast_shadow=True, cull_cm=70000)
-                    else:
-                        hism.add("Infill_Plinth", (cx, cy, z + 75.0), (w / 100.0 + 0.3, d / 100.0 + 0.3, 1.5),
-                                 "MI_Concrete", None, collision=False, yaw=yaw, cast_shadow=False, cull_cm=40000)
-                        hism.add("Infill_Cap", (cx, cy, z + h + 25.0), (w / 100.0 + 0.4, d / 100.0 + 0.4, 0.5),
-                                 "MI_Concrete" if kind == "block" else "MI_Metal_Dark", None, collision=False,
-                                 yaw=yaw, cast_shadow=False, cull_cm=60000)
                     placed += 1
     unreal.log("BN: placed %d frontage infill buildings" % placed)
     return placed
+
+
+def _on_land(x, y):
+    """Main landmass ends at the Mara seawall (x ~ 620 m); the east harbour peninsula is separate land."""
+    return x < 60500.0 or (81500.0 < x < 106500.0 and -38500.0 < y < 22500.0)
+
+
+def build_block_interiors(ctx, edges, clearance):
+    """Fills the land behind the frontage rows: back-row buildings, pocket parks and courtyard car parks,
+    so city blocks read as solid neighbourhoods from the air too. Grid cells deep inside blocks only."""
+    hism = ctx["hism"]
+    meshes = ctx["meshes"]
+    solid = hism.solid_boxes
+    keep_out = _gameplay_keep_out()
+    trees = [k for k in ("SM_BN_Tree_Autumn_A", "SM_BN_Tree_Autumn_B") if k in meshes]
+    cars = [k for k in ("SM_BN_Traffic_Sedan", "SM_BN_Traffic_Hatchback", "SM_BN_Traffic_SUV") if k in meshes]
+    counts = {"building": 0, "park": 0, "carpark": 0}
+    step = 3200.0
+    for zone in knet.DISTRICT_BOUNDS:
+        style = _INFILL_STYLES.get(zone["district"])
+        if style is None:
+            continue
+        mats, h_rng, w_rng, d_rng, _setback, kind = style
+        rng = random.Random(9100 + zone["district"] * 37)
+        (zx, zy), (hx, hy) = zone["center"], zone["half"]
+        # Hillside lots far from any road would use the wrong ground height; stay near streets there.
+        max_clear = 3800.0 if kind == "house" else 1.0e9
+        y = zy - hy + step * 0.5
+        while y < zy + hy:
+            x = zx - hx + step * 0.5
+            while x < zx + hx:
+                cx, cy = x + rng.uniform(-500.0, 500.0), y + rng.uniform(-500.0, 500.0)
+                x += step
+                roll = rng.random()
+                clr, z = clearance(cx, cy)
+                if not _on_land(cx, cy) or clr < 1300.0 or clr > max_clear:
+                    continue
+                if any(math.hypot(cx - kx, cy - ky) < kr + 1800.0 for kx, ky, kr in keep_out):
+                    continue
+                half = 1450.0
+                if any(cx - half < x1 and cx + half > x0 and cy - half < y1 and cy + half > y0 for x0, x1, y0, y1 in solid):
+                    continue
+                if roll < 0.55:
+                    w, d = min(rng.uniform(*w_rng), 2700.0), min(rng.uniform(*d_rng), 2700.0)
+                    _add_district_building(hism, meshes, kind, rng.choice(mats), cx, cy, z, w, d, rng.uniform(*h_rng),
+                                           rng.choice((0.0, 90.0)))
+                    solid.append((cx - w * 0.5, cx + w * 0.5, cy - d * 0.5, cy + d * 0.5))
+                    counts["building"] += 1
+                elif roll < 0.75 and trees:
+                    hism.add("Park_Lawn", (cx, cy, z + 3.0), (26.0, 26.0, 0.06), "MI_Grass", None,
+                             collision=False, cast_shadow=False, cull_cm=45000)
+                    for _ in range(rng.randint(3, 6)):
+                        hism.add("Park_" + trees[0], (cx + rng.uniform(-1000.0, 1000.0), cy + rng.uniform(-1000.0, 1000.0), z),
+                                 (1.0, 1.0, rng.uniform(0.85, 1.2)), None, None, collision=False,
+                                 yaw=rng.uniform(0.0, 360.0), mesh=meshes[rng.choice(trees)], cast_shadow=True, cull_cm=40000)
+                    counts["park"] += 1
+                elif cars:
+                    hism.add("Carpark_Pad", (cx, cy, z + 2.0), (24.0, 18.0, 0.04), "MI_Asphalt", None,
+                             collision=False, cast_shadow=False, cull_cm=40000)
+                    for k in range(rng.randint(2, 6)):
+                        hism.add("Carpark_Car", (cx - 900.0 + k * 360.0, cy + rng.choice((-450.0, 450.0)), z + 4.0),
+                                 (1.0, 1.0, 1.0), rng.choice(PARKED_PAINTS), None, collision=True, yaw=90.0,
+                                 mesh=meshes[rng.choice(cars)], cast_shadow=True, cull_cm=24000)
+                    counts["carpark"] += 1
+                solid.append((cx - half, cx + half, cy - half, cy + half))
+            y += step
+    unreal.log("BN: block interiors: %d buildings, %d pocket parks, %d car parks" % (
+        counts["building"], counts["park"], counts["carpark"]))
+    return counts
