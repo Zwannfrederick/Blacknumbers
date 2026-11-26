@@ -615,7 +615,26 @@ namespace
 						Advance(21);
 					}
 					break;
-				case 22:
+				case 22: // Setup Shot 11: Eski Liman Koprusu west entry ramp at noon, low static camera (road seam check)
+					if (Elapsed >= 1.2)
+					{
+						SetHour(13.0f);
+						if (St->Cam.IsValid())
+						{
+							St->Cam->SetActorLocationAndRotation(FVector(57400.f, -15400.f, 1380.f), FRotator(-9.f, 12.f, 0.f));
+							PC->SetViewTarget(St->Cam.Get());
+						}
+						Advance(23);
+					}
+					break;
+				case 23:
+					if (Elapsed >= 2.0 && RemainingShaderJobs() == 0)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(24);
+					}
+					break;
+				case 24:
 					if (Elapsed >= 1.2)
 					{
 						UE_LOG(LogTemp, Display, TEXT("bn.VisualShots: Karamara screenshot sequence complete."));

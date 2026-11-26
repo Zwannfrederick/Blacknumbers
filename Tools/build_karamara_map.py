@@ -160,6 +160,58 @@ def reset_level():
     counters.clear()
 
 
+ROAD_SLAB_MAX_CM = 400.0
+ROAD_SLAB_OVERLAP_CM = 20.0
+
+
+def _pchip_slopes(d, z):
+    """Fritsch-Carlson monotone slopes: the height profile never overshoots a crest or bridge deck."""
+    n = len(z)
+    h = [d[i + 1] - d[i] for i in range(n - 1)]
+    m = [(z[i + 1] - z[i]) / h[i] if h[i] > 0 else 0.0 for i in range(n - 1)]
+    t = [0.0] * n
+    t[0], t[-1] = m[0], m[-1]
+    for i in range(1, n - 1):
+        if m[i - 1] * m[i] <= 0.0:
+            t[i] = 0.0
+        else:
+            w1, w2 = 2.0 * h[i] + h[i - 1], h[i] + 2.0 * h[i - 1]
+            t[i] = (w1 + w2) / (w1 / m[i - 1] + w2 / m[i])
+    return t
+
+
+def _densify_road(points, max_seg=ROAD_SLAB_MAX_CM):
+    """Splits an edge polyline into short slabs: XY stays on the original polyline (AI lines unchanged),
+    Z follows a monotone cubic over distance, so consecutive slabs differ by a fraction of a degree and
+    their overlaps never poke up as visible steps on ramps and bridge approaches."""
+    if len(points) < 2:
+        return list(points)
+    d = [0.0]
+    for a, b in zip(points, points[1:]):
+        d.append(d[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
+    z = [p[2] for p in points]
+    t = _pchip_slopes(d, z) if len(points) > 2 else [(z[1] - z[0]) / max(d[1], 1.0)] * 2
+    out = [tuple(points[0])]
+    for i in range(len(points) - 1):
+        a, b = points[i], points[i + 1]
+        h = d[i + 1] - d[i]
+        n = max(1, int(math.ceil(h / max_seg)))
+        for k in range(1, n + 1):
+            u = k / float(n)
+            h00, h10 = 2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u
+            h01, h11 = -2 * u ** 3 + 3 * u ** 2, u ** 3 - u ** 2
+            zz = h00 * z[i] + h10 * h * t[i] + h01 * z[i + 1] + h11 * h * t[i + 1]
+            # XY: Catmull-Rom through the network samples (same curve the network was sampled from), so slabs
+            # turn gradually instead of kinking every 15 m; deviation from walls/AI lines is a few cm.
+            p0, p3 = points[max(0, i - 1)], points[min(len(points) - 1, i + 2)]
+            cx = 0.5 * (2 * a[0] + (-p0[0] + b[0]) * u + (2 * p0[0] - 5 * a[0] + 4 * b[0] - p3[0]) * u * u
+                        + (-p0[0] + 3 * a[0] - 3 * b[0] + p3[0]) * u ** 3)
+            cy = 0.5 * (2 * a[1] + (-p0[1] + b[1]) * u + (2 * p0[1] - 5 * a[1] + 4 * b[1] - p3[1]) * u * u
+                        + (-p0[1] + 3 * a[1] - 3 * b[1] + p3[1]) * u ** 3)
+            out.append((cx, cy, zz))
+    return out
+
+
 def build_road_geometry(nodes, edges):
     """Constructs continuous smooth curved & sloped drivable asphalt/cobblestone/dirt roads,
     sidewalks, viaduct support piers, embankment retaining slopes, and intersection pads via HISM batching."""
@@ -215,10 +267,12 @@ def build_road_geometry(nodes, edges):
                 node_sloped[b_id] = True
 
     for e in edges:
-        pts = e["points"]
         w = e["width"]
         is_dirt = e["dirt"]
-        is_carsi = (e["node_a"] in (8, 9, 10, 11) and e["node_b"] in (8, 9, 10, 11) and abs(pts[0][1] - 16000.0) < 200.0)
+        is_carsi = (e["node_a"] in (8, 9, 10, 11) and e["node_b"] in (8, 9, 10, 11) and abs(e["points"][0][1] - 16000.0) < 200.0)
+        zs = [q[2] for q in e["points"]]
+        # Ramps get 2 m slabs: on a slope any yaw change between slabs shows as a crease.
+        pts = _densify_road(e["points"], 200.0 if max(zs) - min(zs) > 50.0 else ROAD_SLAB_MAX_CM)
         is_old_yamac = (e["district"] == knet.DIST_YAMAC and e["node_a"] in (32, 33, 34) and e["node_b"] in (32, 33, 34))
         if is_dirt:
             mat = "MI_Dirt"
@@ -250,12 +304,12 @@ def build_road_geometry(nodes, edges):
             pitch = math.degrees(math.atan2(dz, dxy))
             mx, my, mz = 0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1]), 0.5 * (a[2] + b[2])
 
-            # 46 cm thick drivable road slab overlapped 18% lengthwise so curves & grade crests stay butter-smooth
-            slab_len_m = (seg3d * 1.18) / 100.0
+            # 46 cm thick drivable slab; short slabs + a small fixed overlap keep joints seamless (see _densify_road)
+            slab_len_m = (seg3d + ROAD_SLAB_OVERLAP_CM) / 100.0
             slab_w_m = w / 100.0
             thick_cm = 46.0
             roads.add("RoadSeg", (mx, my, mz - thick_cm * 0.5), (slab_len_m, slab_w_m, thick_cm / 100.0),
-                      mat, phys, collision=True, yaw=yaw, pitch=pitch, cast_shadow=(mz > 120.0))
+                      mat, phys, collision=True, yaw=yaw, pitch=pitch, cast_shadow=False)
 
             # Lane markings (center yellow dashes, white edges, + dashed multi-lane dividers on >= 18m boulevards/highways)
             if not is_dirt:
@@ -597,6 +651,7 @@ kscene.build_buildings_and_storefronts(ctx, clearance)
 kscene.build_street_furniture_and_foliage(ctx, nodes, edges, clearance)
 kscene.build_frontage_infill(ctx, edges, clearance)
 kscene.build_block_interiors(ctx, edges, clearance)
+kscene.build_road_boundaries(ctx, edges)
 kscene.build_parked_cars(ctx, edges, clearance)
 export_road_graph_asset(nodes, edges)
 build_gameplay_actors(edges)

@@ -252,6 +252,25 @@ def build_landmarks(ctx):
                      collision=False, yaw=0.0, mesh=cc0["SM_CC0_ChainlinkFence"], cast_shadow=False, cull_cm=28000)
 
 
+def _add_merkez_building(hism, px, py, w, d, h, mat):
+    """One downtown building: body, ground-floor plinth, a ledge every 3 floors, corner pilasters, roof cap."""
+    hism.add("Bldg_Merkez", (px, py, h * 0.5), (w / 100.0, d / 100.0, h / 100.0),
+             mat, "PM_Concrete", collision=True, cast_shadow=True)
+    hism.add("Bldg_Plinth", (px, py, 220.0), (w / 100.0 + 0.5, d / 100.0 + 0.5, 4.4),
+             "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=40000)
+    ledge_z = 1000.0
+    while ledge_z < h - 250.0:
+        hism.add("Bldg_Ledge", (px, py, ledge_z), (w / 100.0 + 0.36, d / 100.0 + 0.36, 0.3),
+                 "MI_Concrete", None, collision=False, cast_shadow=True, cull_cm=60000)
+        ledge_z += 960.0
+    for sx in (-0.5, 0.5):
+        for sy in (-0.5, 0.5):
+            hism.add("Bldg_Pilaster", (px + sx * w, py + sy * d, h * 0.5), (0.9, 0.9, h / 100.0),
+                     "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=60000)
+    hism.add("RoofCap", (px, py, h + 40.0), (w / 100.0 + 0.4, d / 100.0 + 0.4, 0.8),
+             "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=55000)
+
+
 def build_roofline(hism, cc0, brng, px, py, w, d, h, mat):
     """Breaks the flat-box skyline of one downtown building: an optional stepped upper tier on mid-rises,
     rooftop plant (aircon units, plant room) and antenna masts on tall towers."""
@@ -319,29 +338,30 @@ def build_buildings_and_storefronts(ctx, clearance):
                 is_core = (abs(px) < 22000.0 and abs(py) < 18000.0)
                 h = rng.uniform(2400.0, 5200.0) if is_core else rng.uniform(1200.0, 2700.0)
                 mat = rng.choice(core_mats) if is_core else rng.choice(edge_mats)
-                hism.add("Bldg_Merkez", (px, py, h * 0.5), (w / 100.0, d / 100.0, h / 100.0),
-                         mat, "PM_Concrete", collision=True, cast_shadow=True)
-                # Facade relief: dark ground-floor plinth, a slab ledge every 3 floors and corner pilasters break the
-                # flat box silhouette and cast shadow lines. No rng calls here, so the seeded layout stays identical.
-                hism.add("Bldg_Plinth", (px, py, 220.0), (w / 100.0 + 0.5, d / 100.0 + 0.5, 4.4),
-                         "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=40000)
-                ledge_z = 1000.0
-                while ledge_z < h - 250.0:
-                    hism.add("Bldg_Ledge", (px, py, ledge_z), (w / 100.0 + 0.36, d / 100.0 + 0.36, 0.3),
-                             "MI_Concrete", None, collision=False, cast_shadow=True, cull_cm=60000)
-                    ledge_z += 960.0
-                for sx in (-0.5, 0.5):
-                    for sy in (-0.5, 0.5):
-                        hism.add("Bldg_Pilaster", (px + sx * w, py + sy * d, h * 0.5), (0.9, 0.9, h / 100.0),
-                                 "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=60000)
-                build_roofline(hism, cc0, random.Random(bi * 4099 + int(dx > 0) * 31 + int(dy > 0) * 7),
-                               px, py, w, d, h, mat)
-                # Rooftop parapet, stepped architectural setback penthouse on tall core towers, & water tanks
-                hism.add("RoofCap", (px, py, h + 40.0), (w / 100.0 + 0.4, d / 100.0 + 0.4, 0.8),
-                         "MI_Concrete", None, collision=False, cast_shadow=False, cull_cm=55000)
+                # A city block is a row of 3 attached buildings (own widths, heights, facades) instead of one
+                # giant box. Local rng: the seeded global layout stays identical. The middle building keeps the
+                # block height so the penthouse/crown below sits on it.
+                brng = random.Random(bi * 4099 + int(dx > 0) * 31 + int(dy > 0) * 7)
+                along_x = w >= d
+                span = w if along_x else d
+                cuts = sorted((brng.uniform(0.25, 0.4), brng.uniform(0.6, 0.75)))
+                bounds = (0.0, cuts[0], cuts[1], 1.0)
+                pool = core_mats if is_core else edge_mats
+                mid_w = mid_d = 0.0
+                for k in range(3):
+                    f0, f1 = bounds[k], bounds[k + 1]
+                    off = (0.5 * (f0 + f1) - 0.5) * span
+                    pw_k, pd_k = ((f1 - f0) * span, d) if along_x else (w, (f1 - f0) * span)
+                    cx_k, cy_k = (px + off, py) if along_x else (px, py + off)
+                    h_k = h if k == 1 else h * brng.uniform(0.6, 1.08)
+                    mat_k = mat if k == 1 else pool[(pool.index(mat) + k + brng.randint(0, 2)) % len(pool)] if mat in pool else mat
+                    if k == 1:
+                        mid_w, mid_d = pw_k, pd_k
+                    _add_merkez_building(hism, cx_k, cy_k, pw_k, pd_k, h_k, mat_k)
+                build_roofline(hism, cc0, brng, px, py, mid_w, mid_d, h, mat)
                 if h >= 2800.0:
                     ph = rng.uniform(580.0, 1150.0)
-                    pw, pd = w * 0.62, d * 0.62
+                    pw, pd = mid_w * 0.7, mid_d * 0.7
                     hism.add("Bldg_Penthouse", (px, py, h + 80.0 + ph * 0.5),
                              (pw / 100.0, pd / 100.0, ph / 100.0),
                              mat, None, collision=False, cast_shadow=False, cull_cm=95000)
@@ -856,7 +876,7 @@ def build_parked_cars(ctx, edges, clearance):
 # District frontage styles: (materials, height range cm, width range cm, depth range cm, setback cm, kind)
 _INFILL_STYLES = {
     knet.DIST_MERKEZ: (("MI_Building_Brick", "MI_Building_Plaster", "MI_Building_ConcreteTower", "MI_Building_Modern"),
-                       (1300.0, 2700.0), (1600.0, 2800.0), (1400.0, 2200.0), 650.0, "block"),
+                       (1300.0, 2700.0), (1600.0, 2800.0), (1400.0, 2200.0), 420.0, "block"),
     knet.DIST_SANAYI: (("MI_Building_Steel", "MI_Container_Blue", "MI_Container_Red", "MI_Container_Amber"),
                        (650.0, 1100.0), (1800.0, 3200.0), (1400.0, 2400.0), 900.0, "shed"),
     knet.DIST_LIMAN:  (("MI_Building_Steel", "MI_Container_Blue", "MI_Building_Plaster"),
@@ -934,7 +954,7 @@ def build_frontage_infill(ctx, edges, clearance):
                     off = hw + setback + d * 0.5
                     cx = a[0] + dx * (t + w * 0.5) - dy * off * side
                     cy = a[1] + dy * (t + w * 0.5) + dx * off * side
-                    t += w + rng.uniform(250.0, 900.0)
+                    t += w + (rng.uniform(0.0, 120.0) if kind == "block" else rng.uniform(150.0, 450.0))
                     # Box-projected facades skew on diagonal walls: snap windowed buildings to the grid.
                     yaw = road_yaw if kind == "shed" else round(road_yaw / 90.0) * 90.0
                     box = _rect_aabb(cx, cy, w, d, yaw)
@@ -1021,3 +1041,78 @@ def build_block_interiors(ctx, edges, clearance):
     unreal.log("BN: block interiors: %d buildings, %d pocket parks, %d car parks" % (
         counts["building"], counts["park"], counts["carpark"]))
     return counts
+
+
+# Street boundary styles: (wall material, cap material, wall height cm, offset beyond road edge cm)
+_BOUNDARY_STYLES = {
+    knet.DIST_MERKEZ: ("MI_Sidewalk", "MI_Metal_Dark", 95.0, 330.0),
+    knet.DIST_YAMAC:  ("MI_Cobblestone", "MI_Metal_Dark", 95.0, 330.0),
+    knet.DIST_SANAYI: ("MI_Concrete", "MI_HazardYellow", 105.0, 330.0),
+    knet.DIST_LIMAN:  ("MI_Concrete", "MI_HazardYellow", 105.0, 200.0),
+    knet.DIST_VIYADUK: ("MI_Concrete", "MI_HazardYellow", 105.0, 200.0),
+}
+_DIRT_BOUNDARY = ("MI_CrateWood", "MI_CrateWood", 90.0, 120.0)
+
+
+def build_road_boundaries(ctx, edges):
+    """Closes the street network (NFS-style, no free roaming): a continuous kerb wall + railing along both
+    sides of every city street and dirt shortcut. Openings only where another road joins (walls of two
+    crossing streets run into each other's pavement, so junction corners are sealed too) and at gameplay
+    yards (cooldown spots, garage, jump runways...), which therefore read as clear entrances.
+    Highways and Kuzey Gecidi already carry jersey barriers (build_street_furniture_and_foliage)."""
+    hism = ctx["hism"]
+    keep_out = _gameplay_keep_out()
+    segs = []
+    for e in edges:
+        hw = e["width"] * 0.5
+        for a, b in zip(e["points"], e["points"][1:]):
+            segs.append((e["index"], hw, min(a[0], b[0]) - hw - 800.0, max(a[0], b[0]) + hw + 800.0,
+                         min(a[1], b[1]) - hw - 800.0, max(a[1], b[1]) + hw + 800.0, a, b))
+
+    def on_other_road(own, x, y, z, pad):
+        for idx, hw, x0, x1, y0, y1, a, b in segs:
+            if idx == own or x < x0 or x > x1 or y < y0 or y > y1:
+                continue
+            vx, vy = b[0] - a[0], b[1] - a[1]
+            l2 = vx * vx + vy * vy
+            t = 0.0 if l2 < 1.0 else max(0.0, min(1.0, ((x - a[0]) * vx + (y - a[1]) * vy) / l2))
+            qz = a[2] + (b[2] - a[2]) * t
+            if abs(qz - z) < 260.0 and math.hypot(x - (a[0] + vx * t), y - (a[1] + vy * t)) < hw + pad:
+                return True
+        return False
+
+    pieces = 0
+    piece_len = 400.0
+    for e in edges:
+        if e["highway"] or e["district"] == knet.DIST_GECIT or (e["node_a"], e["node_b"]) in ((20, 21), (21, 20)):
+            continue
+        wall_mat, cap_mat, wall_h, offset = _DIRT_BOUNDARY if e["dirt"] else _BOUNDARY_STYLES.get(
+            e["district"], _BOUNDARY_STYLES[knet.DIST_MERKEZ])
+        hw = e["width"] * 0.5
+        for a, b in zip(e["points"], e["points"][1:]):
+            seg = math.hypot(b[0] - a[0], b[1] - a[1])
+            if seg < 50.0:
+                continue
+            dx, dy = (b[0] - a[0]) / seg, (b[1] - a[1]) / seg
+            yaw = math.degrees(math.atan2(dy, dx))
+            pitch = math.degrees(math.atan2(b[2] - a[2], seg))
+            steps = max(1, int(math.ceil(seg / piece_len)))
+            plen = seg / steps + 20.0  # small overlap: no slits between pieces
+            for k in range(steps):
+                t = (k + 0.5) / steps
+                px, py, pz = a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t
+                for side in (-1.0, 1.0):
+                    wx = px - dy * (hw + offset) * side
+                    wy = py + dx * (hw + offset) * side
+                    # pad < offset: this wall runs on into the crossing street's pavement and meets its wall
+                    if on_other_road(e["index"], wx, wy, pz, pad=offset * 0.45):
+                        continue
+                    if any(math.hypot(wx - kx, wy - ky) < kr for kx, ky, kr in keep_out):
+                        continue
+                    hism.add("Bound_Wall", (wx, wy, pz + wall_h * 0.5 - 20.0), (plen / 100.0, 0.35, (wall_h + 40.0) / 100.0),
+                             wall_mat, "PM_Concrete", collision=True, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=30000)
+                    hism.add("Bound_Rail", (wx, wy, pz + wall_h + 18.0), (plen / 100.0, 0.12, 0.12),
+                             cap_mat, None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=24000)
+                    pieces += 1
+    unreal.log("BN: road boundaries: %d wall pieces" % pieces)
+    return pieces
