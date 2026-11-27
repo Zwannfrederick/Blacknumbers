@@ -54,6 +54,28 @@ bool FBNPursuitLogicTest::RunTest(const FString& Parameters)
 	EscapeCheck.Update(4.0f, 120.f, 15000.f, 1);
 	TestEqual(TEXT("staying out of sight enters Cooldown"), EscapeCheck.Phase, EBNPursuitPhase::Cooldown);
 
+	// Radar spot rings must match the distances the phase logic actually re-spots at.
+	TestEqual(TEXT("no spot ring while dormant"), FBNPursuitState::GetSpotRadiusCm(EBNPursuitPhase::None), 0.f);
+	TestEqual(TEXT("no spot ring during active Pursuit"), FBNPursuitState::GetSpotRadiusCm(EBNPursuitPhase::Pursuit), 0.f);
+	const float EvadeRing = FBNPursuitState::GetSpotRadiusCm(EBNPursuitPhase::Evade);
+	const float CooldownRing = FBNPursuitState::GetSpotRadiusCm(EBNPursuitPhase::Cooldown);
+	TestTrue(TEXT("Evade and Cooldown expose a spot ring"), EvadeRing > 0.f && CooldownRing > 0.f);
+	FBNPursuitState OutsideRing = EscapeCheck;
+	OutsideRing.Update(0.1f, 0.f, CooldownRing + 50.f, 1);
+	TestEqual(TEXT("unit just outside the Cooldown ring does not re-spot"), OutsideRing.Phase, EBNPursuitPhase::Cooldown);
+	FBNPursuitState InsideRing = EscapeCheck;
+	InsideRing.Update(0.1f, 0.f, CooldownRing - 50.f, 1);
+	TestEqual(TEXT("unit inside the Cooldown ring re-spots"), InsideRing.Phase, EBNPursuitPhase::Pursuit);
+	FBNPursuitState EvadeProbe;
+	EvadeProbe.StartPursuit(1);
+	EvadeProbe.Update(0.5f, 120.f, 15000.f, 1);
+	FBNPursuitState EvadeInside = EvadeProbe;
+	EvadeInside.Update(0.1f, 120.f, EvadeRing - 50.f, 1);
+	TestEqual(TEXT("unit inside the Evade ring regains sight"), EvadeInside.Phase, EBNPursuitPhase::Pursuit);
+	FBNPursuitState EvadeOutside = EvadeProbe;
+	EvadeOutside.Update(0.1f, 120.f, EvadeRing + 50.f, 1);
+	TestEqual(TEXT("unit outside the Evade ring keeps Evade"), EvadeOutside.Phase, EBNPursuitPhase::Evade);
+
 	FBNPursuitState MovingCooldown = EscapeCheck;
 	FBNPursuitState HidingCooldown = EscapeCheck;
 	MovingCooldown.Update(5.0f, 80.f, 15000.f, 0);

@@ -106,7 +106,7 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildCampaignStatusCard()
 		}
 		else if (const FBNBossSpec* NextBoss = FBNStoryState::FindBossByRank(S.NextBossRank))
 		{
-			TargetPill = FString::Printf(TEXT("#%02d %s"), NextBoss->Rank, *NextBoss->Name.ToUpper());
+			TargetPill = FString::Printf(TEXT("#%02d %s"), NextBoss->Rank, *BNUITheme::UpperTr(NextBoss->Name));
 		}
 	}
 
@@ -141,7 +141,7 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildCampaignStatusCard()
 		[
 			SNew(STextBlock)
 			.Text(FText::FromString(FString::Printf(TEXT("$%s   •   ÖDÜL %s   •   %s"),
-				*FString::FormatAsNumber(Cash), *FString::FormatAsNumber(TotalBounty), *ActiveCarSpec.DisplayName.ToUpper())))
+				*FString::FormatAsNumber(Cash), *FString::FormatAsNumber(TotalBounty), *BNUITheme::UpperTr(ActiveCarSpec.DisplayName))))
 			.Font(BNUITheme::Font(11, true))
 			.ColorAndOpacity(BNUITheme::Muted)
 		],

@@ -137,8 +137,8 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 	}
 
 	const FString SubHeader = R.DisciplineLabel.IsEmpty()
-		? R.RaceName.ToUpper()
-		: FString::Printf(TEXT("%s   //   %s"), *R.RaceName.ToUpper(), *R.DisciplineLabel);
+		? BNUITheme::UpperTr(R.RaceName)
+		: FString::Printf(TEXT("%s   //   %s"), *BNUITheme::UpperTr(R.RaceName), *R.DisciplineLabel);
 
 	const FString PrimaryMetricLabel = R.bIsDrift ? TEXT("DRİFT PUANI") : TEXT("BİTİŞ SÜRESİ");
 	const FString PrimaryMetricVal = R.bIsDrift

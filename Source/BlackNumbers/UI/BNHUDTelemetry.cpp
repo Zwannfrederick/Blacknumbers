@@ -31,8 +31,8 @@ void ABNHUD::NotifySpeedTrapTriggered(const FString& TrapName, float SpeedKmh, b
 		? FString::Printf(TEXT("HIZ TUZAĞI: %.0f KM/H  —  YENİ REKOR!"), SpeedKmh)
 		: FString::Printf(TEXT("HIZ TUZAĞI: %.0f KM/H"), SpeedKmh);
 	ActivityBannerDetail = bNewRecord
-		? FString::Printf(TEXT("%s   •   +$%s NAKİT"), *TrapName.ToUpper(), *FString::FormatAsNumber(CashGain))
-		: TrapName.ToUpper();
+		? FString::Printf(TEXT("%s   •   +$%s NAKİT"), *BNUITheme::UpperTr(TrapName), *FString::FormatAsNumber(CashGain))
+		: BNUITheme::UpperTr(TrapName);
 }
 
 void ABNHUD::NotifyStuntJumpLanded(const FString& JumpName, float DistanceMeters, bool bNewRecord, int32 CashGain)
@@ -44,8 +44,8 @@ void ABNHUD::NotifyStuntJumpLanded(const FString& JumpName, float DistanceMeters
 		? FString::Printf(TEXT("SIÇRAMA: %.0f METRE  —  YENİ REKOR!"), DistanceMeters)
 		: FString::Printf(TEXT("SIÇRAMA TAMAMLANDI: %.0f METRE"), DistanceMeters);
 	ActivityBannerDetail = bNewRecord
-		? FString::Printf(TEXT("%s   •   +$%s NAKİT"), *JumpName.ToUpper(), *FString::FormatAsNumber(CashGain))
-		: JumpName.ToUpper();
+		? FString::Printf(TEXT("%s   •   +$%s NAKİT"), *BNUITheme::UpperTr(JumpName), *FString::FormatAsNumber(CashGain))
+		: BNUITheme::UpperTr(JumpName);
 }
 
 void ABNHUD::DrawProTelemetry(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, bool bPursuitVisible)
@@ -155,7 +155,7 @@ void ABNHUD::DrawProTelemetry(const ABNVehiclePawn& Car, const ABNRaceEvent* Act
 			if (ABNRaceEvent::FindNearbyIdleRace(GetWorld(), &Car) == nullptr)
 			{
 				const FString Prompt = FString::Printf(TEXT("[ENTER / G]  %s  —  MODİFİYE & ARAÇ DEĞİŞTİR"),
-					*Garage->GarageName.ToUpper());
+					*BNUITheme::UpperTr(Garage->GarageName));
 				float PW = 0.f, PH = 0.f;
 				GetTextSize(Prompt, PW, PH, Font, 0.98f);
 				const float BoxW = PW + 36.f;

@@ -92,7 +92,7 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 	const ABNRaceEvent* Event = RaceEvent.Get();
 	const UBNRaceDefinition* Def = Event ? Event->Definition.Get() : nullptr;
 	const EBNRaceDiscipline Disc = Def ? Def->Discipline : EBNRaceDiscipline::Sprint;
-	const FString Title = Def ? Def->DisplayName.ToString().ToUpper() : TEXT("SOKAK YARIŞI");
+	const FString Title = Def ? BNUITheme::UpperTr(Def->DisplayName.ToString()) : TEXT("SOKAK YARIŞI");
 	const FLinearColor Accent = BriefingDisciplineColor(Disc);
 
 	FString DistrictName(TEXT("KARAMARA"));
@@ -139,7 +139,7 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 		: FString::Printf(TEXT("$%s / $%s"), *FString::FormatAsNumber(FirstCash), *FString::FormatAsNumber(SecondCash));
 
 	// Personal Best record for this race track
-	FString PbLabel = TEXT("HENÜZ YOK");
+	FString PbLabel = TEXT("—");
 	if (Def && Event && Event->GetWorld() && Event->GetWorld()->GetGameInstance())
 	{
 		if (const UBNProgressionSubsystem* Prog = Event->GetWorld()->GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>())
@@ -148,7 +148,7 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 			{
 				if (const int32* BestDrift = Prog->GetProfile().BestDriftScores.Find(Def->GetName()))
 				{
-					PbLabel = FString::Printf(TEXT("%s PUAN"), *FString::FormatAsNumber(*BestDrift));
+					PbLabel = FString::Printf(TEXT("%s P"), *FString::FormatAsNumber(*BestDrift));
 				}
 			}
 			else if (const float* BestTime = Prog->GetProfile().BestRaceTimes.Find(Def->GetName()))
@@ -157,7 +157,7 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 			}
 		}
 	}
-	const FString RepReward = FString::Printf(TEXT("+%d  |  PB: %s"), FirstRep, *PbLabel);
+	const FString RepReward = FString::Printf(TEXT("+%d  /  %s"), FirstRep, *PbLabel);
 
 	const FSlateBrush* VigFull = BNUITheme::GetVignetteFullBrush();
 	const bool bHasVig = VigFull != BNUITheme::WhiteBrush();
@@ -252,7 +252,7 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 							]
 							+ SHorizontalBox::Slot().FillWidth(1.f)
 							[
-								MakeTile(TEXT("İTİBAR"), RepReward, BNUITheme::Nos)
+								MakeTile(TEXT("İTİBAR / REKOR"), RepReward, BNUITheme::Nos)
 							]
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 22.f))

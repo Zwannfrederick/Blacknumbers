@@ -533,8 +533,8 @@ void ABNHUD::DrawRace(const ABNRaceEvent& Race)
 	const bool bRivals = Race.GetNumRivals() > 0;
 	const int32 BossRank = Race.GetActiveBossRank();
 	const FString Header = BossRank > 0
-		? FString::Printf(TEXT("KARA LİSTE #%02d  //  %s"), BossRank, *Def->DisplayName.ToString().ToUpper())
-		: Def->DisplayName.ToString().ToUpper();
+		? FString::Printf(TEXT("KARA LİSTE #%02d  //  %s"), BossRank, *BNUITheme::UpperTr(Def->DisplayName.ToString()))
+		: BNUITheme::UpperTr(Def->DisplayName.ToString());
 
 	// Authentic MW 2005 corner-anchored race telemetry over organic ink slash (NO clunky top-center SaaS box!)
 	UFont* Digits = BNUITheme::HudFont(true);
@@ -770,7 +770,7 @@ void ABNHUD::DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsy
 		const float W = MeterW * FMath::Clamp(S.PhaseProgress, 0.f, 1.f);
 		DrawRect(S.bInsideCooldownSpot ? SweetSpotColour : PoliceBlueColour, MeterX, MeterY + 2.f, W, PursuitBarHeight - 4.f);
 		StatusLabel = S.bInsideCooldownSpot
-			? FString::Printf(TEXT("SAKLANMA (4x): %s"), *S.ActiveCooldownSpotName.ToUpper())
+			? FString::Printf(TEXT("SAKLANMA (4x): %s"), *BNUITheme::UpperTr(S.ActiveCooldownSpotName))
 			: FString(TEXT("SOĞUMA  //  SAKLAN"));
 	}
 	else if (S.Phase == EBNPursuitPhase::Busted)

@@ -192,7 +192,7 @@ namespace
 				Palette.TextIdle = FLinearColor(BNUITheme::Bone.R, BNUITheme::Bone.G, BNUITheme::Bone.B, 0.78f);
 			}
 
-			const FText Label = InArgs._bDisplayFont ? InArgs._Label.ToUpper() : InArgs._Label;
+			const FText Label = InArgs._bDisplayFont ? FText::FromString(BNUITheme::UpperTr(InArgs._Label.ToString())) : InArgs._Label;
 			TSharedRef<SVerticalBox> TextStack = SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
@@ -322,6 +322,26 @@ namespace
 
 namespace BNUITheme
 {
+	FString UpperTr(const FString& In)
+	{
+		FString Out = In;
+		for (TCHAR& C : Out)
+		{
+			switch (C)
+			{
+			case TEXT('i'): C = TEXT('İ'); break;
+			case TEXT('ı'): C = TEXT('I'); break;
+			case TEXT('ö'): C = TEXT('Ö'); break;
+			case TEXT('ü'): C = TEXT('Ü'); break;
+			case TEXT('ş'): C = TEXT('Ş'); break;
+			case TEXT('ç'): C = TEXT('Ç'); break;
+			case TEXT('ğ'): C = TEXT('Ğ'); break;
+			default: C = FChar::ToUpper(C); break;
+			}
+		}
+		return Out;
+	}
+
 	const FSlateBrush* WhiteBrush()
 	{
 		return FCoreStyle::Get().GetBrush("WhiteBrush");
@@ -433,7 +453,7 @@ namespace BNUITheme
 		}
 		Stack->AddSlot().AutoHeight().HAlign(HAlign_Center)
 		[
-			SNew(STextBlock).Text(FText::FromString(Caption.ToUpper())).Font(Font(11, true)).ColorAndOpacity(TextTint)
+			SNew(STextBlock).Text(FText::FromString(BNUITheme::UpperTr(Caption))).Font(Font(11, true)).ColorAndOpacity(TextTint)
 		];
 		Stack->AddSlot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))
 		[
@@ -478,7 +498,7 @@ namespace BNUITheme
 		+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 8.f, 0.f))
 		[
 			SNew(STextBlock)
-			.Text(FText::FromString(Title.ToUpper()))
+			.Text(FText::FromString(BNUITheme::UpperTr(Title)))
 			.Font(DisplayFont(17))
 			.ColorAndOpacity(Bone)
 		];
@@ -487,7 +507,7 @@ namespace BNUITheme
 			Row->AddSlot().AutoWidth().VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 0.f, 2.f))
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(RightTag.ToUpper()))
+				.Text(FText::FromString(BNUITheme::UpperTr(RightTag)))
 				.Font(Font(11, true))
 				.ColorAndOpacity(AccentColor)
 			];
@@ -571,7 +591,7 @@ namespace BNUITheme
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().FillWidth(1.f)
 			[
-				SNew(STextBlock).Text(FText::FromString(Label.ToUpper())).Font(Font(11, true)).ColorAndOpacity(Muted)
+				SNew(STextBlock).Text(FText::FromString(BNUITheme::UpperTr(Label))).Font(Font(11, true)).ColorAndOpacity(Muted)
 			]
 			+ SHorizontalBox::Slot().AutoWidth()
 			[

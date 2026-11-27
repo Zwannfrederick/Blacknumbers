@@ -65,6 +65,7 @@ Araba gövdesi şimdilik motorun araç şablonundaki spor araba (`Content/Vehicl
 | İş | Komut |
 |---|---|
 | Editörü aç (NVIDIA ile) | `prime-run ~/UnrealEngine/Engine/Binaries/Linux/UnrealEditor "$PWD/BlackNumbers.uproject"` |
+| Oyna (derler, editörsüz tam ekran) | `Tools/play.sh` (pencerede: `Tools/play.sh -windowed -ResX=1600 -ResY=900`) |
 | Derle + tüm testler | `Tools/run_tests.sh` (tek test: `Tools/run_tests.sh BlackNumbers.Vehicle.Drift`) |
 | Test haritasını ve malzemeleri yeniden üret | `Tools/build_map.sh` (editör kapalıyken) |
 | Performans ölçümü (1080p, editör dışı) | `Tools/benchmark.sh` → `Saved/Benchmark/` |

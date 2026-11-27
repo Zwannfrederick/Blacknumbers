@@ -48,6 +48,9 @@ namespace BNUITheme
 	/** Forward lean of every slab (degrees of horizontal shear). */
 	constexpr float SlabLeanDeg = 12.f;
 
+	/** Turkish-aware uppercase (FString::ToUpper is ASCII-only: i->I, ö stays ö). Use for every UPPERCASE label. */
+	FString UpperTr(const FString& In);
+
 	const FSlateBrush* WhiteBrush();
 	/** Condensed body font (Noto Sans Condensed Bold / Medium, full Turkish glyphs). */
 	FSlateFontInfo Font(int32 Size, bool bBold = true);

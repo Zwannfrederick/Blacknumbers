@@ -164,6 +164,7 @@ Bu yüzden sıra **önce sistemler, sonra hikâye** şeklindedir. Her faz kendi 
   - Doğrulama: **43/43 test yeşil**, 1080p RTX 3050 Ti **135.0–170.6 FPS** (`0.0–0.4% >16.7 ms`, **991 MiB** net oyun VRAM), 9 canlı ekran görüntüsü incelendi
 - [x] **Eski Liman Köprüsü:** Doğu çıkışındaki iki rampanın kotu ayrımda hizalandı ve Sanayi inişi kıyı platformunun üzerinde kaldı. Beş açıklığa korkuluk çarpışması ve köprü çeliğine Poly Haven CC0 kaplama eklendi.
 - [x] **Araç ve arazi fiziği:** Tümseklerden gelen süspansiyon geri tepmesi zemin eğimine göre sınırlanır. Kuzey Geçidi ve Yamaç arazisi fiziksel zemin sağlar. Mara Denizi'ne düşen araç son sağlam zemine döner.
+- [x] **"Sodyum" arayüz kimliği (2026-11-27):** tek vurgu rengi (sodyum turuncusu), tek font ailesi, 12° eğik butonlar; menüler, Kara Liste, Garaj, Harita, Yarış Özeti ve HUD yeniden tasarlandı. Radarda kaçış/soğuma fazında her polisin gerçek görme yarıçapı halkası. Türkçe büyük harf (`BNUITheme::UpperTr`) tüm etiketlerde. `Tools/play.sh` başlatıcısı; paketlemede `UI/Fonts` ham `.ttf` olarak kopyalanır.
 - [ ] Tam Sequencer sinematikleri C01–C19 *(metin/storyboard çekirdeği + Epilog kartları Faz 6–7'de eklendi)*
 - [ ] VRAM/FPS derin optimizasyon ve paketleme (Linux + Windows)
 

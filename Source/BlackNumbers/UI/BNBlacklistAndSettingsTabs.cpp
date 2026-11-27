@@ -100,7 +100,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildBlackNumbersTab()
 		+ SVerticalBox::Slot().AutoHeight()
 		[
 			SNew(STextBlock)
-			.Text(FText::FromString(FString::Printf(TEXT("KARA LİSTE  •  %s"), *ActiveBoss->TagWord.ToUpper())))
+			.Text(FText::FromString(FString::Printf(TEXT("KARA LİSTE  •  %s"), *BNUITheme::UpperTr(ActiveBoss->TagWord))))
 			.Font(BNUITheme::Font(13, true))
 			.ColorAndOpacity(BNUITheme::Accent)
 		]
@@ -908,12 +908,12 @@ void SBNStoryCardWidget::Refresh()
 					[
 						SNew(SBorder).BorderImage(BNUITheme::WhiteBrush()).BorderBackgroundColor(BNUITheme::Accent).Padding(FMargin(9.f, 3.f))
 						[
-							SNew(STextBlock).Text(FText::FromString(Card->Speaker.ToUpper())).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::InkSolid)
+							SNew(STextBlock).Text(FText::FromString(BNUITheme::UpperTr(Card->Speaker))).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::InkSolid)
 						]
 					]
 					+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 					[
-						SNew(STextBlock).Text(FText::FromString(Card->Title.ToUpper())).Font(BNUITheme::Font(13, true)).ColorAndOpacity(BNUITheme::AccentHi)
+						SNew(STextBlock).Text(FText::FromString(BNUITheme::UpperTr(Card->Title))).Font(BNUITheme::Font(13, true)).ColorAndOpacity(BNUITheme::AccentHi)
 					]
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 10.f, 0.f, 14.f))

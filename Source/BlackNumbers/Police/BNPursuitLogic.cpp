@@ -383,6 +383,13 @@ void FBNPursuitState::RecordPursuitBreaker(int32 CollateralDollars, int32 Disabl
 		TEXT("Şüpheli kamu yapısını yıktı! Şehir hasarı artıyor, destek ekip sevk edin!"), 4.5f);
 }
 
+float FBNPursuitState::GetSpotRadiusCm(EBNPursuitPhase InPhase)
+{
+	return InPhase == EBNPursuitPhase::Evade ? RegainSightDistanceCm
+		: InPhase == EBNPursuitPhase::Cooldown ? CooldownBreakDistanceCm
+		: 0.f;
+}
+
 void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float NearestActiveUnitDistCm, int32 ActiveUnitCount,
 	bool bInCooldownSpot, bool bAirUnitHasSight)
 {

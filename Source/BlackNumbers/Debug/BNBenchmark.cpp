@@ -672,9 +672,39 @@ namespace
 						Advance(27);
 					}
 					break;
-				case 28:
+				case 28: // Setup Shot 14: Pre-Race Briefing modal over the live city
+					if (Elapsed >= 1.0)
+					{
+						Car->SetShowcaseMode(false);
+						PC->SetViewTarget(Car);
+						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>())
+						{
+							for (TActorIterator<ABNRaceEvent> It(W); It; ++It)
+							{
+								if (It->Definition)
+								{
+									HUD->OpenRaceBriefing(*It);
+									break;
+								}
+							}
+						}
+						Advance(29);
+					}
+					break;
+				case 29:
+					if (Elapsed >= 1.5 && RemainingShaderJobs() == 0)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(30);
+					}
+					break;
+				case 30:
 					if (Elapsed >= 1.2)
 					{
+						if (ABNHUD* HUD = PC->GetHUD<ABNHUD>(); HUD && HUD->IsRaceBriefingOpen())
+						{
+							HUD->CloseRaceBriefing(false);
+						}
 						UE_LOG(LogTemp, Display, TEXT("bn.VisualShots: Karamara screenshot sequence complete."));
 						FPlatformMisc::RequestExit(false);
 						return false;

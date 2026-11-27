@@ -142,6 +142,8 @@ struct BLACKNUMBERS_API FBNPursuitState
 	bool HasInfraction(EBNInfraction Infraction) const { return (Infractions & static_cast<uint8>(Infraction)) != 0; }
 	int32 CountInfractions() const { return FMath::CountBits(Infractions); }
 	static FString InfractionLabel(EBNInfraction Infraction);
+	/** Distance inside which an active unit re-spots the suspect in this phase (0 = no ring; radar draws it). */
+	static float GetSpotRadiusCm(EBNPursuitPhase InPhase);
 	bool IsPursuitRunning() const;
 	void PostDispatch(const FString& Speaker, const FString& Message, float Duration = 4.5f);
 

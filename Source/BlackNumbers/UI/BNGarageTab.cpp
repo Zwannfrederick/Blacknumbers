@@ -314,7 +314,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildGarageTab()
 					+ SVerticalBox::Slot().AutoHeight()
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(FString::Printf(TEXT("%s  //  %s"), *ShownSpec.DisplayName.ToUpper(), FBNVehicleSpec::BodyStyleLabel(ShownSpec.BodyStyle))))
+						.Text(FText::FromString(FString::Printf(TEXT("%s  //  %s"), *BNUITheme::UpperTr(ShownSpec.DisplayName), FBNVehicleSpec::BodyStyleLabel(ShownSpec.BodyStyle))))
 						.Font(BNUITheme::DisplayFont(22))
 						.ColorAndOpacity(BNUITheme::AccentHi)
 						.Justification(ETextJustify::Center)

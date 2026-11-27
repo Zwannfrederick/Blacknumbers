@@ -287,7 +287,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 	if (ActiveRace)
 	{
 		const FString RaceTitle = ActiveRace->Definition
-			? ActiveRace->Definition->DisplayName.ToString().ToUpper() : TEXT("AKTİF YARIŞ");
+			? BNUITheme::UpperTr(ActiveRace->Definition->DisplayName.ToString()) : TEXT("AKTİF YARIŞ");
 		return SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight()
 		[
@@ -498,7 +498,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacePauseView(ABNRaceEvent& ActiveRa
 					+ SVerticalBox::Slot().AutoHeight()
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(RaceTitle.ToUpper()))
+						.Text(FText::FromString(BNUITheme::UpperTr(RaceTitle)))
 						.Font(BNUITheme::DisplayFont(28))
 						.ColorAndOpacity(BNUITheme::Bone)
 					]
@@ -642,7 +642,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 							+ SVerticalBox::Slot().AutoHeight()
 							[
 								SNew(STextBlock)
-								.Text(FText::FromString(FString::Printf(TEXT("SIRADAKİ RAKİP  //  %s"), *NextBoss->Name.ToUpper())))
+								.Text(FText::FromString(FString::Printf(TEXT("SIRADAKİ RAKİP  //  %s"), *BNUITheme::UpperTr(NextBoss->Name))))
 								.Font(BNUITheme::DisplayFont(22))
 								.ColorAndOpacity(BNUITheme::Bone)
 							]

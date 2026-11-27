@@ -456,10 +456,26 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 			}
 
 			const bool bFlash = FMath::Fmod(GetWorld()->GetTimeSeconds() * 6.0, 1.0) < 0.5;
+			// While evading/cooling down, show each unit's real re-spot radius so the player can read where to hide.
+			const float SpotRadiusCm = Pursuit ? FBNPursuitState::GetSpotRadiusCm(Pursuit->GetState().Phase) : 0.f;
 			for (TActorIterator<ABNPoliceController> It(GetWorld()); It; ++It)
 			{
 				if (const APawn* Cop = It->GetPawn(); Cop && !It->IsUnitDisabled())
 				{
+					if (SpotRadiusCm > 0.f)
+					{
+						constexpr int32 RingSegs = 28;
+						const FVector C = Cop->GetActorLocation();
+						const FLinearColor RingCol(BNRadar::BlipPoliceRed.R, BNRadar::BlipPoliceRed.G, BNRadar::BlipPoliceRed.B, 0.55f);
+						for (int32 i = 0; i < RingSegs; ++i)
+						{
+							const float A0 = 2.f * PI * i / RingSegs;
+							const float A1 = 2.f * PI * (i + 1) / RingSegs;
+							DrawClippedLine(C + FVector(FMath::Cos(A0), FMath::Sin(A0), 0.f) * SpotRadiusCm,
+								C + FVector(FMath::Cos(A1), FMath::Sin(A1), 0.f) * SpotRadiusCm, RingCol, 1.6f);
+						}
+						DrawClippedLine(C, C + Cop->GetActorForwardVector().GetSafeNormal2D() * SpotRadiusCm, RingCol, 1.6f);
+					}
 					const FVector2D Pt = BNRadar::ClampToRadarEdge(
 						BNRadar::ProjectUnclamped(Cop->GetActorLocation(), PlayerLoc, CosY, SinY, Cx, Cy, ActiveRangeCm),
 						Cx, Cy, BNRadar::RadarInnerClip - 3.f);
@@ -525,7 +541,7 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 					DistrictBannerRuler = Terr.bDistrictLiberated
 						? FString::Printf(TEXT("BÖLGE ELE GEÇİRİLDİ  •  %s KONTROLÜNDE"), *Terr.BoroughTitle)
 						: FString::Printf(TEXT("BÖLGE HÜKÜMDARI: #%02d %s  (%s)  •  EKİP: %s"),
-							Terr.RulerRank, *Terr.RulerName.ToUpper(), *Terr.RulerVehicle, *Terr.CrewName);
+							Terr.RulerRank, *BNUITheme::UpperTr(Terr.RulerName), *Terr.RulerVehicle, *Terr.CrewName);
 				}
 				DistrictBannerUntil = Now + 3.8;
 			}
@@ -541,7 +557,7 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 		GetTextSize(DistName, W, H, Font, 0.74f);
 		const float PillX = BNRadar::RadarMargin;
 		const float PillY = Cy - BNRadar::RadarHalfSize - H - 10.f;
-		DrawTextShadowed(DistName.ToUpper(), BNRadar::LegendColour, PillX, PillY, Font, 0.74f);
+		DrawTextShadowed(BNUITheme::UpperTr(DistName), BNRadar::LegendColour, PillX, PillY, Font, 0.74f);
 
 		if (Now < DistrictBannerUntil && !DistrictBannerName.IsEmpty() && !bRaceActive)
 		{
@@ -605,7 +621,7 @@ void ABNHUD::DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* Act
 			RoadGraph && RoadGraph->HasGpsDestination())
 		{
 			DrawProjectedTag(RoadGraph->GetGpsTargetLocation(),
-				FString::Printf(TEXT("GPS: %s"), *RoadGraph->GetGpsTargetLabel().Left(24).ToUpper()),
+				FString::Printf(TEXT("GPS: %s"), *BNUITheme::UpperTr(RoadGraph->GetGpsTargetLabel().Left(24))),
 				BNRadar::RouteNextLeg);
 		}
 	}
@@ -680,7 +696,7 @@ void ABNHUD::DrawLiveCommsAndPrompts(const ABNVehiclePawn& Car, const ABNRaceEve
 				: Def->Discipline == EBNRaceDiscipline::Drift ? TEXT("DRİFT")
 				: Def->Discipline == EBNRaceDiscipline::Circuit ? TEXT("PİST") : TEXT("SPRINT");
 			const FString Prompt = FString::Printf(TEXT("[ENTER]  YARIŞ ÖZETİ  —  %s  (%s)"),
-				*Def->DisplayName.ToString().ToUpper(), Disc);
+				*BNUITheme::UpperTr(Def->DisplayName.ToString()), Disc);
 			float PW = 0.f, PH = 0.f;
 			GetTextSize(Prompt, PW, PH, Font, 1.02f);
 			const float BoxW = PW + 36.f;

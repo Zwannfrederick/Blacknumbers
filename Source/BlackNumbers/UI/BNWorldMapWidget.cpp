@@ -101,7 +101,7 @@ namespace
 
 		for (TActorIterator<ABNGarageZone> It(World); It; ++It)
 		{
-			OutPins.Add({ It->GetActorLocation(), It->GarageName.ToUpper(), TEXT("GARAJ"),
+			OutPins.Add({ It->GetActorLocation(), BNUITheme::UpperTr(It->GarageName), TEXT("GARAJ"),
 				TEXT("Ücretsiz Tamir • 6 Araç • Tier 1-6 Modifiye"), BNUITheme::Ok, 8.5f, false });
 		}
 		for (TActorIterator<ABNRaceEvent> It(World); It; ++It)
@@ -538,7 +538,7 @@ namespace
 					Brush, ESlateDrawEffect::None, HoveredPin->Color);
 				FSlateDrawElement::MakeText(OutDrawElements, LayerId + 1,
 					AllottedGeometry.ToPaintGeometry(FVector2D(CardW - 16.f, 16.f), FSlateLayoutTransform(TipPos + FVector2D(10.f, 6.f))),
-					FString::Printf(TEXT("[%s]  %s"), *HoveredPin->Category, *HoveredPin->Label.ToUpper()),
+					FString::Printf(TEXT("[%s]  %s"), *HoveredPin->Category, *BNUITheme::UpperTr(HoveredPin->Label)),
 					BNUITheme::Font(9, true), ESlateDrawEffect::None, HoveredPin->Color);
 				FSlateDrawElement::MakeText(OutDrawElements, LayerId + 1,
 					AllottedGeometry.ToPaintGeometry(FVector2D(CardW - 16.f, 16.f), FSlateLayoutTransform(TipPos + FVector2D(10.f, 26.f))),
@@ -830,7 +830,7 @@ void SBNWorldMapWidget::RefreshGpsSidebar()
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SNew(STextBlock)
-					.Text(FText::FromString(RoadGraph->GetGpsTargetLabel().ToUpper()))
+					.Text(FText::FromString(BNUITheme::UpperTr(RoadGraph->GetGpsTargetLabel())))
 					.Font(BNUITheme::Font(12, true))
 					.ColorAndOpacity(BNUITheme::Nos)
 					.AutoWrapText(true)
