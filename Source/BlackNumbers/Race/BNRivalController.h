@@ -43,14 +43,18 @@ public:
 
 private:
 	void Drive(ABNVehiclePawn& Car, const USplineComponent& Line, float DeltaSeconds);
+	/** Local sliding-window projection along Line so city loops never snap onto adjacent parallel streets. */
+	float FindTrackedDistance(const USplineComponent& Line, const FVector& Location) const;
 	/** Signed gap to the player along the racing line (cm, + = rival ahead). 0 when unknown. */
 	float GapToPlayer(const USplineComponent& Line, float MyDistance) const;
-	/** Removes sideways slide (understeer) by turning the velocity toward where the car points. */
-	void ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds) const;
+	/** Removes sideways slide (understeer) and gently guides chassis yaw toward HeadingErrorDeg on ground. */
+	void ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds, float HeadingErrorDeg) const;
+	/** Short left/right forward whisker traces against static walls returning steering bias (-1..+1) and proximity brake flag. */
+	float ComputeWallAvoidance(const ABNVehiclePawn& Car, float SpeedCms, bool& bOutBlockedAhead) const;
 	void Respawn(ABNVehiclePawn& Car, const USplineComponent& Line, float Distance);
 	/**
-	 * Slowest forward speed of cars in a box from FromX to the follow distance ahead, centred LateralShift
-	 * to the side (car frame); the max speed if the box is clear.
+	 * Slowest forward speed of cars (rivals, player, civilian traffic) in a box from FromX to the follow
+	 * distance ahead, centred LateralShift to the side (car frame); the max speed if the box is clear.
 	 */
 	float LaneSpeed(const ABNVehiclePawn& Car, float LateralShift, float FromX) const;
 
@@ -65,7 +69,11 @@ private:
 	float SecondsUnlocked = 0.f;
 	float StuckSeconds = 0.f;
 	float ProgressStuckSeconds = 0.f;
+	float TrackedDistance = -1.f;
 	float LastProgressDistance = -1.f;
+	float ReverseUnstuckSeconds = 0.f;
+	float ReverseUnstuckSteer = 0.f;
+	float ReverseCooldownSeconds = 0.f;
 	float LaneChangeCooldown = 0.f;
 	int32 Respawns = 0;
 };

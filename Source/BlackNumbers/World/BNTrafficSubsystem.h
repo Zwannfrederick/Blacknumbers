@@ -74,6 +74,9 @@ private:
 		float StateTimer = 0.f;
 		FVector KnockVelocity = FVector::ZeroVector;
 		float KnockYawRateDeg = 0.f;
+		// Exponentially decaying visual turn blend so intersection edge switches curve smoothly without snapping
+		FVector VisualPosOffset = FVector::ZeroVector;
+		float VisualYawOffsetDeg = 0.f;
 	};
 
 	UFUNCTION()

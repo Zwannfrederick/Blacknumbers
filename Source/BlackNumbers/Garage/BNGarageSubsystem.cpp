@@ -159,6 +159,10 @@ bool UBNProgressionSubsystem::RecordRacePersonalBest(const FString& RaceKey, boo
 bool UBNProgressionSubsystem::RecordSpeedTrapResult(const FString& TrapKey, const FString& TrapLabel, float SpeedKmh, float& OutPrevBest, int32& OutCash, int32& OutRep)
 {
 	const bool bNewRecord = Profile.RecordSpeedTrap(TrapKey, SpeedKmh, OutPrevBest, OutCash, OutRep);
+	if (UBNStorySubsystem* Story = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr)
+	{
+		Story->NotifySpeedTrapRecorded(SpeedKmh);
+	}
 	if (bNewRecord)
 	{
 		RewardBanner = FString::Printf(TEXT("HIZ TUZAĞI REKORU: %s — %.0f KM/H  (+$%s  +%d İTİBAR)"),

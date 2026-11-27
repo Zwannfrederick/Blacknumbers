@@ -46,9 +46,14 @@ bool FBNStoryProgressionLogicTest::RunTest(const FString& Parameters)
 	TestFalse(TEXT("first duel locked before qualifying"), State.IsDuelUnlocked(16));
 	const FName FirstRace = State.GetNextQualifier();
 	TestFalse(TEXT("other races do not qualify"), State.RecordQualifierVictory(FName(TEXT("RACE_Another"))));
-	TestTrue(TEXT("winning the first qualifier unlocks the duel"), State.RecordQualifierVictory(FirstRace));
+	TestTrue(TEXT("winning the first qualifier satisfies Race Wins gate"), State.RecordQualifierVictory(FirstRace));
 	TestFalse(TEXT("repeating the qualifier adds no progress"), State.RecordQualifierVictory(FirstRace));
-	TestTrue(TEXT("first duel unlocked"), State.IsDuelUnlocked(16));
+	TestFalse(TEXT("MW 3-gate rule: duel still locked without Milestones + Bounty"), State.IsDuelUnlocked(16));
+	TestTrue(TEXT("Speed Trap >= 165 km/h completes #16 Milestone"), State.EvaluateSpeedTrapMilestones(170.f) >= 1);
+	TestTrue(TEXT("Milestone completion satisfies Milestones gate"), State.AreMilestonesComplete(16));
+	State.BankPursuitBounty(10000);
+	TestTrue(TEXT("Banking pursuit Bounty satisfies Total Bounty gate"), State.IsBountyComplete(16));
+	TestTrue(TEXT("first duel unlocked once all 3 MW gates are met"), State.IsDuelUnlocked(16));
 
 	TArray<FBNStoryCard> Cards;
 	auto Beat = [&](int32 Rank)
@@ -269,7 +274,9 @@ bool FBNStoryTier6AndFinalChasePieTest::RunTest(const FString& Parameters)
 			{
 				Story->NotifyStreetRaceWon(Race);
 			}
-			TestTrue(TEXT("completing the program unlocks #08 duel"), Story->GetState().IsDuelUnlocked(8));
+			TestFalse(TEXT("Boss #08 duel stays locked until MW Milestones & Bounty are met"), Story->GetState().IsDuelUnlocked(8));
+			Story->GrantDebugBountyAndMilestonesForCurrentBoss();
+			TestTrue(TEXT("completing Races + Milestones + Bounty unlocks #08 duel"), Story->GetState().IsDuelUnlocked(8));
 			Story->OpenDossier(Car);
 			TestTrue(TEXT("Boss #08 challenge starts Sprint race cleanly"), Story->ChallengeSelectedBoss(Car));
 			Enter(EPhase::StartBoss8);
@@ -322,11 +329,13 @@ bool FBNStoryTier6AndFinalChasePieTest::RunTest(const FString& Parameters)
 			TestTrue(TEXT("Tier 6 Engine purchase succeeds once reconciled"), Prog->TryBuyUpgrade(EBNUpgradeSlot::Engine, Car));
 			TestEqual(TEXT("Engine tier reaches 6"), Prog->GetProfile().GetUpgradeTier(EBNUpgradeSlot::Engine), 6);
 
-			// Keep civilian traffic clear of the Tier 6 straight-line physics stability check on Merkez Bulvar.
+			// Keep civilian traffic & free-roam police patrols clear of the Tier 6 straight-line physics stability check.
 			if (UBNTrafficSubsystem* Traffic = World->GetSubsystem<UBNTrafficSubsystem>())
 			{
 				Traffic->SetTrafficEnabled(false);
 			}
+			Pursuit->SetFreeRoamPatrolsEnabled(false);
+			Pursuit->StopPursuit();
 			PlaceCar(*Car, FVector(-26000.f, -4000.f, 70.f), 0.f);
 			Car->GetChaosMovement()->SetThrottleInput(1.f);
 			Enter(EPhase::DriveTier6);

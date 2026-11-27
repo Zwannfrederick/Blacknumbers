@@ -100,17 +100,27 @@ namespace
 		{
 			return INDEX_NONE;
 		}
+		const TArray<FName> SlotNames = ChassisComp->GetMaterialSlotNames();
+		// Pass 1: explicit car paint slots always win (never match 'InnerBody' before 'CarPaint').
 		for (int32 i = 0; i < ChassisComp->GetNumMaterials(); ++i)
 		{
 			const UMaterialInterface* Mat = ChassisComp->GetMaterial(i);
-			if (!Mat)
+			const FString MName = Mat ? Mat->GetName() : FString();
+			const FString SName = SlotNames.IsValidIndex(i) ? SlotNames[i].ToString() : FString();
+			if (MName.Contains(TEXT("CarPaint")) || SName.Contains(TEXT("CarPaint"))
+				|| MName.Contains(TEXT("SportsCarBody")) || MName.Contains(TEXT("OffroadCar_Main"))
+				|| MName.Contains(TEXT("Paint")) || SName.Contains(TEXT("Paint"))
+				|| MName.Contains(TEXT("Clearcoat")))
 			{
-				continue;
+				return i;
 			}
-			const FString Name = Mat->GetName();
-			if (Name.Contains(TEXT("SportsCarBody")) || Name.Contains(TEXT("OffroadCar_Main"))
-				|| Name.Contains(TEXT("CarPaint")) || Name.Contains(TEXT("Paint"))
-				|| Name.Contains(TEXT("Clearcoat")) || Name.Contains(TEXT("Body")))
+		}
+		// Pass 2: generic exterior 'Body' fallback (explicitly excluding 'InnerBody').
+		for (int32 i = 0; i < ChassisComp->GetNumMaterials(); ++i)
+		{
+			const UMaterialInterface* Mat = ChassisComp->GetMaterial(i);
+			const FString MName = Mat ? Mat->GetName() : FString();
+			if (MName.Contains(TEXT("Body")) && !MName.Contains(TEXT("Inner")))
 			{
 				return i;
 			}
@@ -268,21 +278,30 @@ void UBNVehicleVisualsComponent::ConfigureChassisTransform(UStaticMeshComponent*
 
 		const bool bFacingY = Size.Y > Size.X * 1.15f;
 		const float MeshLength = FMath::Max(bFacingY ? Size.Y : Size.X, 100.f);
-		const float UniformScale = FMath::Clamp(TargetCarLengthCm / MeshLength, 0.72f, 1.35f);
+		const float MeshWidth = FMath::Max(bFacingY ? Size.X : Size.Y, 100.f);
+		const float UniformScale = FMath::Clamp(TargetCarLengthCm / MeshLength, 0.78f, 1.35f);
 		const FRotator MeshRot = bFacingY ? FRotator(0.f, -90.f, 0.f) : FRotator::ZeroRotator;
 
 		const bool bHasBakedTires = MeshHasBakedTires(Mesh);
 		bShowSeparateWheels = !bHasBakedTires;
-		const float DesiredBottomZ = bHasBakedTires ? 2.f : (Style == EBNBodyStyle::RallyOffroad ? 28.f : 20.f);
-		const FVector RotCenter = MeshRot.RotateVector(Center * UniformScale);
+		// Widebody track fitment: match SKM_SportsCar's 228 cm tire track so fenders cleanly cover spinning Chaos wheels.
+		const float TrackTargetCm = bHasBakedTires ? (MeshWidth * UniformScale) : 230.f;
+		const float WidthScale = FMath::Clamp(TrackTargetCm / MeshWidth, UniformScale, UniformScale * 1.34f);
+		const FVector Scale3D = bFacingY
+			? FVector(WidthScale, UniformScale, UniformScale * 1.02f)
+			: FVector(UniformScale, WidthScale, UniformScale * 1.02f);
+
+		const float DesiredBottomZ = bHasBakedTires ? 2.f : (Style == EBNBodyStyle::RallyOffroad ? 17.f : 10.f);
+		const FVector ScaledCenter(Center.X * Scale3D.X, Center.Y * Scale3D.Y, Center.Z * Scale3D.Z);
+		const FVector RotCenter = MeshRot.RotateVector(ScaledCenter);
 		const float OffsetX = TargetCarCenterXCm - RotCenter.X;
 		const float OffsetY = -RotCenter.Y;
-		const float OffsetZ = DesiredBottomZ - (Bounds.IsValid ? Bounds.Min.Z * UniformScale : 0.f);
+		const float OffsetZ = DesiredBottomZ - (Bounds.IsValid ? Bounds.Min.Z * Scale3D.Z : 0.f);
 
 		ChassisComp->SetRelativeLocation(FVector(OffsetX, OffsetY, OffsetZ));
 		ChassisComp->SetRelativeRotation(MeshRot);
-		ChassisComp->SetRelativeScale3D(FVector(UniformScale));
-		OutBodyTopZ = Bounds.IsValid ? FMath::Clamp(Bounds.Max.Z * UniformScale + OffsetZ, 112.f, 185.f) : SportsCarDefaultTopZ;
+		ChassisComp->SetRelativeScale3D(Scale3D);
+		OutBodyTopZ = Bounds.IsValid ? FMath::Clamp(Bounds.Max.Z * Scale3D.Z + OffsetZ, 112.f, 185.f) : SportsCarDefaultTopZ;
 
 		if (GlassComp)
 		{
@@ -684,7 +703,7 @@ void UBNVehicleVisualsComponent::RebuildAeroKit(const FBNVehicleSpec& Spec, floa
 		break;
 
 	case EBNAeroKit::RallyWing:
-		AddSplitter(TEXT("RallySplitter"), 226.f, 18.f, 1.02f);
+		AddSplitter(TEXT("RallySplitter"), 214.f, 11.f, 0.98f);
 		if (SculptRallyWing)
 		{
 			AddAeroPart(TEXT("RallyWingSculpt"), SculptRallyWing, FVector(-198.f, 0.f, 94.f),
@@ -713,7 +732,7 @@ void UBNVehicleVisualsComponent::RebuildAeroKit(const FBNVehicleSpec& Spec, floa
 			AddAeroPart(TEXT("BlowerBlock"), CubeMesh, FVector(114.f, 0.f, 94.f), FRotator::ZeroRotator, FVector(0.56f, 0.38f, 0.16f), ExhaustChromeMID);
 			AddAeroPart(TEXT("BlowerScoop"), CubeMesh, FVector(120.f, 0.f, 106.f), FRotator::ZeroRotator, FVector(0.42f, 0.30f, 0.09f), AeroAccentMID);
 		}
-		AddSplitter(TEXT("MuscleChin"), 224.f, 19.f, 1.02f);
+		AddSplitter(TEXT("MuscleChin"), 212.f, 12.f, 0.96f);
 		for (const float Side : { -1.f, 1.f })
 		{
 			AddAeroPart(TEXT("MuscleSkirt"), CubeMesh, FVector(8.f, Side * 94.f, 20.f), FRotator::ZeroRotator, FVector(2.00f, 0.060f, 0.048f), AeroCarbonMID, false);

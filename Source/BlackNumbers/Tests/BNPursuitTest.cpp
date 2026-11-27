@@ -63,6 +63,14 @@ bool FBNPursuitLogicTest::RunTest(const FString& Parameters)
 	HidingCooldown.Update(10.0f, 0.f, 15000.f, 0);
 	TestEqual(TEXT("completing Cooldown transitions to Escaped"), HidingCooldown.Phase, EBNPursuitPhase::Escaped);
 
+	// MW 2005 Heat tier unlocks: Roadblocks at Heat 2+, Heavy Rhinos at Heat 3+, Spike Strips at Heat 4+.
+	TestFalse(TEXT("Heat 1 has no roadblocks"), FBNHeatTierSpec::ForLevel(1).bRoadblocksEnabled);
+	TestTrue(TEXT("Heat 2 enables roadblocks"), FBNHeatTierSpec::ForLevel(2).bRoadblocksEnabled);
+	TestFalse(TEXT("Heat 2 has no Heavy Rhinos yet"), FBNHeatTierSpec::ForLevel(2).bRhinosEnabled);
+	TestTrue(TEXT("Heat 3 enables Heavy Rhinos"), FBNHeatTierSpec::ForLevel(3).bRhinosEnabled);
+	TestFalse(TEXT("Heat 3 has no Spike Strips yet"), FBNHeatTierSpec::ForLevel(3).bSpikesEnabled);
+	TestTrue(TEXT("Heat 4 enables Spike Strips"), FBNHeatTierSpec::ForLevel(4).bSpikesEnabled);
+
 	// Siren pitch math: Wail/Yelp bounds and Speedbreaker pitch drop.
 	const float WailHz = BNPoliceSiren::EvaluateFrequency(1.1f, false, 1.f);
 	const float YelpHz = BNPoliceSiren::EvaluateFrequency(0.18f, true, 1.f);

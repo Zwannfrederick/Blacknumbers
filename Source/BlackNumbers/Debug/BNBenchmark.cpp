@@ -634,7 +634,45 @@ namespace
 						Advance(24);
 					}
 					break;
-				case 24:
+				case 24: // Setup Shot 12: Valken RS-4 (CC0 BMW M6) in Merkez Bulvar golden hour against true-3D buildings!
+					if (Elapsed >= 1.0)
+					{
+						SetHour(17.2f);
+						Car->SetActorLocationAndRotation(FVector(-6500.f, -4000.f, 70.f), FRotator(0.f, 0.f, 0.f), false, nullptr, ETeleportType::TeleportPhysics);
+						Car->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+						const int32 StockTiers[FBNUpgradeSpec::NumSlots] = {};
+						Car->ApplyVehicleSpec(EBNCarId::ValkenRS4, FBNComputedVehicleStats::Compute(EBNCarId::ValkenRS4, StockTiers));
+						Car->ApplyPaintTint(FLinearColor(0.08f, 0.24f, 0.56f, 1.f));
+						Car->ApplyUnderglow(FLinearColor::Black, false);
+						Car->SetShowcaseMode(true);
+						if (St->Cam.IsValid())
+						{
+							const FVector L = Car->GetActorLocation();
+							const FVector Eye = L + FVector(460.f, -340.f, 150.f);
+							St->Cam->SetActorLocationAndRotation(Eye, (L + FVector(0.f, 0.f, 55.f) - Eye).Rotation());
+							PC->SetViewTarget(St->Cam.Get());
+						}
+						Advance(25);
+					}
+					break;
+				case 25:
+				case 27:
+					if (Elapsed >= 2.2 && RemainingShaderJobs() == 0)
+					{
+						PC->ConsoleCommand(TEXT("Shot showui"));
+						Advance(St->Stage + 1);
+					}
+					break;
+				case 26: // Setup Shot 13: Vandal 440R (CC0 1967 Pontiac GTO) in Merkez Bulvar!
+					if (Elapsed >= 1.0)
+					{
+						const int32 StockTiers[FBNUpgradeSpec::NumSlots] = {};
+						Car->ApplyVehicleSpec(EBNCarId::Vandal440R, FBNComputedVehicleStats::Compute(EBNCarId::Vandal440R, StockTiers));
+						Car->ApplyPaintTint(FLinearColor(0.58f, 0.08f, 0.06f, 1.f));
+						Advance(27);
+					}
+					break;
+				case 28:
 					if (Elapsed >= 1.2)
 					{
 						UE_LOG(LogTemp, Display, TEXT("bn.VisualShots: Karamara screenshot sequence complete."));

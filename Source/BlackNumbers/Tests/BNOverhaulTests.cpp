@@ -6,6 +6,7 @@
 #include "Race/BNDragLogic.h"
 #include "UObject/Package.h"
 #include "Vehicle/BNEngineAudioComponent.h"
+#include "Vehicle/BNVehiclePawn.h"
 #include "World/BNRoadGraph.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -204,6 +205,17 @@ bool FBNDragLogicTest::RunTest(const FString& Parameters)
 		Drag.Tick(0.1f, Drag.GetCurrentGearMaxSpeedKmh() + 10.f, 1.f);
 	}
 	TestTrue(TEXT("Holding redline under full gas blows Drag engine"), Drag.bEngineBlown);
+
+	// Verify MW 2005 Drag-only Totaled rule: a pawn outside Drag mode cannot take collision damage!
+	ABNVehiclePawn* TestPawn = NewObject<ABNVehiclePawn>(GetTransientPackage());
+	TestNotNull(TEXT("Transient ABNVehiclePawn created"), TestPawn);
+	if (TestPawn)
+	{
+		TestPawn->SetDragMode(false);
+		TestPawn->ApplyTrafficCollisionDamage(240.f);
+		TestEqual(TEXT("Non-Drag collision leaves VehicleHealth at 1.0"), TestPawn->GetVehicleHealth(), 1.f);
+		TestFalse(TEXT("Non-Drag collision never totals the car"), TestPawn->IsTotaled());
+	}
 	return true;
 }
 
@@ -254,7 +266,9 @@ bool FBNGpsNavigationTest::RunTest(const FString& Parameters)
 #include "EngineUtils.h"
 #include "Police/BNPoliceController.h"
 #include "Police/BNPursuitSubsystem.h"
+#include "Race/BNRaceDefinition.h"
 #include "Race/BNRaceEvent.h"
+#include "Race/BNRivalController.h"
 #include "Tests/AutomationCommon.h"
 #include "Tests/AutomationEditorCommon.h"
 #include "Tests/BNPlayTestUtils.h"
@@ -433,6 +447,110 @@ bool FBNActiveRaceLockPieTest::RunTest(const FString& Parameters)
 			RaceA->EndRace();
 			return true;
 		}
+		return true;
+	}));
+
+	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());
+	return true;
+}
+
+// PIE regression test on KaramaraSlice: starts KaramaraCircuit, parks player aside, and verifies that rivals
+// drive cleanly along Karamara's welded street network without respawn-spamming (>0 checkpoints passed, <=1 respawn total).
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FBNKaramaraRivalCleanDrivingTest, "BlackNumbers.Race.KaramaraRivalCleanDriving",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FBNKaramaraRivalCleanDrivingTest::RunTest(const FString& Parameters)
+{
+	ADD_LATENT_AUTOMATION_COMMAND(FEditorLoadMap(TEXT("/Game/Maps/KaramaraSlice")));
+	ADD_LATENT_AUTOMATION_COMMAND(FStartPIECommand(false));
+	const double WaitStart = FPlatformTime::Seconds();
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, WaitStart]()
+	{
+		if (FindPlayerCar()) { return true; }
+		if (FPlatformTime::Seconds() - WaitStart > 30.0)
+		{
+			AddError(TEXT("Player car not spawned on KaramaraSlice"));
+			return true;
+		}
+		return false;
+	}));
+	ADD_LATENT_AUTOMATION_COMMAND(FWaitLatentCommand(0.5f));
+
+	struct FRivalCheckState
+	{
+		TWeakObjectPtr<ABNRaceEvent> Race;
+		bool bStarted = false;
+		bool bMovedPlayerAside = false;
+		double RacingStart = -1.0;
+	};
+	const TSharedRef<FRivalCheckState> State = MakeShared<FRivalCheckState>();
+	ADD_LATENT_AUTOMATION_COMMAND(FFunctionLatentCommand([this, State]()
+	{
+		UWorld* World = PlayWorld();
+		ABNVehiclePawn* Player = FindPlayerCar();
+		if (!World || !Player) { AddError(TEXT("Missing World or Player")); return true; }
+
+		if (!State->bStarted)
+		{
+			for (TActorIterator<ABNRaceEvent> It(World); It; ++It)
+			{
+				if (It->Definition && It->Definition->GetName().Contains(TEXT("KaramaraCircuit")))
+				{
+					State->Race = *It;
+					break;
+				}
+			}
+			if (!State->Race.IsValid())
+			{
+				AddError(TEXT("RACE_KaramaraCircuit not found on KaramaraSlice"));
+				return true;
+			}
+			State->Race->StartRace(Player);
+			State->bStarted = true;
+			return false;
+		}
+
+		ABNRaceEvent* Race = State->Race.Get();
+		if (!Race || Race->GetState() == EBNRaceState::Countdown)
+		{
+			return false;
+		}
+		const double Now = World->GetTimeSeconds();
+		if (State->RacingStart < 0.0)
+		{
+			State->RacingStart = Now;
+			// Move player off the grid cleanly so rivals have clean track ahead
+			Player->SetActorLocation(FVector(-12000.f, -24000.f, 80.f), false, nullptr, ETeleportType::TeleportPhysics);
+			Player->GetMesh()->SetPhysicsLinearVelocity(FVector::ZeroVector);
+			State->bMovedPlayerAside = true;
+			return false;
+		}
+		// Let rivals race for 22 seconds through multiple city corners
+		if (Now - State->RacingStart < 22.0)
+		{
+			return false;
+		}
+
+		int32 TotalPassed = 0;
+		int32 TotalRespawns = 0;
+		for (int32 i = 0; i < Race->GetNumRivals(); ++i)
+		{
+			const FBNRacer& R = Race->GetRival(i);
+			TotalPassed += R.Progress.Passed();
+			if (const ABNVehiclePawn* Car = R.Car.Get())
+			{
+				if (const ABNRivalController* Ctrl = Cast<ABNRivalController>(Car->GetController()))
+				{
+					TotalRespawns += Ctrl->GetRespawnCount();
+				}
+			}
+		}
+		UE_LOG(LogTemp, Display, TEXT("BN Karamara rival check (18s): rivals=%d total_gates_passed=%d total_respawns=%d"),
+			Race->GetNumRivals(), TotalPassed, TotalRespawns);
+		TestTrue(TEXT("KaramaraCircuit spawned rivals"), Race->GetNumRivals() >= 2);
+		TestTrue(TEXT("rivals cleared checkpoints around Karamara corners"), TotalPassed >= Race->GetNumRivals());
+		TestTrue(TEXT("rivals raced cleanly without respawn-spamming (<=1 total respawn across all rivals in 18s)"), TotalRespawns <= 1);
+		Race->EndRace();
 		return true;
 	}));
 

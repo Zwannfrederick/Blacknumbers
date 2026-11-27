@@ -551,8 +551,14 @@ void ABNRaceEvent::BuildRacingLine()
 			Points.Add(Gate.GetLocation());
 		}
 	}
-	RacingLine->SetSplinePoints(Points, ESplineCoordinateSpace::World);
-	RacingLine->SetClosedLoop(bCircuit);
+	RacingLine->SetSplinePoints(Points, ESplineCoordinateSpace::World, false);
+	RacingLine->SetClosedLoop(bCircuit, false);
+	// CurveClamped eliminates Catmull-Rom S-wave overshoot into walls on sharp 90-degree city intersections.
+	for (int32 i = 0; i < RacingLine->GetNumberOfSplinePoints(); ++i)
+	{
+		RacingLine->SetSplinePointType(i, ESplinePointType::CurveClamped, false);
+	}
+	RacingLine->UpdateSpline();
 }
 
 FBNComputedVehicleStats ABNRaceEvent::ComputeScaledRivalStats(EBNCarId RivalCar, int32 PlayerAvgTier,

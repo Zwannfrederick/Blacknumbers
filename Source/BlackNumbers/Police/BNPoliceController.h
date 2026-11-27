@@ -54,7 +54,8 @@ private:
 	void DrivePatrol(ABNVehiclePawn& Car, float DeltaSeconds);
 	void UpdatePit(const ABNVehiclePawn& Target, const FVector& MyLoc, float DeltaSeconds, FVector& InOutAimPoint);
 	void SteerTowardPoint(ABNVehiclePawn& Car, const FVector& AimPoint, float DesiredSpeedKmh, float DeltaSeconds) const;
-	void ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds) const;
+	void ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds, float HeadingErrorDeg) const;
+	float ComputeWallAvoidance(const ABNVehiclePawn& Car, float SpeedCms, bool& bOutBlockedAhead) const;
 	void UpdateLightsAndSiren();
 	void RecoverStuck(ABNVehiclePawn& Car);
 	bool HasLineOfSightTo(const FVector& FromLoc, const FVector& ToLoc, const AActor* IgnoreA, const AActor* IgnoreB) const;
@@ -71,6 +72,9 @@ private:
 	FVector SearchPoint = FVector::ZeroVector;
 	float DisabledSeconds = 0.f;
 	float StuckSeconds = 0.f;
+	float ReverseUnstuckSeconds = 0.f;
+	float ReverseUnstuckSteer = 0.f;
+	float ReverseCooldownSeconds = 0.f;
 	bool bPitActive = false;
 	float PitSide = 1.f;
 	float PitTimer = 0.f;

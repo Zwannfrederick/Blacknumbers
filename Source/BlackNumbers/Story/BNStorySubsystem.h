@@ -7,7 +7,9 @@
 
 class ABNVehiclePawn;
 class ABNRaceEvent;
+class UBNProgressionSubsystem;
 class UBNSaveGame;
+struct FBNPursuitState;
 
 /** Non-blocking live crew/rival radio or phone message banner shown during gameplay. */
 struct FBNLiveComms
@@ -84,6 +86,13 @@ public:
 	bool ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar, int32 RequestedRank = INDEX_NONE);
 	static ABNRaceEvent* FindProgramRace(UWorld* World, FName RaceAsset);
 	void NotifyStreetRaceWon(FName RaceAsset);
+
+	/** MW 2005 Police & Milestone hooks (Bounty banking on Escape, Strikes on Bust, Speed Trap Milestones). */
+	void OnPursuitEscaped(const FBNPursuitState& PursuitState, int32& OutMilestonesCompleted, int32& OutBonusBounty);
+	void OnPursuitBusted(int32 HeatLevel, UBNProgressionSubsystem* Prog, int32& OutFinePaid, bool& bOutImpoundReset);
+	int32 EvaluateLivePursuitMilestones(const FBNPursuitState& PursuitState, FString& OutNewestTitle) const;
+	void NotifySpeedTrapRecorded(float SpeedKmh);
+	void GrantDebugBountyAndMilestonesForCurrentBoss();
 
 	// Non-blocking Live Crew/Rival Comms & living world story hooks
 	void PostComms(const FString& Speaker, const FString& Message, float DurationSeconds = 5.2f,

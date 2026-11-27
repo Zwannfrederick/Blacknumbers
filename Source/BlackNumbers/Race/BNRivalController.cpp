@@ -3,13 +3,16 @@
 
 #include "ChaosVehicleWheel.h"
 #include "ChaosWheeledVehicleMovementComponent.h"
+#include "CollisionQueryParams.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/SplineComponent.h"
+#include "Engine/HitResult.h"
 #include "Engine/World.h"
-#include "GameFramework/PlayerController.h"
 #include "EngineUtils.h"
+#include "GameFramework/PlayerController.h"
 #include "Race/BNRaceEvent.h"
 #include "Vehicle/BNVehiclePawn.h"
+#include "World/BNTrafficSubsystem.h"
 
 namespace
 {
@@ -18,17 +21,17 @@ namespace
 	constexpr float SampleStep = 500.f;
 	constexpr float LookAheadHorizon = 20000.f;
 	/** Pure-pursuit aim point: SteerLookAheadSeconds of travel ahead, clamped. */
-	constexpr float SteerLookAheadSeconds = 0.6f;
-	constexpr float MinSteerLookAhead = 700.f;
-	constexpr float MaxSteerLookAhead = 2500.f;
+	constexpr float SteerLookAheadSeconds = 0.55f;
+	constexpr float MinSteerLookAhead = 650.f;
+	constexpr float MaxSteerLookAhead = 2400.f;
 	/** Speed error (cm/s) that gives full throttle / full brake. */
 	constexpr float FullThrottleError = 280.f;
-	constexpr float FullBrakeError = 560.f;
+	constexpr float FullBrakeError = 520.f;
 	/** Below this the brake pedal would select reverse (reverse-as-brake), so it is not used. */
 	constexpr float MinBrakingSpeed = 200.f;
 	/** A car this close ahead and this close sideways is "in my lane". */
-	constexpr float FollowDistance = 2500.f;
-	constexpr float LaneHalfWidth = 300.f;
+	constexpr float FollowDistance = 2600.f;
+	constexpr float LaneHalfWidth = 280.f;
 	/** Pass when the car ahead holds us this much (cm/s) under our safe speed. */
 	constexpr float OvertakeMargin = 150.f;
 	/** The other lane must be clear from this far behind our nose. */
@@ -38,27 +41,27 @@ namespace
 	constexpr float LaneShiftSpeed = 250.f;
 	/** Only change lanes where the line allows this speed (cm/s, ~110 km/h), i.e. not into or through a corner. */
 	constexpr float MinLaneChangeSafeSpeed = 3000.f;
-	constexpr float StuckSpeed = 300.f;
-	constexpr float UpsideDownZ = 0.3f;
-	constexpr float StuckSecondsToRespawn = 2.8f;
-	constexpr float ProgressStuckSecondsToRespawn = 3.2f;
+	constexpr float StuckSpeed = 220.f;
+	constexpr float UpsideDownZ = 0.32f;
+	constexpr float ReverseTriggerSeconds = 0.85f;
+	constexpr float ReverseDurationSeconds = 0.85f;
+	constexpr float StuckSecondsToRespawn = 3.8f;
+	constexpr float ProgressStuckSecondsToRespawn = 4.6f;
 	constexpr float CmPerSecToMph = 0.022369f;
 	/** Stanley-style correction: steer back toward the line at this rate (1/s) of the sideways error. */
-	constexpr float CrossTrackGain = 1.f;
-	constexpr float MinCrossTrackSpeed = 500.f;
+	constexpr float CrossTrackGain = 1.15f;
+	constexpr float MinCrossTrackSpeed = 480.f;
 
-	// Skill 0 -> 1.
-	/**
-	 * Cornering the driver plans for, in g. The tyres alone hold ~0.7 g; the arcade grip assist below carries
-	 * the rest, as the drift assist does for the player (a drifting player corners at well over 1 g).
-	 */
-	const FVector2f GripRange(0.95f, 1.45f);
-	/** The car brakes at ~1.35 g with ABS. */
-	const FVector2f BrakeRange(0.9f, 1.2f);
-	/** Arcade grip: travel direction swings toward the nose at up to this rate (deg/s), so rivals go where they point. */
-	constexpr float GripAssistDegreesPerSecond = 120.f;
-	constexpr float MinGripAssistSpeed = 500.f;
-	const FVector2f LaunchDelayRange(0.7f, 0.1f);
+	// Skill 0 -> 1. Realistic Chaos cornering envelope (tyres + critically-damped yaw/velocity grip assist).
+	const FVector2f GripRange(0.88f, 1.26f);
+	const FVector2f BrakeRange(0.88f, 1.15f);
+	/** Arcade grip: travel direction swings toward the nose at up to this rate (deg/s). */
+	constexpr float GripAssistDegreesPerSecond = 140.f;
+	/** Critically-damped yaw-rate assist proportional to Aim heading error (capped deg/s, zero fishtailing). */
+	constexpr float YawAssistGain = 1.85f;
+	constexpr float YawAssistMaxDegPerSec = 68.f;
+	constexpr float MinGripAssistSpeed = 420.f;
+	const FVector2f LaunchDelayRange(0.65f, 0.1f);
 
 	// Rubber band. Inside the dead zone racing is untouched; beyond it the effect ramps over the span.
 	constexpr float CatchUpDeadZoneCm = 8000.f;
@@ -85,9 +88,13 @@ void ABNRivalController::Setup(ABNRaceEvent* InRace, float InSkill, float InLane
 	Style = InStyle;
 	Race = InRace;
 	Skill = FMath::Clamp(InSkill, 0.f, 1.f);
-	LaneOffset = InLaneOffset;
-	TargetLaneOffset = InLaneOffset;
+	LaneOffset = FMath::Clamp(InLaneOffset, -380.f, 380.f);
+	TargetLaneOffset = LaneOffset;
 	LaunchDelay = FMath::Lerp(LaunchDelayRange.X, LaunchDelayRange.Y, Skill);
+	TrackedDistance = -1.f;
+	LastProgressDistance = -1.f;
+	ReverseUnstuckSeconds = 0.f;
+	ReverseCooldownSeconds = 0.f;
 }
 
 float ABNRivalController::CatchUpScale(float GapCm, float Skill)
@@ -171,12 +178,113 @@ void ABNRivalController::Tick(float DeltaSeconds)
 	Drive(*Car, *Line, DeltaSeconds);
 }
 
+float ABNRivalController::FindTrackedDistance(const USplineComponent& Line, const FVector& Location) const
+{
+	const float SplineLen = Line.GetSplineLength();
+	if (TrackedDistance < 0.f || SplineLen < 200.f)
+	{
+		return Line.GetDistanceAlongSplineAtLocation(Location, ESplineCoordinateSpace::World);
+	}
+
+	auto SampleDistSq = [&](float D)
+	{
+		const FVector P = Line.GetLocationAtDistanceAlongSpline(WrapDistance(Line, D), ESplineCoordinateSpace::World);
+		const FVector Diff = Location - P;
+		return Diff.X * Diff.X + Diff.Y * Diff.Y + (Diff.Z * 2.f) * (Diff.Z * 2.f);
+	};
+
+	float BestD = TrackedDistance;
+	float BestSq = SampleDistSq(BestD);
+	for (float Off = -1400.f; Off <= 4200.f; Off += 150.f)
+	{
+		const float Cand = TrackedDistance + Off;
+		if (!Line.IsClosedLoop() && (Cand < 0.f || Cand > SplineLen))
+		{
+			continue;
+		}
+		const float Sq = SampleDistSq(Cand);
+		if (Sq < BestSq)
+		{
+			BestSq = Sq;
+			BestD = Cand;
+		}
+	}
+	// Refine to +-25 cm accuracy around best coarse sample
+	const float CoarseD = BestD;
+	for (float Off = -150.f; Off <= 150.f; Off += 25.f)
+	{
+		const float Cand = CoarseD + Off;
+		if (!Line.IsClosedLoop() && (Cand < 0.f || Cand > SplineLen))
+		{
+			continue;
+		}
+		const float Sq = SampleDistSq(Cand);
+		if (Sq < BestSq)
+		{
+			BestSq = Sq;
+			BestD = Cand;
+		}
+	}
+	// Fallback to global spline query only if genuinely far off-track (>24 m)
+	if (BestSq > FMath::Square(2400.f))
+	{
+		return Line.GetDistanceAlongSplineAtLocation(Location, ESplineCoordinateSpace::World);
+	}
+	return WrapDistance(Line, BestD);
+}
+
+float ABNRivalController::ComputeWallAvoidance(const ABNVehiclePawn& Car, float SpeedCms, bool& bOutBlockedAhead) const
+{
+	bOutBlockedAhead = false;
+	const UWorld* World = GetWorld();
+	if (!World)
+	{
+		return 0.f;
+	}
+	const FVector Fwd = Car.GetActorForwardVector().GetSafeNormal();
+	const FVector Right = Car.GetActorRightVector().GetSafeNormal();
+	const FVector Origin = Car.GetActorLocation() + Car.GetActorUpVector() * 68.f + Fwd * 215.f;
+	// Short-range whiskers only (4.5..7.0 m) following 3D road pitch so ramps & curved barriers NEVER false-brake the car
+	const float SideReach = FMath::Clamp(460.f + FMath::Abs(SpeedCms) * 0.08f, 460.f, 700.f);
+	const float FrontReach = 340.f;
+
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BNRivalWallAvoid), false);
+	Params.AddIgnoredActor(&Car);
+
+	auto Probe = [&](float AngleDeg, float Dist) -> float
+	{
+		const float Rad = FMath::DegreesToRadians(AngleDeg);
+		const FVector Dir = (Fwd * FMath::Cos(Rad) + Right * FMath::Sin(Rad)).GetSafeNormal();
+		FHitResult Hit;
+		if (World->LineTraceSingleByChannel(Hit, Origin, Origin + Dir * Dist, ECC_WorldStatic, Params))
+		{
+			if (Hit.ImpactNormal.Z < 0.55f)
+			{
+				return Hit.Time;
+			}
+		}
+		return 1.f;
+	};
+
+	const float LeftHit = Probe(-30.f, SideReach);
+	const float RightHit = Probe(30.f, SideReach);
+	const float CenterHit = Probe(0.f, FrontReach);
+	bOutBlockedAhead = (CenterHit < 0.92f);
+	if (LeftHit >= 0.99f && RightHit >= 0.99f)
+	{
+		return 0.f;
+	}
+	return FMath::Clamp((RightHit - LeftHit) * 0.90f, -0.55f, 0.55f);
+}
+
 void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line, float DeltaSeconds)
 {
 	UChaosWheeledVehicleMovementComponent* Move = Car.GetChaosMovement();
 	const FVector Location = Car.GetActorLocation();
 	const float Speed = Move->GetForwardSpeed();
-	const float Distance = Line.GetDistanceAlongSplineAtLocation(Location, ESplineCoordinateSpace::World);
+	const float Distance = FindTrackedDistance(Line, Location);
+	TrackedDistance = Distance;
+	ReverseCooldownSeconds = FMath::Max(0.f, ReverseCooldownSeconds - DeltaSeconds);
 
 	// Detect both zero-speed jams AND slow wall-grinding / off-track loops where spline progress stalls!
 	if (LastProgressDistance < 0.f)
@@ -199,9 +307,28 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 		ProgressStuckSeconds += DeltaSeconds;
 	}
 
-	const bool bStuck = FMath::Abs(Speed) < StuckSpeed || Car.GetActorUpVector().Z < UpsideDownZ;
+	const bool bFlipped = Car.GetActorUpVector().Z < UpsideDownZ;
+	const bool bStuck = FMath::Abs(Speed) < StuckSpeed || bFlipped;
 	StuckSeconds = bStuck ? StuckSeconds + DeltaSeconds : 0.f;
-	if (StuckSeconds >= StuckSecondsToRespawn || ProgressStuckSeconds >= ProgressStuckSecondsToRespawn)
+
+	// If wedged nose-first against a wall (upright), perform a brief reverse & counter-steer recovery instead of teleporting!
+	if (ReverseUnstuckSeconds > 0.f)
+	{
+		ReverseUnstuckSeconds = FMath::Max(0.f, ReverseUnstuckSeconds - DeltaSeconds);
+		Move->SetThrottleInput(0.f);
+		Move->SetBrakeInput(1.f);
+		Move->SetSteeringInput(ReverseUnstuckSteer);
+		Move->SetHandbrakeInput(false);
+		if (StuckSeconds >= StuckSecondsToRespawn || bFlipped)
+		{
+			ReverseUnstuckSeconds = 0.f;
+			Respawn(Car, Line, Distance);
+		}
+		return;
+	}
+
+	const bool bRespawnFlip = bFlipped && StuckSeconds >= 1.6f;
+	if (bRespawnFlip || StuckSeconds >= StuckSecondsToRespawn || ProgressStuckSeconds >= ProgressStuckSecondsToRespawn)
 	{
 		Respawn(Car, Line, Distance);
 		return;
@@ -210,22 +337,36 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 	const float CatchUp = CatchUpScale(GapToPlayer(Line, Distance), Skill);
 	const float GripG = FMath::Lerp(GripRange.X, GripRange.Y, Skill) * FMath::Max(CatchUp, 1.f);
 	const float BrakeG = FMath::Lerp(BrakeRange.X, BrakeRange.Y, Skill);
-	const float Safe = SafeSpeed(Line, Distance, GripG, BrakeG * (Style == EBNRivalStyle::LateBrake ? 1.08f : 1.f));
+	float Safe = SafeSpeed(Line, Distance, GripG, BrakeG * (Style == EBNRivalStyle::LateBrake ? 1.06f : 1.f));
 
-	// Center toward the apex in tight corners so rivals never clip inside/outside barriers at ±300..400 cm offset.
-	const float CornerCenterScale = FMath::GetMappedRangeValueClamped(FVector2f(1400.f, 3400.f), FVector2f(0.15f, 1.f), Safe);
-	const float EffectiveLane = LaneOffset * CornerCenterScale;
+	// Center toward the apex in tight corners so rivals never clip inside/outside barriers.
+	const float CornerCenterScale = FMath::GetMappedRangeValueClamped(FVector2f(1500.f, 3800.f), FVector2f(0.10f, 1.f), Safe);
+	const float EffectiveLane = FMath::Clamp(LaneOffset, -280.f, 280.f) * CornerCenterScale;
 
 	// Steering: pure pursuit with adaptive lookahead tightened on slow corners + full-lock recovery if facing off-line.
-	const float CornerLookCap = FMath::Clamp(Safe * 0.55f, MinSteerLookAhead, MaxSteerLookAhead);
+	const float CornerLookCap = FMath::Clamp(Safe * 0.52f, MinSteerLookAhead, MaxSteerLookAhead);
 	const float AimDistance = WrapDistance(Line, Distance + FMath::Clamp(FMath::Abs(Speed) * SteerLookAheadSeconds, MinSteerLookAhead, CornerLookCap));
 	const FVector Aim = Line.GetLocationAtDistanceAlongSpline(AimDistance, ESplineCoordinateSpace::World)
 		+ Line.GetRightVectorAtDistanceAlongSpline(AimDistance, ESplineCoordinateSpace::World) * EffectiveLane;
 	const FVector Local = Car.GetActorTransform().InverseTransformPosition(Aim);
+
+	bool bWallBlockedAhead = false;
+	const float WallAvoidSteer = ComputeWallAvoidance(Car, Speed, bWallBlockedAhead);
+
+	// Enter brief reverse-unstuck only after launch and when genuinely jammed against a wall (not queueing behind cars)
+	if (!bFlipped && SecondsUnlocked > 2.5f && ReverseCooldownSeconds <= 0.f && StuckSeconds >= ReverseTriggerSeconds
+		&& (bWallBlockedAhead || Local.X < 140.f) && LaneSpeed(Car, 0.f, 0.f) > 500.f)
+	{
+		ReverseUnstuckSeconds = ReverseDurationSeconds;
+		ReverseCooldownSeconds = 3.5f;
+		ReverseUnstuckSteer = Local.Y >= 0.f ? -0.9f : 0.9f;
+		return;
+	}
+
+	float SteerInput = 0.f;
 	if (Local.X < 120.f)
 	{
-		// Facing nearly perpendicular or backwards relative to the spline: steer full lock back toward the track!
-		Move->SetSteeringInput(Local.Y >= 0.f ? 1.f : -1.f);
+		SteerInput = Local.Y >= 0.f ? 1.f : -1.f;
 	}
 	else
 	{
@@ -239,23 +380,45 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 		const FRichCurve* SteerCurve = Move->SteeringSetup.SteeringCurve.GetRichCurveConst();
 		const float LockScale = SteerCurve && SteerCurve->GetNumKeys() > 0 ? SteerCurve->Eval(FMath::Abs(Speed) * CmPerSecToMph) : 1.f;
 		const float MaxWheelAngle = FMath::Max(Move->Wheels[0]->MaxSteerAngle * LockScale, 1.f);
-		Move->SetSteeringInput(FMath::Clamp(WheelAngle / MaxWheelAngle, -1.f, 1.f));
+		SteerInput = FMath::Clamp(WheelAngle / MaxWheelAngle + WallAvoidSteer, -1.f, 1.f);
+	}
+	Move->SetSteeringInput(SteerInput);
+
+	// Cap entry speed only on genuinely steep heading errors (>32 deg) or immediate bumper wall block
+	const float SignedHeadingErrDeg = FMath::RadiansToDegrees(FMath::Atan2(Local.Y, FMath::Max(Local.X, 100.f)));
+	const float HeadingErrDeg = FMath::Abs(SignedHeadingErrDeg);
+	if (HeadingErrDeg > 32.f)
+	{
+		Safe = FMath::Min(Safe, FMath::GetMappedRangeValueClamped(FVector2f(32.f, 75.f), FVector2f(3200.f, 1300.f), HeadingErrDeg));
+	}
+	if (bWallBlockedAhead)
+	{
+		Safe = FMath::Min(Safe, 1000.f);
 	}
 
-	// Pedals: chase the safe speed, never faster than a car close ahead in the same lane. Held up by a
-	// slower car with the other lane clear (beside and ahead), move over to pass.
+	// Pedals: chase the safe speed, never faster than a car/traffic close ahead in the same lane.
 	const float Ahead = LaneSpeed(Car, 0.f, 0.f);
 	LaneChangeCooldown = FMath::Max(LaneChangeCooldown - DeltaSeconds, 0.f);
 	const float PassMargin = OvertakeMargin * (Style == EBNRivalStyle::DefendLine ? 1.55f : 1.f);
-	if (Ahead < Safe - PassMargin && Safe >= MinLaneChangeSafeSpeed && LaneChangeCooldown <= 0.f && LaneOffset == TargetLaneOffset
-		&& LaneSpeed(Car, -2.f * LaneOffset, -BesideDistance) >= MaxSpeed)
+	if (Ahead < Safe - PassMargin && (Safe >= MinLaneChangeSafeSpeed || Ahead < 600.f) && LaneChangeCooldown <= 0.f
+		&& FMath::IsNearlyEqual(LaneOffset, TargetLaneOffset, 15.f))
 	{
-		TargetLaneOffset = -TargetLaneOffset;
-		LaneChangeCooldown = LaneChangeSeconds;
+		const float CandA = FMath::IsNearlyZero(TargetLaneOffset, 30.f) ? 260.f : -TargetLaneOffset;
+		const float CandB = -CandA;
+		if (LaneSpeed(Car, CandA - LaneOffset, -BesideDistance) >= FMath::Min(MaxSpeed, Ahead + 600.f))
+		{
+			TargetLaneOffset = CandA;
+			LaneChangeCooldown = LaneChangeSeconds;
+		}
+		else if (LaneSpeed(Car, CandB - LaneOffset, -BesideDistance) >= FMath::Min(MaxSpeed, Ahead + 600.f))
+		{
+			TargetLaneOffset = CandB;
+			LaneChangeCooldown = LaneChangeSeconds;
+		}
 	}
 	LaneOffset = FMath::FInterpConstantTo(LaneOffset, TargetLaneOffset, DeltaSeconds, LaneShiftSpeed);
 	const float Target = FMath::Min(Safe * FMath::Min(CatchUp, 1.f), Ahead);
-	if (CatchUp > 1.f && Car.IsOnGround())
+	if (CatchUp > 1.f && Car.IsOnGround() && HeadingErrDeg < 22.f)
 	{
 		Car.GetMesh()->AddForce(Car.GetActorForwardVector() * (CatchUp - 1.f) / 0.16f * CatchUpAccelCms2, NAME_None, true);
 	}
@@ -264,16 +427,28 @@ void ABNRivalController::Drive(ABNVehiclePawn& Car, const USplineComponent& Line
 	Move->SetThrottleInput(FMath::Clamp(Error / ThrottleError, 0.f, 1.f));
 	Move->SetBrakeInput(Speed > MinBrakingSpeed ? FMath::Clamp(-Error / FullBrakeError, 0.f, 1.f) : 0.f);
 	Move->SetHandbrakeInput(false);
-	ApplyGripAssist(Car, DeltaSeconds);
+	ApplyGripAssist(Car, DeltaSeconds, SignedHeadingErrDeg);
 }
 
-void ABNRivalController::ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds) const
+void ABNRivalController::ApplyGripAssist(ABNVehiclePawn& Car, float DeltaSeconds, float HeadingErrorDeg) const
 {
 	USkeletalMeshComponent* Body = Car.GetMesh();
 	const FVector Velocity = Body->GetPhysicsLinearVelocity();
-	if (!Car.IsOnGround() || Velocity.Size2D() < MinGripAssistSpeed)
+	const float Speed2D = Velocity.Size2D();
+	if (!Car.IsOnGround() || Speed2D < MinGripAssistSpeed)
 	{
 		return;
+	}
+	// Critically-damped yaw guidance on low/mid-speed city corners; fades smoothly to 0 above 120 km/h for rock-solid oval/straight stability
+	const float HighSpeedFade = FMath::GetMappedRangeValueClamped(FVector2f(2400.f, 3600.f), FVector2f(1.f, 0.f), Speed2D);
+	if (FMath::Abs(HeadingErrorDeg) > 10.f && HighSpeedFade > 0.01f)
+	{
+		FVector AngVel = Body->GetPhysicsAngularVelocityInDegrees();
+		const float LowSpeedRamp = FMath::GetMappedRangeValueClamped(FVector2f(420.f, 1500.f), FVector2f(0.45f, 1.f), Speed2D);
+		const float DesiredYawRate = FMath::Clamp(HeadingErrorDeg * YawAssistGain, -YawAssistMaxDegPerSec, YawAssistMaxDegPerSec)
+			* LowSpeedRamp * HighSpeedFade;
+		AngVel.Z = FMath::FInterpTo(AngVel.Z, DesiredYawRate, DeltaSeconds, 4.2f);
+		Body->SetPhysicsAngularVelocityInDegrees(AngVel);
 	}
 	const float Slip = Car.GetSlipAngleDegrees(); // travel minus heading
 	const float Turn = -FMath::Clamp(Slip, -GripAssistDegreesPerSecond * DeltaSeconds, GripAssistDegreesPerSecond * DeltaSeconds);
@@ -292,9 +467,24 @@ float ABNRivalController::LaneSpeed(const ABNVehiclePawn& Car, float LateralShif
 			continue;
 		}
 		const FVector Rel = Frame.InverseTransformPosition(It->GetActorLocation());
-		if (Rel.X > FromX && Rel.X < FollowDistance && FMath::Abs(Rel.Y - LateralShift) < LaneHalfWidth)
+		if (Rel.X > FromX && Rel.X < FollowDistance && FMath::Abs(Rel.Y - LateralShift) < LaneHalfWidth && FMath::Abs(Rel.Z) < 240.f)
 		{
 			Slowest = FMath::Min(Slowest, FMath::Max(FVector::DotProduct(It->GetVelocity(), Frame.GetUnitAxis(EAxis::X)), 0.f));
+		}
+	}
+	// Also perceive civilian traffic so rivals overtake or brake instead of ramming traffic cars!
+	if (const UBNTrafficSubsystem* Traffic = GetWorld() ? GetWorld()->GetSubsystem<UBNTrafficSubsystem>() : nullptr)
+	{
+		TArray<FVector> TrafficLocs;
+		Traffic->GetTrafficLocations(TrafficLocs);
+		for (const FVector& TLoc : TrafficLocs)
+		{
+			const FVector Rel = Frame.InverseTransformPosition(TLoc);
+			if (Rel.X > FromX && Rel.X < FollowDistance && FMath::Abs(Rel.Y - LateralShift) < LaneHalfWidth && FMath::Abs(Rel.Z) < 220.f)
+			{
+				const float ApproxTrafficSpeed = Rel.X < 950.f ? 0.f : 1100.f;
+				Slowest = FMath::Min(Slowest, ApproxTrafficSpeed);
+			}
 		}
 	}
 	return Slowest;
@@ -314,6 +504,8 @@ void ABNRivalController::Respawn(ABNVehiclePawn& Car, const USplineComponent& Li
 	Car.GetMesh()->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 	StuckSeconds = 0.f;
 	ProgressStuckSeconds = 0.f;
+	ReverseUnstuckSeconds = 0.f;
+	TrackedDistance = ForwardDist;
 	LastProgressDistance = ForwardDist;
 	++Respawns;
 	UE_LOG(LogTemp, Display, TEXT("BN rival %s put back on the racing line (%d)"), *Car.GetName(), Respawns);

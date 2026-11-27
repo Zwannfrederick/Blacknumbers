@@ -104,7 +104,7 @@ void ABNVehiclePawn::UpdateDamageAndDrag(float DeltaSeconds, float RealDt, float
 {
 	ShiftFlashRemaining = FMath::Max(0.f, ShiftFlashRemaining - RealDt);
 
-	// Totaled slow-motion dramatic beat in free roam -> open ARAÇ PERT overlay when beat completes.
+	// Totaled slow-motion dramatic beat (Drag races ONLY — race results overlay handles finish cleanly).
 	if (TotaledSlowMoRemaining > 0.f && IsPlayerControlled())
 	{
 		TotaledSlowMoRemaining = FMath::Max(0.f, TotaledSlowMoRemaining - RealDt);
@@ -116,17 +116,6 @@ void ABNVehiclePawn::UpdateDamageAndDrag(float DeltaSeconds, float RealDt, float
 		else
 		{
 			ResetTimeDilation();
-			const bool bInRace = ABNRaceEvent::FindActiveRace(GetWorld()) != nullptr;
-			if (!bInRace)
-			{
-				if (APlayerController* PC = GetController<APlayerController>())
-				{
-					if (ABNHUD* HUD = PC->GetHUD<ABNHUD>(); HUD && !HUD->IsMenuOpen())
-					{
-						HUD->ShowFreeRoamTotaledOverlay();
-					}
-				}
-			}
 		}
 	}
 
@@ -252,7 +241,9 @@ void ABNVehiclePawn::UpdateSlipstream(float RealDt, float SpeedKmh, bool bOnGrou
 
 void ABNVehiclePawn::ApplyCollisionDamage(float ImpulseMag, float SpeedKmh, bool bWallOrVehicleHit)
 {
-	if (!IsPlayerControlled() || bTotaled || !bWallOrVehicleHit || GIsAutomationTesting || FApp::IsUnattended())
+	// NFS Most Wanted 2005 rule: Totaled ONLY exists in Drag races!
+	// Free roam, Sprint, Circuit, Drift, and Police pursuits never disable the car from collision damage.
+	if (!DragState.bActive || !IsPlayerControlled() || bTotaled || !bWallOrVehicleHit || GIsAutomationTesting || FApp::IsUnattended())
 	{
 		return;
 	}
@@ -263,18 +254,17 @@ void ABNVehiclePawn::ApplyCollisionDamage(float ImpulseMag, float SpeedKmh, bool
 	}
 
 	const float AbsSpeed = FMath::Abs(SpeedKmh);
-	const bool bDrag = DragState.bActive;
-	const float MinImpulse = bDrag ? 250000.f : 310000.f;
-	const float MinSpeed = bDrag ? 125.f : 95.f;
+	const float MinImpulse = 240000.f;
+	const float MinSpeed = 115.f;
 	if (ImpulseMag < MinImpulse || AbsSpeed < MinSpeed)
 	{
 		return;
 	}
 
 	LastDamageHitTime = Now;
-	const float ImpulseFactor = FMath::Clamp((ImpulseMag - MinImpulse) / 380000.f, 0.15f, 1.0f);
-	const float SpeedFactor = FMath::Clamp((AbsSpeed - MinSpeed) / 130.f, 0.25f, 1.4f);
-	const float Damage = FMath::Clamp(ImpulseFactor * SpeedFactor * (bDrag ? 0.85f : 0.44f), 0.12f, bDrag ? 1.0f : 0.56f);
+	const float ImpulseFactor = FMath::Clamp((ImpulseMag - MinImpulse) / 340000.f, 0.25f, 1.0f);
+	const float SpeedFactor = FMath::Clamp((AbsSpeed - MinSpeed) / 110.f, 0.35f, 1.4f);
+	const float Damage = FMath::Clamp(ImpulseFactor * SpeedFactor * 0.95f, 0.35f, 1.0f);
 	VehicleHealth = FMath::Clamp(VehicleHealth - Damage, 0.f, 1.f);
 
 	if (VehicleHealth <= 0.001f)

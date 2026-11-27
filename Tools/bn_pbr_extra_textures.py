@@ -64,6 +64,20 @@ EXTRA_TEXTURE_MANIFEST = [
     ("T_CarbonWeave_N", "normal"),
     ("T_CarbonWeave_R", "roughness"),
     ("T_SkyClouds_D", "albedo"),
+    # Pure windowless architectural walls (for true 3D recessed-window modular buildings) + night window emission
+    ("T_WallBrick_D", "albedo"),
+    ("T_WallBrick_N", "normal"),
+    ("T_WallBrick_R", "roughness"),
+    ("T_WallPlaster_D", "albedo"),
+    ("T_WallPlaster_N", "normal"),
+    ("T_WallPlaster_R", "roughness"),
+    ("T_WallCladding_D", "albedo"),
+    ("T_WallCladding_N", "normal"),
+    ("T_WallCladding_R", "roughness"),
+    ("T_WallConcretePanel_D", "albedo"),
+    ("T_WallConcretePanel_N", "normal"),
+    ("T_WallConcretePanel_R", "roughness"),
+    ("T_ArchGlass_E", "emissive"),
 ]
 
 
@@ -519,5 +533,36 @@ def generate_extra_pngs(out_dir, save_rgb, save_gray, save_normal, periodic_nois
     save_rgb("T_RoofTiles_D", np.stack([0.62 * shade, 0.30 * shade, 0.20 * shade], axis=-1))
     save_normal("T_RoofTiles_N", tile_h, strength=4.0)
     save_gray("T_RoofTiles_R", 0.62 + 0.2 * (1.0 - tile_h))
+
+    # Pure windowless wall fallbacks (upgraded by fetch_cc0_textures.py from cached Poly Haven CC0 walls)
+    rng_w = np.random.default_rng(1309)
+    for wpref, col_rgb, r_base in (
+        ("T_WallBrick", (0.48, 0.25, 0.18), 0.84),
+        ("T_WallPlaster", (0.76, 0.70, 0.61), 0.86),
+        ("T_WallCladding", (0.28, 0.32, 0.38), 0.56),
+        ("T_WallConcretePanel", (0.56, 0.55, 0.52), 0.80),
+    ):
+        wn = fbm(rng_w, C, [(8, 0.45), (24, 0.35), (64, 0.20)])
+        sh = 0.82 + 0.30 * wn
+        save_rgb(wpref + "_D", np.stack([col_rgb[0] * sh, col_rgb[1] * sh, col_rgb[2] * sh], axis=-1))
+        save_normal(wpref + "_N", wn, strength=2.6)
+        save_gray(wpref + "_R", np.clip(r_base - 0.14 * wn, 0.20, 0.94))
+
+    # Organic interior room glow grid for true 3D recessed window panes (varied lit/unlit rooms + curtains/blinds)
+    rng_g = np.random.default_rng(1311)
+    g_em = np.zeros((C, C, 3), dtype=np.float32)
+    cells = 8
+    cs = C // cells
+    for rr in range(cells):
+        for cc in range(cells):
+            if rng_g.random() < 0.46:
+                inten = rng_g.uniform(0.32, 0.96)
+                warm_t = rng_g.random()
+                tint = np.array([1.0, 0.78, 0.46], dtype=np.float32) if warm_t < 0.78 else np.array([0.74, 0.88, 1.0], dtype=np.float32)
+                y_norm = np.linspace(0.0, 1.0, cs, dtype=np.float32)[:, None]
+                blind = rng_g.uniform(0.15, 0.55)
+                grad = (0.22 + 0.78 * smoothstep(blind - 0.08, blind + 0.12, y_norm))
+                g_em[rr * cs:(rr + 1) * cs, cc * cs:(cc + 1) * cs] = (tint * inten)[None, None, :] * grad[:, :, None]
+    save_rgb("T_ArchGlass_E", g_em)
 
     return len(EXTRA_TEXTURE_MANIFEST)

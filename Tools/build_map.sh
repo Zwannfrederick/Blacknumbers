@@ -21,6 +21,7 @@ python3 "$PROJECT_DIR/Tools/fetch_cc0_models.py" --download-only || exit $?
 python3 "$PROJECT_DIR/Tools/import_external_vehicles.py" --stage-only || exit $?
 python3 "$PROJECT_DIR/Tools/bn_ui_textures.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/bn_meshes.py" --generate-only || exit $?
+python3 "$PROJECT_DIR/Tools/bn_road_mesh.py" || exit $?
 python3 "$PROJECT_DIR/Tools/bn_audio_assets.py" --generate-only || exit $?
 python3 "$PROJECT_DIR/Tools/import_ue_vehicles.py" --stage-files || exit $?
 

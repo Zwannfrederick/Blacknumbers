@@ -219,6 +219,35 @@ SURFACES = {
         base_color=(1.0, 0.22, 0.16), roughness=0.35, roughness_min=0.35,
         normal_strength=0.0, macro_var=0.0, emissive=(4.8, 0.55, 0.35),
     ),
+    # --- Pure Windowless CC0 Architectural Wall & Glazing Materials (for true 3D modular buildings) ---
+    "MI_Wall_Brick": dict(
+        base_color=(0.88, 0.80, 0.74), albedo="T_WallBrick_D", normal="T_WallBrick_N", roughness_map="T_WallBrick_R",
+        tile_scale=0.36, roughness=0.92, roughness_min=0.58, specular=0.42, normal_strength=1.05, macro_var=0.16,
+    ),
+    "MI_Wall_Plaster": dict(
+        base_color=(0.90, 0.85, 0.77), albedo="T_WallPlaster_D", normal="T_WallPlaster_N", roughness_map="T_WallPlaster_R",
+        tile_scale=0.28, roughness=0.92, roughness_min=0.62, specular=0.38, normal_strength=0.90, macro_var=0.18,
+    ),
+    "MI_Wall_Cladding": dict(
+        base_color=(0.62, 0.66, 0.72), albedo="T_WallCladding_D", normal="T_WallCladding_N", roughness_map="T_WallCladding_R",
+        tile_scale=0.24, roughness=0.62, roughness_min=0.28, specular=0.58, metallic=0.42, normal_strength=0.95, macro_var=0.12,
+    ),
+    "MI_Wall_ConcretePanel": dict(
+        base_color=(0.84, 0.82, 0.79), albedo="T_WallConcretePanel_D", normal="T_WallConcretePanel_N", roughness_map="T_WallConcretePanel_R",
+        tile_scale=0.22, roughness=0.88, roughness_min=0.52, specular=0.44, normal_strength=0.95, macro_var=0.16,
+    ),
+    "MI_Arch_GlassWarm": dict(
+        base_color=(0.04, 0.06, 0.085), emissive_map="T_ArchGlass_E", emissive_mask_color=(1.75, 1.24, 0.62),
+        tile_scale=0.048, roughness=0.09, roughness_min=0.05, specular=0.84, metallic=0.22, normal_strength=0.0, macro_var=0.04,
+    ),
+    "MI_Arch_GlassCool": dict(
+        base_color=(0.045, 0.075, 0.115), emissive_map="T_ArchGlass_E", emissive_mask_color=(1.18, 1.48, 1.85),
+        tile_scale=0.038, roughness=0.07, roughness_min=0.04, specular=0.88, metallic=0.36, normal_strength=0.0, macro_var=0.04,
+    ),
+    "MI_Arch_Awning": dict(
+        base_color=(0.34, 0.085, 0.075), albedo="T_Container_D", normal="T_Container_N", roughness_map="T_Container_R",
+        tile_scale=0.65, roughness=0.78, roughness_min=0.54, specular=0.36, metallic=0.12, normal_strength=0.55, macro_var=0.10,
+    ),
 }
 
 tools = unreal.AssetToolsHelpers.get_asset_tools()

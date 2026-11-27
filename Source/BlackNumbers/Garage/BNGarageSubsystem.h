@@ -110,6 +110,21 @@ public:
 
 	UPROPERTY()
 	int32 StoryFinalCityDamageDollars = 0;
+
+	UPROPERTY()
+	int32 StoryTotalBounty = 0;
+
+	UPROPERTY()
+	int32 StoryBossMilestonesMask = 0;
+
+	UPROPERTY()
+	int32 StoryImpoundStrikes = 0;
+
+	UPROPERTY()
+	int32 StoryPursuitsEscaped = 0;
+
+	UPROPERTY()
+	int32 StoryBustedCount = 0;
 };
 
 /**

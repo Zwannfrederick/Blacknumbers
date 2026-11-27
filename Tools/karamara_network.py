@@ -295,18 +295,17 @@ def _heading_deg(p0, p1):
 
 
 def _smooth_race_path(pts, closed=False):
-    """Rounds sharp >40-deg intersection vertices into gentle curved corner arcs so UE's USplineComponent
-    never overshoots into corner buildings and AI rivals can track every city turn cleanly."""
+    """Rounds sharp >30-deg intersection vertices into gentle curved corner arcs AND uniformly resamples
+    every ~500 cm so UE's USplineComponent never produces Catmull-Rom S-wave overshoots into walls."""
     n = len(pts)
     if n < 3:
         return list(pts)
-    out = []
-    # For closed circuits, strip duplicate last point while rounding, then re-close at the end
+    raw = []
     work = pts[:-1] if (closed and math.hypot(pts[0][0] - pts[-1][0], pts[0][1] - pts[-1][1]) < 50.0) else list(pts)
     m = len(work)
     for i in range(m):
         if not closed and (i == 0 or i == m - 1):
-            out.append(work[i])
+            raw.append(work[i])
             continue
         p_prev = work[(i - 1) % m]
         p_cur = work[i]
@@ -316,24 +315,44 @@ def _smooth_race_path(pts, closed=False):
         l1 = math.hypot(v1[0], v1[1])
         l2 = math.hypot(v2[0], v2[1])
         if l1 < 10.0 or l2 < 10.0:
-            out.append(p_cur)
+            raw.append(p_cur)
             continue
         dot = max(-1.0, min(1.0, (v1[0] * v2[0] + v1[1] * v2[1]) / (l1 * l2)))
         ang = math.degrees(math.acos(dot))
-        if ang > 40.0:
-            # Quadratic Bezier chamfer pulled 950 cm back along each leg inside the wide junction pad
-            cut1 = min(950.0, l1 * 0.42)
-            cut2 = min(950.0, l2 * 0.42)
+        if ang > 28.0:
+            cut1 = min(1150.0, l1 * 0.44)
+            cut2 = min(1150.0, l2 * 0.44)
             a = tuple(p_cur[c] - v1[c] * (cut1 / l1) for c in range(3))
             b = tuple(p_cur[c] + v2[c] * (cut2 / l2) for c in range(3))
-            for t in (0.0, 0.35, 0.65, 1.0):
+            for t in (0.0, 0.25, 0.50, 0.75, 1.0):
                 u = 1.0 - t
                 q = tuple(u * u * a[c] + 2.0 * u * t * p_cur[c] + t * t * b[c] for c in range(3))
-                out.append(q)
+                raw.append(q)
         else:
-            out.append(p_cur)
-    if closed and out:
-        out.append(out[0])
+            raw.append(p_cur)
+    if closed and raw:
+        raw.append(raw[0])
+
+    # Uniform arc-length resampling every ~500 cm eliminates spline tangent ringing at straight-to-corner joins
+    cum = [0.0]
+    for a, b in zip(raw, raw[1:]):
+        cum.append(cum[-1] + math.sqrt(sum((b[c] - a[c]) ** 2 for c in range(3))))
+    total = cum[-1]
+    if total < 200.0:
+        return raw
+    steps = max(4, int(round(total / 500.0)))
+    out = []
+    k = 0
+    for s_idx in range(steps + 1):
+        d = total * (s_idx / float(steps))
+        while k < len(cum) - 2 and cum[k + 1] < d:
+            k += 1
+        seg = max(cum[k + 1] - cum[k], 1e-4)
+        u = max(0.0, min(1.0, (d - cum[k]) / seg))
+        p = tuple(raw[k][c] + (raw[k + 1][c] - raw[k][c]) * u for c in range(3))
+        out.append(p)
+    if closed and len(out) >= 2:
+        out[-1] = out[0]
     return out
 
 
@@ -396,11 +415,14 @@ def build_race_specs(nodes, edges, edge_lookup):
         # Fit gate width cleanly to the narrowest road on this route so posts stay on shoulders, never inside walls!
         min_road_w = min(edges[edge_lookup[(node_chain[k], node_chain[k + 1])][0]]["width"] for k in range(len(node_chain) - 1))
         clamped_gw = min(gate_width, min_road_w + 150.0)
-        # Beacon sits right off the start shoulder so player spots it cleanly without accidental instant re-trigger
+        # Beacon sits cleanly on the outer drivable road shoulder (never behind walls or inside sidewalk props!)
         gyaw_rad = math.radians(grid[3])
         rx, ry = -math.sin(gyaw_rad), math.cos(gyaw_rad)
-        bx = grid[0] + rx * beacon_offset[1] + math.cos(gyaw_rad) * beacon_offset[0]
-        by = grid[1] + ry * beacon_offset[1] + math.sin(gyaw_rad) * beacon_offset[0]
+        start_hw = edges[edge_lookup[(node_chain[0], node_chain[1])][0]]["width"] * 0.5
+        lat_sign = -1.0 if beacon_offset[1] < 0.0 else 1.0
+        clamped_lat = lat_sign * min(abs(beacon_offset[1]), max(320.0, start_hw - 360.0))
+        bx = grid[0] + rx * clamped_lat + math.cos(gyaw_rad) * beacon_offset[0]
+        by = grid[1] + ry * clamped_lat + math.sin(gyaw_rad) * beacon_offset[0]
         specs.append(dict(
             name=asset_name, title=title, discipline=discipline,
             grid=(grid[0], grid[1], grid[2] + 65.0, grid[3]),
@@ -411,12 +433,12 @@ def build_race_specs(nodes, edges, edge_lookup):
     # 1. Merkez Bulvar & Carsi Circuit (2 laps, classic downtown loop)
     add_route("RACE_KaramaraCircuit", "Merkez Bulvar Pisti", "CIRCUIT",
               [4, 5, 6, 7, 11, 10, 9, 8, 4], num_gates=8, laps=2, rivals=(0.74, 0.84, 0.92),
-              beacon_offset=(-2400.0, -1500.0))
+              beacon_offset=(3600.0, -640.0))
 
     # 2. Kuzey Viyadugu High-Speed Sprint (West Viaduct -> North Viaduct -> Eski Liman)
     add_route("RACE_KuzeyViyadukSprint", "Kuzey Viyadüğü Sprint", "SPRINT",
               [4, 0, 24, 25, 26, 27, 17, 18], num_gates=9, laps=1, gate_width=2400.0,
-              rivals=(0.76, 0.86, 0.95), beacon_offset=(0.0, -1500.0))
+              rivals=(0.76, 0.86, 0.95), beacon_offset=(1800.0, -450.0))
 
     # 3. Dogu Sanayi Container Courtyard Drift (75 s)
     specs.append(dict(

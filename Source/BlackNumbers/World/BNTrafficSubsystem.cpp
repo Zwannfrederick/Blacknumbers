@@ -299,7 +299,10 @@ bool UBNTrafficSubsystem::ComputeCarPose(const FTrafficCar& Car, FVector& OutLoc
 		return false;
 	}
 	const FVector Right2D(-Tan.Y, Tan.X, 0.f);
-	const float LaneOffset = FMath::Clamp(Edges[Car.EdgeIdx].WidthCm * 0.25f, 320.f, 520.f) + Car.LateralPullOffset;
+	const float HalfW = Edges[Car.EdgeIdx].WidthCm * 0.5f;
+	const float MaxSafeLane = FMath::Max(180.f, HalfW - 155.f);
+	const float BaseLane = FMath::Clamp(HalfW * 0.44f, 180.f, MaxSafeLane);
+	const float LaneOffset = FMath::Clamp(BaseLane + Car.LateralPullOffset, 180.f, MaxSafeLane);
 	OutLocation = CenterLoc + Right2D.GetSafeNormal() * LaneOffset + FVector(0.f, 0.f, 2.f);
 	OutRotation = Tan.Rotation();
 	return true;
@@ -536,6 +539,12 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 			}
 		}
 	}
+	// Collect active vehicle pawns (player, rivals, police) so traffic yields to all road users, not only the player.
+	TArray<FVector, TInlineAllocator<12>> ActiveVehicles;
+	for (TActorIterator<ABNVehiclePawn> It(World); It; ++It)
+	{
+		ActiveVehicles.Add(It->GetActorLocation());
+	}
 
 	for (int32 i = 0; i < Cars.Num(); ++i)
 	{
@@ -577,6 +586,8 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 				}
 				Car.CurrentSpeedCmPerSec = Car.CruiseSpeedCmPerSec * 0.5f;
 				Car.LateralPullOffset = 0.f;
+				Car.VisualPosOffset = FVector::ZeroVector;
+				Car.VisualYawOffsetDeg = 0.f;
 				Car.State = ETrafficCarState::Cruising;
 				FVector Loc;
 				FRotator Rot;
@@ -601,6 +612,8 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 				Car.bReversed = bNewRev;
 				Car.DistanceAlong = NewDist;
 				Car.LateralPullOffset = 0.f;
+				Car.VisualPosOffset = FVector::ZeroVector;
+				Car.VisualYawOffsetDeg = 0.f;
 				FVector Loc;
 				FRotator Rot;
 				if (ComputeCarPose(Car, Loc, Rot))
@@ -611,9 +624,14 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 			}
 		}
 
-		// Yield for traffic cars directly ahead on same edge/direction, sirens, and stopped player
+		// Yield for traffic cars directly ahead on same edge/direction, sirens, intersections, and all vehicles
 		float TargetSpeed = Car.CruiseSpeedCmPerSec;
 		float DesiredLateralPull = 0.f;
+		const float CurEdgeLen = RoadGraph->GetEdgeLengthCm(Car.EdgeIdx);
+		if (CurEdgeLen - Car.DistanceAlong < 1500.f)
+		{
+			TargetSpeed = FMath::Min(TargetSpeed, 44.f * KmhToCmPerSec);
+		}
 		for (int32 j = 0; j < Cars.Num(); ++j)
 		{
 			if (j == i || Cars[j].EdgeIdx != Car.EdgeIdx || Cars[j].bReversed != Car.bReversed
@@ -637,18 +655,18 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 				if (FVector::DistSquared2D(CurLoc, SirenPos) <= FMath::Square(SirenYieldRadiusCm))
 				{
 					TargetSpeed = FMath::Min(TargetSpeed, Car.CruiseSpeedCmPerSec * 0.22f);
-					DesiredLateralPull = 110.f;
+					DesiredLateralPull = 95.f;
 					break;
 				}
 			}
 		}
-		if (Player)
+		for (const FVector& VehLoc : ActiveVehicles)
 		{
-			const FVector ToPlayer = PlayerLoc - CurLoc;
-			if (ToPlayer.Size2D() < 1550.f && FMath::Abs(ToPlayer.Z) < VerticalInteractionTolCm)
+			const FVector ToVeh = VehLoc - CurLoc;
+			if (ToVeh.Size2D() < 1550.f && FMath::Abs(ToVeh.Z) < VerticalInteractionTolCm)
 			{
-				const float Along = FVector::DotProduct(ToPlayer, CurFwd);
-				if (Along > 260.f && FMath::Abs(FVector::CrossProduct(CurFwd, ToPlayer).Z) < 260.f)
+				const float Along = FVector::DotProduct(ToVeh, CurFwd);
+				if (Along > 240.f && FMath::Abs(FVector::CrossProduct(CurFwd, ToVeh).Z) < 260.f)
 				{
 					TargetSpeed = FMath::Min(TargetSpeed, Car.CruiseSpeedCmPerSec * FMath::Clamp((Along - 520.f) / 1000.f, 0.f, 1.f));
 				}
@@ -671,10 +689,11 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 		Car.LateralPullOffset = FMath::FInterpTo(Car.LateralPullOffset, DesiredLateralPull, Dt, 2.5f);
 		Car.DistanceAlong += Car.CurrentSpeedCmPerSec * Dt;
 
-		const float EdgeLen = RoadGraph->GetEdgeLengthCm(Car.EdgeIdx);
-		if (Car.DistanceAlong >= EdgeLen - 80.f)
+		bool bSwitchedEdge = false;
+		if (Car.DistanceAlong >= CurEdgeLen - 80.f)
 		{
 			AdvanceToNextEdge(Car);
+			bSwitchedEdge = true;
 		}
 
 		FVector NextLoc;
@@ -683,6 +702,23 @@ void UBNTrafficSubsystem::Tick(float DeltaTime)
 		{
 			continue;
 		}
+		if (bSwitchedEdge)
+		{
+			// Blend smoothly across intersection lane change instead of 1-frame sideways teleporting
+			const FVector PosDelta = CurLoc - NextLoc;
+			if (PosDelta.Size2D() < 2600.f)
+			{
+				Car.VisualPosOffset = PosDelta;
+				Car.VisualYawOffsetDeg = FMath::FindDeltaAngleDegrees(NextRot.Yaw, Actor->GetActorRotation().Yaw);
+			}
+		}
+		const float BlendDecay = FMath::Exp(-6.8f * Dt);
+		Car.VisualPosOffset *= BlendDecay;
+		Car.VisualYawOffsetDeg *= BlendDecay;
+		if (Car.VisualPosOffset.SizeSquared() < 1.f) { Car.VisualPosOffset = FVector::ZeroVector; }
+		if (FMath::Abs(Car.VisualYawOffsetDeg) < 0.1f) { Car.VisualYawOffsetDeg = 0.f; }
+		NextLoc += Car.VisualPosOffset;
+		NextRot.Yaw += Car.VisualYawOffsetDeg;
 		Actor->SetActorLocationAndRotation(NextLoc, NextRot);
 
 		// Collision & Near-Miss interaction with player car

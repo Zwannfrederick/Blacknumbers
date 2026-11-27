@@ -1,7 +1,124 @@
 #include "Story/BNStoryTypes.h"
+#include "Police/BNPursuitLogic.h"
 
 namespace
 {
+	struct FMWBossConfig
+	{
+		int32 RequiredBounty;
+		int32 RequiredMilestones;
+		const TCHAR* TagWord;
+		const TCHAR* TauntQuote;
+		EBNMilestoneType MType[3];
+		int32 MTarget[3];
+		int32 MBonus[3];
+	};
+
+	const FMWBossConfig MWConfigs[16] = {
+		// #16 Berkay -> index 0 (indexed by 16 - Rank)
+		{ 10000, 1, TEXT("KIVILCIM"), TEXT("Tamam, kuralı biliyorsun. Ödülünü yükselt, yarışları temizle, dönüm noktalarını kır; Kıvılcım Viyadük'te seni bulur."),
+		  { EBNMilestoneType::PursuitDurationSec, EBNMilestoneType::SpeedTrapKmh, EBNMilestoneType::CostToState }, { 45, 165, 12000 }, { 4000, 3500, 4500 } },
+		// #15 Nadia
+		{ 22000, 1, TEXT("APEX"), TEXT("Merkez Bulvar'ın çizgisini ezberlemeden Nadia'ya yaklaşamazsın. Polisten kaç, hız tuzağını patlat ve listeye adını kazı."),
+		  { EBNMilestoneType::CopsDisabled, EBNMilestoneType::SpeedTrapKmh, EBNMilestoneType::PursuitDurationSec }, { 2, 180, 70 }, { 6000, 5000, 6000 } },
+		// #14 Cem
+		{ 38000, 1, TEXT("DUMAN"), TEXT("Doğu Sanayi'de dumanı dağıtan kazanır. Cem bahis masasında adını konuşsun istiyorsan şehir faturasını kabart."),
+		  { EBNMilestoneType::CostToState, EBNMilestoneType::CopsDisabled, EBNMilestoneType::RoadblocksDodged }, { 30000, 3, 1 }, { 8000, 8000, 9000 } },
+		// #13 Dario
+		{ 60000, 2, TEXT("KARGO"), TEXT("Liman yollarında ağır şasiler konuşur. Barikatları yar, iki dönüm noktasını kapat ve Dario'yu rıhtıma çek."),
+		  { EBNMilestoneType::RoadblocksDodged, EBNMilestoneType::PursuitDurationSec, EBNMilestoneType::SpeedTrapKmh }, { 2, 95, 195 }, { 12000, 11000, 10000 } },
+		// #12 Leyla
+		{ 95000, 2, TEXT("KISA DEVRE"), TEXT("Leyla Yamaç'ın virajlarında hata affetmez. Ödülünü $95,000 üstüne çıkar, polisleri devre dışı bırak ve düelloyu aç."),
+		  { EBNMilestoneType::CopsDisabled, EBNMilestoneType::CostToState, EBNMilestoneType::SpeedTrapKmh }, { 4, 55000, 205 }, { 16000, 15000, 14000 } },
+		// #11 Ozan
+		{ 140000, 2, TEXT("SIFIR"), TEXT("Ozan şansa değil soğukkanlılığa oynar. Heat 2 üstü takipten sıyrıl, barikatları aş ve masayı devir."),
+		  { EBNMilestoneType::PursuitEscapeHeat, EBNMilestoneType::RoadblocksDodged, EBNMilestoneType::PursuitDurationSec }, { 2, 3, 120 }, { 20000, 18000, 18000 } },
+		// #10 Sasha
+		{ 200000, 2, TEXT("TERS AÇI"), TEXT("Kuzey Geçidi'nin kralı sıradan sokakçılarla yarışmaz. Rhino'ları atlat, ödülünü katla ve dağa çık."),
+		  { EBNMilestoneType::PursuitEscapeHeat, EBNMilestoneType::CopsDisabled, EBNMilestoneType::CostToState }, { 3, 5, 85000 }, { 26000, 24000, 24000 } },
+		// #09 Murat
+		{ 280000, 2, TEXT("BALYOZ"), TEXT("Murat yol açmak için çarpar; polis de ondan farksız. Dört barikatı yar, 6 birimi indir ve Liman'da yüzleş."),
+		  { EBNMilestoneType::CopsDisabled, EBNMilestoneType::RoadblocksDodged, EBNMilestoneType::PursuitDurationSec }, { 6, 4, 150 }, { 32000, 30000, 30000 } },
+		// #08 Hakan
+		{ 380000, 3, TEXT("LENS"), TEXT("Şehrin bütün kameraları Hakan'ın elinde. Üç dönüm noktasını da kapatıp radarı delmeden Viyadük'e inemezsin."),
+		  { EBNMilestoneType::SpeedTrapKmh, EBNMilestoneType::PursuitEscapeHeat, EBNMilestoneType::CostToState }, { 225, 3, 120000 }, { 38000, 42000, 40000 } },
+		// #07 Sofia
+		{ 500000, 3, TEXT("KROM"), TEXT("Sofia Eski Karamara'yı demir disiplinle yönetir. Dikenli şeritleri aş, polis kordonunu dağıt ve Yamaç'a hükmet."),
+		  { EBNMilestoneType::SpikeStripsDodged, EBNMilestoneType::CopsDisabled, EBNMilestoneType::PursuitDurationSec }, { 1, 7, 180 }, { 48000, 46000, 45000 } },
+		// #06 Miraç
+		{ 650000, 3, TEXT("BORSA"), TEXT("Altın Çekirdek'in kasası Miraç'ta. Heat 4 kordonundan kaç, hız tuzağını 240'la geç ve dosyayı ele geçir."),
+		  { EBNMilestoneType::PursuitEscapeHeat, EBNMilestoneType::SpeedTrapKmh, EBNMilestoneType::RoadblocksDodged }, { 4, 240, 5 }, { 60000, 55000, 58000 } },
+		// #05 Kaan
+		{ 830000, 3, TEXT("KURYE"), TEXT("Kaan iz bırakmaz; sen bütün şehri ayağa kaldırmalısın. Dikenli şerit, ağır hasar ve kesintisiz takip sonrası kapı açılır."),
+		  { EBNMilestoneType::SpikeStripsDodged, EBNMilestoneType::CostToState, EBNMilestoneType::CopsDisabled }, { 2, 180000, 8 }, { 70000, 72000, 68000 } },
+		// #04 Rıza
+		{ 1050000, 3, TEXT("GÖLGE"), TEXT("Çekirdek ekibin komutanı Rıza'ya ulaşmak için polis ordusunu sustur. Heat 5'ten sağ çık ve Rıhtım'ı titre."),
+		  { EBNMilestoneType::PursuitEscapeHeat, EBNMilestoneType::RoadblocksDodged, EBNMilestoneType::PursuitDurationSec }, { 5, 6, 220 }, { 85000, 80000, 82000 } },
+		// #03 İlhan
+		{ 1300000, 3, TEXT("VALF"), TEXT("Sabotajın mühendisi İlhan, yalnızca kusursuz kaçışları ciddiye alır. 10 polis birimini indir, dikenli şeritleri del."),
+		  { EBNMilestoneType::CopsDisabled, EBNMilestoneType::SpikeStripsDodged, EBNMilestoneType::SpeedTrapKmh }, { 10, 3, 255 }, { 100000, 95000, 90000 } },
+		// #02 Elena
+		{ 1600000, 3, TEXT("ELENA"), TEXT("Viktor'un sağ kolu Elena için son perde açıldı. Şehir faturasını $280,000 üstüne çıkar, 7 barikatı aş ve son kanıtı sök."),
+		  { EBNMilestoneType::CostToState, EBNMilestoneType::RoadblocksDodged, EBNMilestoneType::PursuitDurationSec }, { 280000, 7, 260 }, { 120000, 115000, 115000 } },
+		// #01 Viktor
+		{ 2000000, 3, TEXT("VİKTOR"), TEXT("Kara Liste #01. Karamara'nın bütün polis teşkilatını peşine tak, 12 birimi devre dışı bırak ve Büyük Tur'da tahtı devir!"),
+		  { EBNMilestoneType::CopsDisabled, EBNMilestoneType::SpikeStripsDodged, EBNMilestoneType::PursuitEscapeHeat }, { 12, 4, 5 }, { 160000, 150000, 160000 } },
+	};
+
+	FBNBossMilestone BuildMilestone(EBNMilestoneType Type, int32 Target, int32 Bonus)
+	{
+		FBNBossMilestone M;
+		M.Type = Type;
+		M.TargetValue = Target;
+		M.BonusBounty = Bonus;
+		switch (Type)
+		{
+		case EBNMilestoneType::PursuitDurationSec:
+			M.Title = FString::Printf(TEXT("Takip Süresi (%d sn)"), Target);
+			M.Description = FString::Printf(TEXT("Tek takipte en az %d saniye dayan ve polisten kaç."), Target);
+			break;
+		case EBNMilestoneType::CopsDisabled:
+			M.Title = FString::Printf(TEXT("Polis Devre Dışı (%d Birim)"), Target);
+			M.Description = FString::Printf(TEXT("Tek takipte %d polis aracını çarpma veya yapıyla devre dışı bırak ve kaç."), Target);
+			break;
+		case EBNMilestoneType::CostToState:
+			M.Title = FString::Printf(TEXT("Şehir Faturası ($%s)"), *FString::FormatAsNumber(Target));
+			M.Description = FString::Printf(TEXT("Tek takipte en az $%s şehir hasarı oluştur ve kaç."), *FString::FormatAsNumber(Target));
+			break;
+		case EBNMilestoneType::RoadblocksDodged:
+			M.Title = FString::Printf(TEXT("Barikat Aş (%d Adet)"), Target);
+			M.Description = FString::Printf(TEXT("Tek takipte %d polis barikatını yar ve polisten kaç."), Target);
+			break;
+		case EBNMilestoneType::SpikeStripsDodged:
+			M.Title = FString::Printf(TEXT("Dikenli Şerit Atlat (%d Adet)"), Target);
+			M.Description = FString::Printf(TEXT("Tek takipte %d dikenli şeridi patlamadan atlat ve kaç."), Target);
+			break;
+		case EBNMilestoneType::SpeedTrapKmh:
+			M.Title = FString::Printf(TEXT("Hız Tuzağı (%d km/h)"), Target);
+			M.Description = FString::Printf(TEXT("Şehirdeki herhangi bir Hız Tuzağı'ndan en az %d km/h ile geç."), Target);
+			break;
+		case EBNMilestoneType::PursuitEscapeHeat:
+			M.Title = FString::Printf(TEXT("Heat %d Kaçışı"), Target);
+			M.Description = FString::Printf(TEXT("Heat %d veya üstü polis takibinden yakalanmadan kurtul."), Target);
+			break;
+		}
+		return M;
+	}
+
+	bool DoesPursuitSatisfy(const FBNBossMilestone& M, const FBNPursuitState& P)
+	{
+		switch (M.Type)
+		{
+		case EBNMilestoneType::PursuitDurationSec: return P.PursuitTimeSeconds >= static_cast<float>(M.TargetValue);
+		case EBNMilestoneType::CopsDisabled:       return P.UnitsDisabled >= M.TargetValue;
+		case EBNMilestoneType::CostToState:        return P.PursuitCostDollars >= M.TargetValue;
+		case EBNMilestoneType::RoadblocksDodged:   return P.RoadblocksDodged >= M.TargetValue;
+		case EBNMilestoneType::SpikeStripsDodged:  return P.SpikeStripsDodged >= M.TargetValue;
+		case EBNMilestoneType::PursuitEscapeHeat:  return P.HeatLevel >= M.TargetValue;
+		default: return false;
+		}
+	}
+
 	const FName Bulvar(TEXT("RACE_KaramaraCircuit"));
 	const FName Viyaduk(TEXT("RACE_KuzeyViyadukSprint"));
 	const FName Sanayi(TEXT("RACE_SanayiDrift"));
@@ -89,6 +206,16 @@ namespace
 		S.VehicleStats = MakeBossVehicleStats(Rank, BaseCar);
 		S.VehicleTint = Tint;
 		S.HomeDistrict = FBNStoryState::GetDistrictForBoss(Rank);
+		const FMWBossConfig& MW = MWConfigs[FMath::Clamp(16 - Rank, 0, 15)];
+		S.RequiredBounty = MW.RequiredBounty;
+		S.RequiredMilestones = MW.RequiredMilestones;
+		S.TagWord = MW.TagWord;
+		S.TauntQuote = MW.TauntQuote;
+		S.Milestones.Reserve(3);
+		for (int32 m = 0; m < 3; ++m)
+		{
+			S.Milestones.Add(BuildMilestone(MW.MType[m], MW.MTarget[m], MW.MBonus[m]));
+		}
 		return S;
 	}
 
@@ -258,6 +385,11 @@ void FBNStoryState::Reset()
 	bCampaignCompleted = false;
 	EscapedRouteIndex = -1;
 	FinalCityDamageDollars = 0;
+	TotalBounty = 0;
+	CurrentBossMilestonesMask = 0;
+	ImpoundStrikes = 0;
+	TotalPursuitsEscaped = 0;
+	TotalBustedCount = 0;
 	RebuildEvidenceNotes();
 }
 
@@ -324,9 +456,118 @@ FName FBNStoryState::GetNextQualifier() const
 		? Boss->Qualifiers[QualifiersWon] : NAME_None;
 }
 
+bool FBNStoryState::AreRacesComplete(int32 Rank) const
+{
+	if (IsBossDefeated(Rank)) { return true; }
+	const FBNBossSpec* Boss = FindBossByRank(Rank);
+	return Boss && Rank == NextBossRank && QualifiersWon >= Boss->Qualifiers.Num();
+}
+
+int32 FBNStoryState::GetCompletedMilestoneCount() const
+{
+	return static_cast<int32>(FMath::CountBits(static_cast<uint32>(CurrentBossMilestonesMask & 0x7)));
+}
+
+bool FBNStoryState::IsMilestoneCompleted(int32 Index) const
+{
+	return Index >= 0 && Index < 3 && (CurrentBossMilestonesMask & (1 << Index)) != 0;
+}
+
+bool FBNStoryState::AreMilestonesComplete(int32 Rank) const
+{
+	if (IsBossDefeated(Rank)) { return true; }
+	const FBNBossSpec* Boss = FindBossByRank(Rank);
+	return Boss && Rank == NextBossRank && GetCompletedMilestoneCount() >= Boss->RequiredMilestones;
+}
+
+bool FBNStoryState::IsBountyComplete(int32 Rank) const
+{
+	if (IsBossDefeated(Rank)) { return true; }
+	const FBNBossSpec* Boss = FindBossByRank(Rank);
+	return Boss && TotalBounty >= Boss->RequiredBounty;
+}
+
 bool FBNStoryState::IsDuelUnlocked(int32 Rank) const
 {
-	return CanChallengeBoss(Rank) && GetNextQualifier().IsNone();
+	return CanChallengeBoss(Rank) && AreRacesComplete(Rank) && AreMilestonesComplete(Rank) && IsBountyComplete(Rank);
+}
+
+bool FBNStoryState::CompleteMilestone(int32 Index, int32* OutBonusBounty)
+{
+	if (OutBonusBounty) { *OutBonusBounty = 0; }
+	const FBNBossSpec* Boss = FindBossByRank(NextBossRank);
+	if (!Boss || !Boss->Milestones.IsValidIndex(Index) || IsMilestoneCompleted(Index))
+	{
+		return false;
+	}
+	CurrentBossMilestonesMask |= (1 << Index);
+	const int32 Bonus = Boss->Milestones[Index].BonusBounty;
+	TotalBounty += Bonus;
+	if (OutBonusBounty) { *OutBonusBounty = Bonus; }
+	return true;
+}
+
+int32 FBNStoryState::EvaluatePursuitMilestones(const FBNPursuitState& PursuitState, bool bCommit, TArray<FString>* OutNewlyCompleted)
+{
+	const FBNBossSpec* Boss = FindBossByRank(NextBossRank);
+	if (!Boss)
+	{
+		return 0;
+	}
+	int32 MaskOrCount = 0;
+	for (int32 i = 0; i < Boss->Milestones.Num() && i < 3; ++i)
+	{
+		if (IsMilestoneCompleted(i)) { continue; }
+		if (DoesPursuitSatisfy(Boss->Milestones[i], PursuitState))
+		{
+			if (bCommit)
+			{
+				CompleteMilestone(i);
+				++MaskOrCount;
+			}
+			else
+			{
+				MaskOrCount |= (1 << i);
+			}
+			if (OutNewlyCompleted)
+			{
+				OutNewlyCompleted->Add(Boss->Milestones[i].Title);
+			}
+		}
+	}
+	return MaskOrCount;
+}
+
+int32 FBNStoryState::EvaluateSpeedTrapMilestones(float SpeedKmh, TArray<FString>* OutNewlyCompleted)
+{
+	const FBNBossSpec* Boss = FindBossByRank(NextBossRank);
+	if (!Boss) { return 0; }
+	int32 Completed = 0;
+	for (int32 i = 0; i < Boss->Milestones.Num() && i < 3; ++i)
+	{
+		if (IsMilestoneCompleted(i)) { continue; }
+		const FBNBossMilestone& M = Boss->Milestones[i];
+		if (M.Type == EBNMilestoneType::SpeedTrapKmh && SpeedKmh >= static_cast<float>(M.TargetValue))
+		{
+			CompleteMilestone(i);
+			++Completed;
+			if (OutNewlyCompleted) { OutNewlyCompleted->Add(M.Title); }
+		}
+	}
+	return Completed;
+}
+
+void FBNStoryState::BankPursuitBounty(int32 BountyAmount)
+{
+	TotalBounty += FMath::Max(0, BountyAmount);
+	++TotalPursuitsEscaped;
+}
+
+int32 FBNStoryState::RecordBustedStrike()
+{
+	++TotalBustedCount;
+	++ImpoundStrikes;
+	return ImpoundStrikes;
 }
 
 bool FBNStoryState::RecordQualifierVictory(FName RaceAsset)
@@ -385,6 +626,7 @@ bool FBNStoryState::RecordBossVictory(int32 Rank, TArray<FBNStoryCard>& OutCards
 	DefeatedMask |= (1u << Rank);
 	NextBossRank = Rank > 1 ? Rank - 1 : 0;
 	QualifiersWon = 0;
+	CurrentBossMilestonesMask = 0;
 
 	if (Rank == 16)
 	{
@@ -500,6 +742,10 @@ void FBNStoryState::SkipToRank(int32 TargetRank)
 	bIntroShown = true;
 	for (int32 r = 16; r > Clamped; --r)
 	{
+		if (const FBNBossSpec* Spec = FindBossByRank(r))
+		{
+			TotalBounty = FMath::Max(TotalBounty, Spec->RequiredBounty);
+		}
 		RecordBossVictory(r, Dummy);
 	}
 }
@@ -508,24 +754,26 @@ FString FBNStoryState::GetCurrentObjectiveLine() const
 {
 	if (bCampaignCompleted)
 	{
-		return FString::Printf(TEXT("EPILOG TAMAMLANDI  |  %s  |  SEHIR FATURASI: $%s"),
+		return FString::Printf(TEXT("EPİLOG TAMAMLANDI  |  %s  |  ŞEHİR FATURASI: $%s"),
 			EscapeRouteName(EscapedRouteIndex), *FString::FormatAsNumber(FinalCityDamageDollars));
 	}
 	if (bFinalChaseActive)
 	{
-		return TEXT("SON KOVALAMACA (OZEL KADEME): LIMAN TUNELLERI VEYA KUZEY GECIDI'NE KAC!");
+		return TEXT("SON KOVALAMACA (ÖZEL KADEME): LİMAN TÜNELLERİ VEYA KUZEY GEÇİDİ'NE KAÇ!");
 	}
 	if (const FBNBossSpec* Next = FindBossByRank(NextBossRank))
 	{
-		if (!GetNextQualifier().IsNone())
+		if (IsDuelUnlocked(Next->Rank))
 		{
-			return FString::Printf(TEXT("#%02d %s  •  ELEME %d/%d   [B] PROGRAM"),
-				Next->Rank, *Next->Name, QualifiersWon + 1, Next->Qualifiers.Num());
+			return FString::Printf(TEXT("#%02d %s DÜELLOSU AÇIK!   [B] KARA LİSTE"), Next->Rank, *Next->Name);
 		}
-		return FString::Printf(TEXT("SIRADAKI HEDEF #%02d: %s (%s / %s)  -  [B] DOSYA"),
-			Next->Rank, *Next->Name, *Next->VehicleName, *Next->DisciplineLabel);
+		return FString::Printf(TEXT("#%02d %s  •  YARIŞ %d/%d  •  DÖNÜM %d/%d  •  ÖDÜL %s/%s"),
+			Next->Rank, *Next->TagWord,
+			QualifiersWon, Next->Qualifiers.Num(),
+			GetCompletedMilestoneCount(), Next->RequiredMilestones,
+			*FString::FormatAsNumber(TotalBounty), *FString::FormatAsNumber(Next->RequiredBounty));
 	}
-	return TEXT("[B] BLACK NUMBERS DOSYASI");
+	return TEXT("[B] KARA LİSTE");
 }
 
 EBNDistrict FBNStoryState::GetDistrictForBoss(int32 Rank)

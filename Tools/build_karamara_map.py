@@ -15,6 +15,7 @@ import unreal
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bn_materials  # noqa: E402
 import bn_meshes  # noqa: E402
+import bn_road_mesh  # noqa: E402
 import fetch_cc0_models  # noqa: E402
 import karamara_network as knet  # noqa: E402
 import karamara_scenery as kscene  # noqa: E402
@@ -31,6 +32,7 @@ levels = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
 actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
 MI, PM = bn_materials.build()
 MESHES = bn_meshes.ensure_ue_meshes()
+ROAD_MESHES = bn_road_mesh.ensure_ue_road_meshes(force_reimport=True)
 counters = {}
 
 
@@ -160,219 +162,26 @@ def reset_level():
     counters.clear()
 
 
-ROAD_SLAB_MAX_CM = 400.0
-ROAD_SLAB_OVERLAP_CM = 20.0
-
-
-def _pchip_slopes(d, z):
-    """Fritsch-Carlson monotone slopes: the height profile never overshoots a crest or bridge deck."""
-    n = len(z)
-    h = [d[i + 1] - d[i] for i in range(n - 1)]
-    m = [(z[i + 1] - z[i]) / h[i] if h[i] > 0 else 0.0 for i in range(n - 1)]
-    t = [0.0] * n
-    t[0], t[-1] = m[0], m[-1]
-    for i in range(1, n - 1):
-        if m[i - 1] * m[i] <= 0.0:
-            t[i] = 0.0
-        else:
-            w1, w2 = 2.0 * h[i] + h[i - 1], h[i] + 2.0 * h[i - 1]
-            t[i] = (w1 + w2) / (w1 / m[i - 1] + w2 / m[i])
-    return t
-
-
-def _densify_road(points, max_seg=ROAD_SLAB_MAX_CM):
-    """Splits an edge polyline into short slabs: XY stays on the original polyline (AI lines unchanged),
-    Z follows a monotone cubic over distance, so consecutive slabs differ by a fraction of a degree and
-    their overlaps never poke up as visible steps on ramps and bridge approaches."""
-    if len(points) < 2:
-        return list(points)
-    d = [0.0]
-    for a, b in zip(points, points[1:]):
-        d.append(d[-1] + math.hypot(b[0] - a[0], b[1] - a[1]))
-    z = [p[2] for p in points]
-    t = _pchip_slopes(d, z) if len(points) > 2 else [(z[1] - z[0]) / max(d[1], 1.0)] * 2
-    out = [tuple(points[0])]
-    for i in range(len(points) - 1):
-        a, b = points[i], points[i + 1]
-        h = d[i + 1] - d[i]
-        n = max(1, int(math.ceil(h / max_seg)))
-        for k in range(1, n + 1):
-            u = k / float(n)
-            h00, h10 = 2 * u ** 3 - 3 * u ** 2 + 1, u ** 3 - 2 * u ** 2 + u
-            h01, h11 = -2 * u ** 3 + 3 * u ** 2, u ** 3 - u ** 2
-            zz = h00 * z[i] + h10 * h * t[i] + h01 * z[i + 1] + h11 * h * t[i + 1]
-            # XY: Catmull-Rom through the network samples (same curve the network was sampled from), so slabs
-            # turn gradually instead of kinking every 15 m; deviation from walls/AI lines is a few cm.
-            p0, p3 = points[max(0, i - 1)], points[min(len(points) - 1, i + 2)]
-            cx = 0.5 * (2 * a[0] + (-p0[0] + b[0]) * u + (2 * p0[0] - 5 * a[0] + 4 * b[0] - p3[0]) * u * u
-                        + (-p0[0] + 3 * a[0] - 3 * b[0] + p3[0]) * u ** 3)
-            cy = 0.5 * (2 * a[1] + (-p0[1] + b[1]) * u + (2 * p0[1] - 5 * a[1] + 4 * b[1] - p3[1]) * u * u
-                        + (-p0[1] + 3 * a[1] - 3 * b[1] + p3[1]) * u ** 3)
-            out.append((cx, cy, zz))
-    return out
-
-
 def build_road_geometry(nodes, edges):
-    """Constructs continuous smooth curved & sloped drivable asphalt/cobblestone/dirt roads,
-    sidewalks, viaduct support piers, embankment retaining slopes, and intersection pads via HISM batching."""
-    roads = HismBatcher("Karamara_RoadNetwork_HISM", "RoadNetwork/HISM")
-
-    # Pre-index road segments so sidewalks, embankments, and piers NEVER intrude into intersecting or lower roads!
-    all_segs = []
-    for e in edges:
-        ep = e["points"]
-        hw = e["width"] * 0.5
-        for k in range(len(ep) - 1):
-            u, v = ep[k], ep[k + 1]
-            all_segs.append((
-                e["index"], hw,
-                min(u[0], v[0]) - hw - 1800.0, max(u[0], v[0]) + hw + 1800.0,
-                min(u[1], v[1]) - hw - 1800.0, max(u[1], v[1]) + hw + 1800.0,
-                u[0], u[1], u[2], v[0], v[1], v[2],
-            ))
-
-    def hits_other_road(own_idx, x, y, z, pad_cm, z_tol_cm=220.0, only_lower=False):
-        for eidx, hw, minx, maxx, miny, maxy, ax, ay, az, bx, by, bz in all_segs:
-            if eidx == own_idx or x < minx or x > maxx or y < miny or y > maxy:
-                continue
-            vx, vy = bx - ax, by - ay
-            l2 = vx * vx + vy * vy
-            t = 0.0 if l2 < 1.0 else max(0.0, min(1.0, ((x - ax) * vx + (y - ay) * vy) / l2))
-            qx, qy, qz = ax + vx * t, ay + vy * t, az + (bz - az) * t
-            if only_lower:
-                if qz >= z - 60.0:
-                    continue
-            elif abs(qz - z) > z_tol_cm:
-                continue
-            if math.hypot(x - qx, y - qy) < hw + pad_cm:
-                return True
-        return False
-
-    # Track widest incident edge & degree/slope per node for clean circular junction pads
-    node_width = {nid: 1400.0 for nid in nodes}
-    node_mat = {nid: ("MI_Asphalt", "PM_Asphalt") for nid in nodes}
-    node_degree = {nid: 0 for nid in nodes}
-    node_sloped = {nid: False for nid in nodes}
-    for e in edges:
-        a_id, b_id = e["node_a"], e["node_b"]
-        node_width[a_id] = max(node_width[a_id], e["width"])
-        node_width[b_id] = max(node_width[b_id], e["width"])
-        node_degree[a_id] += 1
-        node_degree[b_id] += 1
-        pts_e = e["points"]
-        if len(pts_e) >= 2:
-            if abs(pts_e[1][2] - pts_e[0][2]) > 45.0:
-                node_sloped[a_id] = True
-            if abs(pts_e[-1][2] - pts_e[-2][2]) > 45.0:
-                node_sloped[b_id] = True
-
-    for e in edges:
-        w = e["width"]
-        is_dirt = e["dirt"]
-        is_carsi = (e["node_a"] in (8, 9, 10, 11) and e["node_b"] in (8, 9, 10, 11) and abs(e["points"][0][1] - 16000.0) < 200.0)
-        zs = [q[2] for q in e["points"]]
-        # Ramps get 2 m slabs: on a slope any yaw change between slabs shows as a crease.
-        pts = _densify_road(e["points"], 200.0 if max(zs) - min(zs) > 50.0 else ROAD_SLAB_MAX_CM)
-        is_old_yamac = (e["district"] == knet.DIST_YAMAC and e["node_a"] in (32, 33, 34) and e["node_b"] in (32, 33, 34))
-        if is_dirt:
-            mat = "MI_Dirt"
-        elif is_carsi or is_old_yamac:
-            mat = "MI_Cobblestone"
-        elif e["highway"]:
-            mat = "MI_HighwayAsphalt"
+    """Places the vertex-welded single-piece Karamara road network meshes (asphalt, highway,
+    cobblestone, dirt, seamless bevelled sidewalks, continuous walls/NJ barriers, viaduct
+    box-girders, and aligned lane/crosswalk markings) with zero slab seams or intersection overlaps."""
+    for name, _mats, phys_name, coll_mode, cast_shadow in bn_road_mesh.ROAD_MESH_MANIFEST:
+        sm = ROAD_MESHES.get(name)
+        if sm is None:
+            raise RuntimeError("Missing single-piece road StaticMesh: " + name)
+        actor = spawn(unreal.StaticMeshActor, name, (0.0, 0.0, 0.0), folder="RoadNetwork/SinglePiece")
+        comp = actor.static_mesh_component
+        comp.set_static_mesh(sm)
+        comp.set_editor_property("cast_shadow", bool(cast_shadow))
+        if phys_name:
+            comp.set_phys_material_override(PM[phys_name])
+        if coll_mode == "none":
+            comp.set_collision_profile_name("NoCollision")
+            comp.set_collision_enabled(unreal.CollisionEnabled.NO_COLLISION)
         else:
-            mat = "MI_Asphalt"
-        phys = "PM_Dirt" if is_dirt else "PM_Asphalt"
-
-        if is_dirt:
-            node_mat[e["node_a"]] = ("MI_Dirt", "PM_Dirt")
-            node_mat[e["node_b"]] = ("MI_Dirt", "PM_Dirt")
-
-        pier_accum = 2200.0
-        na_pos, nb_pos = nodes[e["node_a"]]["pos"], nodes[e["node_b"]]["pos"]
-        na_clear = node_width[e["node_a"]] * 0.65 + 450.0
-        nb_clear = node_width[e["node_b"]] * 0.65 + 450.0
-
-        for i in range(len(pts) - 1):
-            a, b = pts[i], pts[i + 1]
-            dx, dy, dz = b[0] - a[0], b[1] - a[1], b[2] - a[2]
-            dxy = math.hypot(dx, dy)
-            seg3d = math.sqrt(dxy * dxy + dz * dz)
-            if seg3d < 10.0:
-                continue
-            yaw = math.degrees(math.atan2(dy, dx))
-            pitch = math.degrees(math.atan2(dz, dxy))
-            mx, my, mz = 0.5 * (a[0] + b[0]), 0.5 * (a[1] + b[1]), 0.5 * (a[2] + b[2])
-
-            # 46 cm thick drivable slab; short slabs + a small fixed overlap keep joints seamless (see _densify_road)
-            slab_len_m = (seg3d + ROAD_SLAB_OVERLAP_CM) / 100.0
-            slab_w_m = w / 100.0
-            thick_cm = 46.0
-            roads.add("RoadSeg", (mx, my, mz - thick_cm * 0.5), (slab_len_m, slab_w_m, thick_cm / 100.0),
-                      mat, phys, collision=True, yaw=yaw, pitch=pitch, cast_shadow=False)
-
-            # Lane markings (center yellow dashes, white edges, + dashed multi-lane dividers on >= 18m boulevards/highways)
-            if not is_dirt:
-                roads.add("CenterLine", (mx, my, mz + 1.8), (slab_len_m * 0.52, 0.16, 0.02),
-                          "MI_LineYellow", None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=28000)
-                nx, ny = -dy / dxy, dx / dxy
-                for side in (-1.0, 1.0):
-                    eo = (w * 0.5 - 55.0) * side
-                    roads.add("EdgeLine", (mx + nx * eo, my + ny * eo, mz + 1.5), (slab_len_m, 0.14, 0.02),
-                              "MI_LineWhite", None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=28000)
-                    if w >= 1800.0:
-                        lo = (w * 0.25) * side
-                        roads.add("LaneDash", (mx + nx * lo, my + ny * lo, mz + 1.6), (slab_len_m * 0.42, 0.12, 0.02),
-                                  "MI_LineWhite", None, collision=False, yaw=yaw, pitch=pitch, cast_shadow=False, cull_cm=26000)
-
-                # Raised urban sidewalks along flat Merkez / Sanayi / Yamac streets — strictly clear of junctions!
-                if not e["highway"] and e["district"] in (knet.DIST_MERKEZ, knet.DIST_SANAYI, knet.DIST_YAMAC):
-                    near_junction = (
-                        math.hypot(mx - na_pos[0], my - na_pos[1]) < na_clear
-                        or math.hypot(mx - nb_pos[0], my - nb_pos[1]) < nb_clear
-                    )
-                    if not near_junction:
-                        sw_w = 300.0
-                        for side in (-1.0, 1.0):
-                            so = (w * 0.5 + sw_w * 0.5) * side
-                            sx, sy = mx + nx * so, my + ny * so
-                            if not hits_other_road(e["index"], sx, sy, mz, pad_cm=260.0, z_tol_cm=200.0):
-                                roads.add("Sidewalk", (sx, sy, mz - 12.0),
-                                          (slab_len_m, sw_w / 100.0, 0.52), "MI_Sidewalk", "PM_Concrete",
-                                          collision=True, yaw=yaw, pitch=pitch, cast_shadow=False)
-
-            # Structural support under elevated segments (Z > 120 cm)
-            if mz > 120.0:
-                is_bridge_span = (e["node_a"], e["node_b"]) in ((20, 21), (21, 20))
-                over_lower_road = hits_other_road(e["index"], mx, my, mz, pad_cm=w * 0.55 + 250.0, only_lower=True)
-                if (e["highway"] or over_lower_road) and not is_bridge_span:
-                    roads.add("ViaductGirder", (mx, my, mz - 95.0), (slab_len_m, slab_w_m * 0.86, 1.3),
-                              "MI_Concrete", "PM_Concrete", collision=True, yaw=yaw, pitch=pitch, cast_shadow=True)
-                    pier_accum += seg3d
-                    if pier_accum >= 4500.0 and not over_lower_road:
-                        pier_accum = 0.0
-                        pier_h = mz + 120.0
-                        roads.add("ViaductPier", (mx, my, (mz - 100.0) * 0.5 - 60.0),
-                                  (2.6, 2.6, pier_h / 100.0), "MI_Concrete", "PM_Concrete",
-                                  collision=True, mesh=CYLINDER, cast_shadow=True)
-                elif not is_bridge_span:
-                    emb_h = mz + 240.0
-                    roads.add("Embankment", (mx, my, mz - 42.0 - emb_h * 0.5),
-                              (slab_len_m * 1.04, slab_w_m * 1.24, emb_h / 100.0),
-                              "MI_MountainRock" if e["district"] == knet.DIST_GECIT else "MI_Concrete",
-                              "PM_Concrete", collision=True, yaw=yaw, pitch=0.0, cast_shadow=False)
-
-    # Circular intersection blend pads at multi-way junctions (skip degree-2 pass-through sloped nodes so a flat pad
-    # never juts out as a horizontal shelf above a climbing ramp like Eski Liman Koprusu!)
-    for nid, n in nodes.items():
-        if node_degree[nid] <= 2 and (node_sloped[nid] or nid in (20, 21)):
-            continue
-        x, y, z = n["pos"]
-        scale_f = 0.85 if node_sloped[nid] else 1.18
-        dia_m = (node_width[nid] * scale_f) / 100.0
-        nmat, nphys = node_mat[nid]
-        roads.add("JunctionPad", (x, y, z - 24.5), (dia_m, dia_m, 0.45),
-                  nmat, nphys, collision=True, mesh=CYLINDER, cast_shadow=False)
+            comp.set_collision_profile_name("BlockAll")
+            comp.set_collision_enabled(unreal.CollisionEnabled.QUERY_AND_PHYSICS)
 
 
 def export_road_graph_asset(nodes, edges):

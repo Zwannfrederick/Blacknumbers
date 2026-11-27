@@ -268,11 +268,20 @@ bool FBNPolishVisualsAndActivitiesPIETest::RunTest(const FString& Parameters)
 
 		// 4. Verify new visual assets exist in /Game/
 		TestTrue(TEXT("Khronos CarConcept GrandTourer mesh imported"), FPackageName::DoesPackageExist(TEXT("/Game/Vehicles/GrandTourer/SM_BN_GrandTourer")));
+		TestTrue(TEXT("CC0 BMW M6 (Valken RS-4) mesh imported"), FPackageName::DoesPackageExist(TEXT("/Game/Vehicles/External/SM_Ext_ValkenRS4")));
+		TestTrue(TEXT("CC0 Pontiac GTO (Vandal 440R) mesh imported"), FPackageName::DoesPackageExist(TEXT("/Game/Vehicles/External/SM_Ext_Vandal440R")));
+		TestTrue(TEXT("CC-BY BMW X5 (Tauron V6 Rally) mesh imported"), FPackageName::DoesPackageExist(TEXT("/Game/Vehicles/External/SM_Ext_TauronV6Rally")));
+		TestTrue(TEXT("CC-BY BMW X5 (Heavy Rhino SUV) mesh imported"), FPackageName::DoesPackageExist(TEXT("/Game/Vehicles/External/SM_Ext_HeavyRhino")));
+		TestTrue(TEXT("3D modular GlassTower building mesh exists"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_Bldg_GlassTower")));
+		TestTrue(TEXT("3D modular AptBrick building mesh exists"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_Bldg_AptBrick")));
+		TestTrue(TEXT("3D modular YamacVillaA building mesh exists"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_Bldg_YamacVillaA")));
+		TestTrue(TEXT("3D modular FactoryHall building mesh exists"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_Bldg_FactoryHall")));
 		TestTrue(TEXT("Sculpted GT wing glTF mesh exists"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_Aero_GTWing")));
 		TestTrue(TEXT("Traffic SUV glTF mesh exists"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_Traffic_SUV")));
 		TestTrue(TEXT("Cloud sky dome glTF mesh exists"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_SkyDome")));
 		TestTrue(TEXT("Stunt jump ramp glTF mesh exists"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/SM_BN_JumpRamp")));
 		TestTrue(TEXT("Poly Haven CC0 fire hydrant mesh imported"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/CC0/SM_CC0_FireHydrant")));
+		TestTrue(TEXT("Poly Haven CC0 iron gate mesh imported"), FPackageName::DoesPackageExist(TEXT("/Game/World/Meshes/CC0/SM_CC0_IronGate")));
 		return true;
 	}));
 	ADD_LATENT_AUTOMATION_COMMAND(FEndPlayMapCommand());

@@ -52,6 +52,18 @@ struct BLACKNUMBERS_API FBNHeatTierSpec
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Heat")
 	bool bRoadblocksEnabled = false;
 
+	/** True from Heat 3 onward (MW 2005 Heavy Rhino SUV interceptors). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Heat")
+	bool bRhinosEnabled = false;
+
+	/** True from Heat 4 onward (MW 2005 Spike Strips at roadblocks + Police Helicopter). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Heat")
+	bool bSpikesEnabled = false;
+
+	/** Bounty multiplier matching Heat tier (1x..11x). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Heat")
+	int32 BountyMultiplier = 1;
+
 	/** True from Heat 6 onward (after identity exposure R4, Kanon §8). */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Heat")
 	bool bDemirInvolved = false;
@@ -110,6 +122,10 @@ struct BLACKNUMBERS_API FBNPursuitState
 	int32 AmbientChatterIndex = 0;
 	bool bInsideCooldownSpot = false;
 	FString ActiveCooldownSpotName;
+	/** Pending boss milestone bitmask qualified in this pursuit (permanently banked upon Escape!). */
+	int32 PendingMilestonesMask = 0;
+	FString MilestoneBannerText;
+	float MilestoneBannerSeconds = 0.f;
 	FBNDispatchLine ActiveRadio;
 
 	void StartPursuit(int32 InitialHeat = 1);

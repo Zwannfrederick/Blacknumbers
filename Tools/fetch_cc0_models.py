@@ -19,7 +19,7 @@ CACHE_DIR = os.path.join(PROJECT_DIR, "Saved", "CC0ModelsCache")
 STAMP_PATH = os.path.join(CACHE_DIR, ".cc0_models_manifest_hash")
 UE_CC0_DIR = "/Game/World/Meshes/CC0"
 
-# All 19 assets are CC0 1.0 Public Domain from Poly Haven (verified 0.67-7.4 MB 1K glTF each).
+# All 36 assets are CC0 1.0 Public Domain from Poly Haven (verified 1.6-16.8 MB 1K glTF each).
 # Tuple: (ue_mesh_name, polyhaven_id, lod_percent_triangles, default_scale)
 CC0_MODELS = [
     ("SM_CC0_ConcreteBarrier",   "concrete_road_barrier",    0.50, 1.0),
@@ -41,13 +41,31 @@ CC0_MODELS = [
     ("SM_CC0_Barrel",            "Barrel_01",                0.55, 1.0),
     ("SM_CC0_ToolChest",         "metal_tool_chest",         0.50, 1.0),
     ("SM_CC0_Boulder",           "boulder_01",               0.42, 1.0),
+    # --- Expanded Real 3D Architectural Facades, Street Lamps, Urban Props & Shrubs ---
+    ("SM_CC0_UrbanApartmentFacade", "modular_urban_apartments_facade", 0.40, 1.0),
+    ("SM_CC0_FactoryFacade",        "modular_factory_facade",          0.40, 1.0),
+    ("SM_CC0_ShutterWindow",        "rollershutter_window_01",         0.50, 1.0),
+    ("SM_CC0_MetalGutter",          "modular_metal_gutter",            0.50, 1.0),
+    ("SM_CC0_AirDuct",              "modular_airduct_circular_01",     0.50, 1.0),
+    ("SM_CC0_ElectricityPole",      "modular_electricity_poles",       0.45, 1.0),
+    ("SM_CC0_IronGate",             "large_iron_gate",                 0.50, 1.0),
+    ("SM_CC0_StreetLampA",          "street_lamp_01",                  0.45, 1.0),
+    ("SM_CC0_StreetLampB",          "street_lamp_02",                  0.45, 1.0),
+    ("SM_CC0_SecurityLight",        "security_light",                  0.50, 1.0),
+    ("SM_CC0_TrashBag",             "trashbag",                        0.45, 1.0),
+    ("SM_CC0_WoodenCrate",          "wooden_crate_01",                 0.50, 1.0),
+    ("SM_CC0_Lifebuoy",             "lifebuoy",                        0.50, 1.0),
+    ("SM_CC0_PlanterBox",           "planter_box_01",                  0.50, 1.0),
+    ("SM_CC0_ToolCart",             "tool_cart",                       0.45, 1.0),
+    ("SM_CC0_WheelRim",             "rusted_wheel_rim_01",             0.45, 1.0),
+    ("SM_CC0_Shrub",                "shrub_01",                        0.40, 1.0),
 ]
 
 UA = {"User-Agent": "BlackNumbers-UE5-CC0ModelFetcher/1.0"}
 
 
 def _manifest_sig():
-    return hashlib.sha256((json.dumps(CC0_MODELS) + "|v1").encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha256((json.dumps(CC0_MODELS) + "|v2_urban_facades").encode("utf-8")).hexdigest()[:16]
 
 
 def _fetch_bytes(url, timeout=30):
@@ -264,7 +282,7 @@ def import_to_ue(force_reimport=False):
                     diag = max(1.0, (ext.x * ext.x + ext.y * ext.y + ext.z * ext.z) ** 0.5)
                 except Exception:
                     pass
-                penalty = 0.05 if any(k in name_l for k in ("bracket", "cable", "chain", "cap_", "latch", "wheel", "aged")) else 1.0
+                penalty = 0.05 if any(k in name_l for k in ("bracket", "cable", "chain", "cap_", "latch", "wheel", "aged", "bolt", "plug", "coupler", "graffiti", "bracing")) else 1.0
                 score = (max(tris, 10) * diag) * penalty
                 if score > best_score:
                     best_score = score
@@ -285,11 +303,8 @@ def import_to_ue(force_reimport=False):
 
         try:
             if best_tris > 1800 and lod_frac < 0.95:
-                red = unreal.MeshReductionSettings()
-                red.set_editor_property("percent_triangles", float(lod_frac))
-                opts = unreal.StaticMeshReductionOptions()
-                opts.set_editor_property("reduction_settings", [red])
-                opts.set_editor_property("auto_compute_lod_screen_size", True)
+                red = unreal.StaticMeshReductionSettings(percent_triangles=float(lod_frac), screen_size=1.0)
+                opts = unreal.StaticMeshReductionOptions(reduction_settings=[red], auto_compute_lod_screen_size=True)
                 sm_sub.set_lods(best_mesh, opts)
         except Exception:
             pass

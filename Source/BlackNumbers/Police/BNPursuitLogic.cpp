@@ -3,23 +3,24 @@
 namespace
 {
 	constexpr float ResultBannerSeconds = 4.5f;
-	constexpr float BustRadiusCm = 1300.f;
-	constexpr float BustMaxSpeedKmh = 20.f;
-	constexpr float BustFillSeconds = 4.0f;
-	constexpr float BustDecayPerSecond = 0.6f;
+	constexpr float BustRadiusCm = 1400.f;
+	constexpr float BustMaxSpeedKmh = 26.f;
+	constexpr float BustFillSeconds = 4.2f;
+	constexpr float BustDecayPerSecond = 0.65f;
 
-	constexpr float BreakSightDistanceCm = 9500.f;
-	constexpr float RegainSightDistanceCm = 7000.f;
-	constexpr float CooldownBreakDistanceCm = 5500.f;
+	constexpr float BreakSightDistanceCm = 9800.f;
+	constexpr float RegainSightDistanceCm = 7200.f;
+	constexpr float CooldownBreakDistanceCm = 5600.f;
 	constexpr float EvadeFillSeconds = 3.5f;
 	constexpr float HidingSpeedKmh = 30.f;
-	constexpr float HidingCooldownMultiplier = 1.6f;
-	constexpr float CooldownSpotMultiplier = 3.5f;
+	constexpr float HidingCooldownMultiplier = 1.65f;
+	constexpr float CooldownSpotMultiplier = 4.0f;
 
-	constexpr int32 BountyPerSecondPerHeat = 120;
-	constexpr int32 BountyPerDisabledPerHeat = 5000;
-	constexpr int32 BountyPerInfractionPerHeat = 750;
-	constexpr int32 BountyPerDodge = 2500;
+	constexpr int32 BountyPerSecondPerHeat = 220;
+	constexpr int32 BountyPerDisabledPerHeat = 6500;
+	constexpr int32 BountyPerBreakerPerHeat = 7500;
+	constexpr int32 BountyPerInfractionPerHeat = 1500;
+	constexpr int32 BountyPerDodge = 4000;
 	constexpr float SpeedingKmh = 150.f;
 	constexpr float ResistingArrestSeconds = 30.f;
 	/** Scanner silence (s) before an ambient line is posted, and how long that line stays up. */
@@ -67,70 +68,73 @@ FBNHeatTierSpec FBNHeatTierSpec::ForLevel(int32 HeatLevel)
 	const int32 Level = FMath::Clamp(HeatLevel, 1, 11);
 	FBNHeatTierSpec Spec;
 	Spec.Level = Level;
-	Spec.bRoadblocksEnabled = Level >= 3;
+	Spec.bRoadblocksEnabled = Level >= 2;
+	Spec.bRhinosEnabled = Level >= 3;
+	Spec.bSpikesEnabled = Level >= 4;
+	Spec.BountyMultiplier = Level;
 	Spec.bDemirInvolved = Level >= 6;
 
 	switch (Level)
 	{
 	case 1:
-		Spec.Label = TEXT("HEAT 1");
-		Spec.MaxActiveUnits = 1;
-		Spec.UnitSkill = 0.60f;
-		Spec.MaxPursuitSpeedKmh = 175.f;
+		Spec.Label = TEXT("HEAT 1 — DEVRİYE");
+		Spec.MaxActiveUnits = 2;
+		Spec.UnitSkill = 0.62f;
+		Spec.MaxPursuitSpeedKmh = 180.f;
 		Spec.Aggression = 0.35f;
-		Spec.CooldownSeconds = 12.f;
+		Spec.CooldownSeconds = 11.f;
 		Spec.HeatThresholdSeconds = 0.f;
 		Spec.CollateralThresholdDollars = 0;
 		break;
 	case 2:
-		Spec.Label = TEXT("HEAT 2");
-		Spec.MaxActiveUnits = 2;
-		Spec.UnitSkill = 0.70f;
-		Spec.MaxPursuitSpeedKmh = 192.f;
-		Spec.Aggression = 0.48f;
-		Spec.CooldownSeconds = 14.f;
+		Spec.Label = TEXT("HEAT 2 — TAKİP");
+		Spec.MaxActiveUnits = 3;
+		Spec.UnitSkill = 0.72f;
+		Spec.MaxPursuitSpeedKmh = 196.f;
+		Spec.Aggression = 0.50f;
+		Spec.CooldownSeconds = 13.5f;
 		Spec.HeatThresholdSeconds = 25.f;
-		Spec.CollateralThresholdDollars = 20000;
+		Spec.CollateralThresholdDollars = 18000;
 		break;
 	case 3:
-		Spec.Label = TEXT("HEAT 3");
-		Spec.MaxActiveUnits = 3;
-		Spec.UnitSkill = 0.78f;
-		Spec.MaxPursuitSpeedKmh = 208.f;
-		Spec.Aggression = 0.62f;
+		Spec.Label = TEXT("HEAT 3 — AĞIR RHINO");
+		Spec.MaxActiveUnits = 4;
+		Spec.UnitSkill = 0.80f;
+		Spec.MaxPursuitSpeedKmh = 212.f;
+		Spec.Aggression = 0.65f;
 		Spec.CooldownSeconds = 16.f;
 		Spec.HeatThresholdSeconds = 55.f;
-		Spec.CollateralThresholdDollars = 55000;
+		Spec.CollateralThresholdDollars = 50000;
 		break;
 	case 4:
-		Spec.Label = TEXT("HEAT 4");
-		Spec.MaxActiveUnits = 4;
-		Spec.UnitSkill = 0.86f;
-		Spec.MaxPursuitSpeedKmh = 222.f;
-		Spec.Aggression = 0.76f;
-		Spec.CooldownSeconds = 18.f;
+		Spec.Label = TEXT("HEAT 4 — DİKENLİ ŞERİT");
+		Spec.MaxActiveUnits = 5;
+		Spec.UnitSkill = 0.88f;
+		Spec.MaxPursuitSpeedKmh = 226.f;
+		Spec.Aggression = 0.78f;
+		Spec.CooldownSeconds = 18.5f;
 		Spec.HeatThresholdSeconds = 95.f;
-		Spec.CollateralThresholdDollars = 100000;
+		Spec.CollateralThresholdDollars = 95000;
 		break;
 	case 5:
-		Spec.Label = TEXT("HEAT 5");
-		Spec.MaxActiveUnits = 5;
-		Spec.UnitSkill = 0.92f;
-		Spec.MaxPursuitSpeedKmh = 236.f;
-		Spec.Aggression = 0.88f;
+		Spec.Label = TEXT("HEAT 5 — ELİT KORDON");
+		Spec.MaxActiveUnits = 6;
+		Spec.UnitSkill = 0.94f;
+		Spec.MaxPursuitSpeedKmh = 242.f;
+		Spec.Aggression = 0.90f;
 		Spec.CooldownSeconds = 21.f;
 		Spec.HeatThresholdSeconds = 140.f;
-		Spec.CollateralThresholdDollars = 160000;
+		Spec.CollateralThresholdDollars = 155000;
 		break;
 	case 6:
-		Spec.Label = TEXT("HEAT 6 - DEMIR");
-		Spec.MaxActiveUnits = 5;
-		Spec.UnitSkill = 0.95f;
-		Spec.MaxPursuitSpeedKmh = 245.f;
-		Spec.Aggression = 0.92f;
+		Spec.Label = TEXT("HEAT 6 — DEMİR");
+		Spec.MaxActiveUnits = 6;
+		Spec.UnitSkill = 0.96f;
+		Spec.MaxPursuitSpeedKmh = 248.f;
+		Spec.Aggression = 0.93f;
 		Spec.CooldownSeconds = 23.f;
 		Spec.HeatThresholdSeconds = 190.f;
-		Spec.CollateralThresholdDollars = 250000;
+		Spec.CollateralThresholdDollars = 240000;
 		break;
 	case 7:
 	case 8:
@@ -138,21 +142,21 @@ FBNHeatTierSpec FBNHeatTierSpec::ForLevel(int32 HeatLevel)
 	case 10:
 	{
 		const int32 Step = Level - 6;
-		Spec.Label = FString::Printf(TEXT("HEAT %d - DEMIR"), Level);
-		Spec.MaxActiveUnits = Level >= 9 ? 6 : 5;
-		Spec.UnitSkill = FMath::Clamp(0.95f + Step * 0.012f, 0.f, 1.f);
-		Spec.MaxPursuitSpeedKmh = 245.f + Step * 3.f;
-		Spec.Aggression = FMath::Clamp(0.92f + Step * 0.02f, 0.f, 1.f);
+		Spec.Label = FString::Printf(TEXT("HEAT %d — DEMİR"), Level);
+		Spec.MaxActiveUnits = 6;
+		Spec.UnitSkill = FMath::Clamp(0.96f + Step * 0.010f, 0.f, 1.f);
+		Spec.MaxPursuitSpeedKmh = 248.f + Step * 3.f;
+		Spec.Aggression = FMath::Clamp(0.93f + Step * 0.017f, 0.f, 1.f);
 		Spec.CooldownSeconds = 23.f + Step * 0.75f;
 		Spec.HeatThresholdSeconds = 190.f + Step * 45.f;
-		Spec.CollateralThresholdDollars = 250000 + Step * 75000;
+		Spec.CollateralThresholdDollars = 240000 + Step * 75000;
 		break;
 	}
 	default: // 11 = Special Tier
-		Spec.Label = TEXT("OZEL KADEME");
+		Spec.Label = TEXT("ÖZEL KADEME");
 		Spec.MaxActiveUnits = 6;
 		Spec.UnitSkill = 1.0f;
-		Spec.MaxPursuitSpeedKmh = 260.f;
+		Spec.MaxPursuitSpeedKmh = 264.f;
 		Spec.Aggression = 1.0f;
 		Spec.CooldownSeconds = 26.f;
 		Spec.HeatThresholdSeconds = 400.f;
@@ -179,6 +183,9 @@ void FBNPursuitState::StartPursuit(int32 InitialHeat)
 	RoadblocksDodged = 0;
 	SpikeStripsDodged = 0;
 	RadioIdleSeconds = 0.f;
+	PendingMilestonesMask = 0;
+	MilestoneBannerText.Reset();
+	MilestoneBannerSeconds = 0.f;
 
 	if (HeatLevel >= 11)
 	{
@@ -278,6 +285,9 @@ void FBNPursuitState::EndPursuitImmediate()
 	EvadeMeter = 0.f;
 	bInsideCooldownSpot = false;
 	ActiveCooldownSpotName.Reset();
+	PendingMilestonesMask = 0;
+	MilestoneBannerText.Reset();
+	MilestoneBannerSeconds = 0.f;
 	ActiveRadio = FBNDispatchLine();
 }
 
@@ -294,9 +304,21 @@ void FBNPursuitState::TryEscalateHeat()
 				PostDispatch(TEXT("BAŞKOMİSER DEMİR"),
 					FString::Printf(TEXT("%s! Kordonu daraltın, kaçmasına izin vermeyin!"), *Next.Label));
 			}
-			else if (Next.bRoadblocksEnabled && HeatLevel == 3)
+			else if (HeatLevel == 2)
 			{
-				PostDispatch(TEXT("MERKEZ"), TEXT("Heat 3 aktif! K. Vance için yol barikatları kurulsun."));
+				PostDispatch(TEXT("MERKEZ"), TEXT("Heat 2! Yol barikatları ve PIT manevrası serbest bırakıldı!"));
+			}
+			else if (HeatLevel == 3)
+			{
+				PostDispatch(TEXT("MERKEZ"), TEXT("Heat 3 aktif! Ağır Rhino SUV birimleri bölgeye sevk edildi!"));
+			}
+			else if (HeatLevel == 4)
+			{
+				PostDispatch(TEXT("MERKEZ"), TEXT("Heat 4! Barikatlara dikenli şerit ve Hava-1 helikopteri konuşlandırıldı!"));
+			}
+			else if (HeatLevel == 5)
+			{
+				PostDispatch(TEXT("MERKEZ"), TEXT("HEAT 5! Elit yüksek hızlı kordon ekipleri devrede — tüm yolları kesin!"));
 			}
 			else
 			{
@@ -349,6 +371,7 @@ void FBNPursuitState::RecordUnitDisabled(int32 BonusDollars)
 void FBNPursuitState::RecordPursuitBreaker(int32 CollateralDollars, int32 DisabledCount)
 {
 	++BreakersTriggered;
+	Bounty += HeatLevel * BountyPerBreakerPerHeat;
 	AddInfraction(EBNInfraction::PropertyDamage);
 	for (int32 i = 0; i < DisabledCount; ++i)
 	{
@@ -368,6 +391,10 @@ void FBNPursuitState::Update(float DeltaSeconds, float PlayerSpeedKmh, float Nea
 	if (ActiveRadio.RemainingSeconds > 0.f)
 	{
 		ActiveRadio.RemainingSeconds = FMath::Max(0.f, ActiveRadio.RemainingSeconds - Dt);
+	}
+	if (MilestoneBannerSeconds > 0.f)
+	{
+		MilestoneBannerSeconds = FMath::Max(0.f, MilestoneBannerSeconds - Dt);
 	}
 
 	if (Phase == EBNPursuitPhase::Busted || Phase == EBNPursuitPhase::Escaped)

@@ -29,6 +29,42 @@ enum class EBNTarikAttitude : uint8
 
 enum class EBNRivalStyle : uint8 { Balanced, LateBrake, DefendLine, FastExit };
 
+struct FBNPursuitState;
+
+/** NFS Most Wanted 2005-style Pursuit / Open-World Milestone requirement for Blacklist bosses. */
+UENUM(BlueprintType)
+enum class EBNMilestoneType : uint8
+{
+	PursuitDurationSec,
+	CopsDisabled,
+	CostToState,
+	RoadblocksDodged,
+	SpikeStripsDodged,
+	SpeedTrapKmh,
+	PursuitEscapeHeat,
+};
+
+USTRUCT(BlueprintType)
+struct BLACKNUMBERS_API FBNBossMilestone
+{
+	GENERATED_BODY()
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	EBNMilestoneType Type = EBNMilestoneType::PursuitDurationSec;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 TargetValue = 45;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 BonusBounty = 5000;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString Title;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString Description;
+};
+
 /** Canonical BLACK NUMBERS syndicate racer (#16..#01). */
 USTRUCT(BlueprintType)
 struct BLACKNUMBERS_API FBNBossSpec
@@ -96,6 +132,24 @@ struct BLACKNUMBERS_API FBNBossSpec
 
 	UPROPERTY(BlueprintReadOnly, Category = "Story")
 	EBNDistrict HomeDistrict = EBNDistrict::MerkezBulvar;
+
+	/** NFS Most Wanted 2005 Blacklist 3-gate progression requirements (Races + Milestones + Total Bounty). */
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 RequiredBounty = 10000;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 RequiredMilestones = 1;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	TArray<FBNBossMilestone> Milestones;
+
+	/** Short stylized street tag word shown in MW Blacklist graffiti stamp. */
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString TagWord;
+
+	/** Iconic 2-line rival bio / street taunt shown on the MW Blacklist screen. */
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	FString TauntQuote;
 };
 
 /** Most Wanted / Carbon-style borough territory & District Ruler control record. */
@@ -215,6 +269,24 @@ struct BLACKNUMBERS_API FBNStoryState
 	UPROPERTY(BlueprintReadOnly, Category = "Story")
 	int32 FinalCityDamageDollars = 0;
 
+	/** Career banked Bounty (earned by escaping pursuits & completing Milestones — MW 2005 style!). */
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 TotalBounty = 0;
+
+	/** Bitmask (bits 0..2) for completed Milestones on the active NextBossRank (resets per boss). */
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 CurrentBossMilestonesMask = 0;
+
+	/** Impound Strikes (0..3) incremented on Busted; resets to 0 after bail/tow strike-out. */
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 ImpoundStrikes = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 TotalPursuitsEscaped = 0;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Story")
+	int32 TotalBustedCount = 0;
+
 	UPROPERTY(BlueprintReadOnly, Category = "Story")
 	TArray<FString> UnlockedEvidenceNotes;
 
@@ -223,7 +295,17 @@ struct BLACKNUMBERS_API FBNStoryState
 
 	bool IsBossDefeated(int32 Rank) const;
 	bool CanChallengeBoss(int32 Rank) const;
+	bool AreRacesComplete(int32 Rank) const;
+	bool AreMilestonesComplete(int32 Rank) const;
+	bool IsBountyComplete(int32 Rank) const;
 	bool IsDuelUnlocked(int32 Rank) const;
+	int32 GetCompletedMilestoneCount() const;
+	bool IsMilestoneCompleted(int32 Index) const;
+	bool CompleteMilestone(int32 Index, int32* OutBonusBounty = nullptr);
+	int32 EvaluatePursuitMilestones(const FBNPursuitState& PursuitState, bool bCommit, TArray<FString>* OutNewlyCompleted = nullptr);
+	int32 EvaluateSpeedTrapMilestones(float SpeedKmh, TArray<FString>* OutNewlyCompleted = nullptr);
+	void BankPursuitBounty(int32 BountyAmount);
+	int32 RecordBustedStrike();
 	FName GetNextQualifier() const;
 	bool RecordQualifierVictory(FName RaceAsset);
 	int32 GetQualifierDriftTarget() const;

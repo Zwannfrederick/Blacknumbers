@@ -446,6 +446,13 @@ bool UBNStorySubsystem::ChallengeSelectedBoss(ABNVehiclePawn* PlayerCar, int32 R
 	}
 
 	const FName Qualifier = State.GetNextQualifier();
+	if (Qualifier.IsNone() && !State.IsDuelUnlocked(Rank))
+	{
+		StatusFeedback = FString::Printf(TEXT("Düello kilitli! Dönüm Noktası (%d/%d) ve Toplam Ödül (%s/%s) tamamlanmalı."),
+			State.GetCompletedMilestoneCount(), Spec->RequiredMilestones,
+			*FString::FormatAsNumber(State.TotalBounty), *FString::FormatAsNumber(Spec->RequiredBounty));
+		return false;
+	}
 	ABNRaceEvent* Chosen = FindProgramRace(PlayerCar->GetWorld(),
 		Qualifier.IsNone() ? FName(*Spec->RaceAssetName) : Qualifier);
 	if (!Chosen)
@@ -471,10 +478,142 @@ void UBNStorySubsystem::NotifyStreetRaceWon(FName RaceAsset)
 {
 	if (State.RecordQualifierVictory(RaceAsset))
 	{
-		StatusFeedback = State.GetNextQualifier().IsNone()
-			? FString::Printf(TEXT("#%02d düellosu açıldı. [B] Black Numbers Listesi"), State.NextBossRank)
-			: TEXT("Eleme tamamlandı. Sıradaki yarış [B] Black Numbers Listesi'nde.");
+		StatusFeedback = State.IsDuelUnlocked(State.NextBossRank)
+			? FString::Printf(TEXT("#%02d düellosu açıldı! [B] Kara Liste"), State.NextBossRank)
+			: State.GetNextQualifier().IsNone()
+				? FString::Printf(TEXT("Yarış galibiyetleri tamam! Dönüm noktaları ve Ödül için [B] Kara Liste'ye bak."))
+				: TEXT("Yarış kazanıldı. Sıradaki etkinlik [B] Kara Liste'de.");
 		PostComms(TEXT("SELİN"), StatusFeedback);
+	}
+}
+
+void UBNStorySubsystem::OnPursuitEscaped(const FBNPursuitState& PursuitState, int32& OutMilestonesCompleted, int32& OutBonusBounty)
+{
+	OutMilestonesCompleted = 0;
+	OutBonusBounty = 0;
+	const int32 BountyBefore = State.TotalBounty;
+	State.BankPursuitBounty(PursuitState.Bounty);
+
+	TArray<FString> CompletedTitles;
+	OutMilestonesCompleted = State.EvaluatePursuitMilestones(PursuitState, true, &CompletedTitles);
+	OutBonusBounty = FMath::Max(0, State.TotalBounty - BountyBefore - FMath::Max(0, PursuitState.Bounty));
+
+	if (OutMilestonesCompleted > 0)
+	{
+		PostComms(TEXT("ARDA"),
+			FString::Printf(TEXT("%d Dönüm Noktası onaylandı (+%s Ödül)! Toplam Ödül: %s"),
+				OutMilestonesCompleted, *FString::FormatAsNumber(OutBonusBounty), *FString::FormatAsNumber(State.TotalBounty)),
+			6.2f, FLinearColor(0.95f, 0.72f, 0.14f, 1.f));
+	}
+	else
+	{
+		PostComms(TEXT("SELİN"),
+			FString::Printf(TEXT("Temiz kaçış! +%s Ödül siciline işlendi (Toplam: %s)."),
+				*FString::FormatAsNumber(PursuitState.Bounty), *FString::FormatAsNumber(State.TotalBounty)),
+			5.0f, FLinearColor(0.24f, 0.88f, 0.50f, 1.f));
+	}
+
+	if (State.IsDuelUnlocked(State.NextBossRank))
+	{
+		if (const FBNBossSpec* Boss = FBNStoryState::FindBossByRank(State.NextBossRank))
+		{
+			PostComms(TEXT("SELİN"),
+				FString::Printf(TEXT("#%02d %s DÜELLOSU AÇILDI! [B] Kara Liste'den meydan oku!"), Boss->Rank, *Boss->Name),
+				6.5f, FLinearColor(1.0f, 0.78f, 0.18f, 1.f));
+		}
+	}
+	if (IsInteractiveUIEnabled())
+	{
+		if (UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+		{
+			Prog->SaveProfile();
+		}
+	}
+}
+
+void UBNStorySubsystem::OnPursuitBusted(int32 HeatLevel, UBNProgressionSubsystem* Prog, int32& OutFinePaid, bool& bOutImpoundReset)
+{
+	OutFinePaid = 0;
+	bOutImpoundReset = false;
+	const int32 Strikes = State.RecordBustedStrike();
+	const int32 RawFine = FMath::Max(500, HeatLevel * 600);
+	if (Strikes >= 3)
+	{
+		bOutImpoundReset = true;
+		State.ImpoundStrikes = 0;
+		const int32 TowFine = RawFine * 2;
+		if (Prog)
+		{
+			OutFinePaid = FMath::Min(Prog->GetProfile().Cash, TowFine);
+			Prog->AddCash(-OutFinePaid);
+		}
+		PostComms(TEXT("TARIK"),
+			FString::Printf(TEXT("3/3 BAĞLAMA İHTARI! Aracı otoparktan çekmek $%s tuttu — takip ödülün yandı!"),
+				*FString::FormatAsNumber(OutFinePaid)),
+			6.5f, FLinearColor(0.95f, 0.22f, 0.18f, 1.f));
+	}
+	else
+	{
+		if (Prog)
+		{
+			OutFinePaid = FMath::Min(Prog->GetProfile().Cash, RawFine);
+			Prog->AddCash(-OutFinePaid);
+		}
+		PostComms(TEXT("SELİN"),
+			FString::Printf(TEXT("Yakalandın! İhtar %d/3 • Ceza: $%s • Bankalanmamış takip ödülü yandı."),
+				Strikes, *FString::FormatAsNumber(OutFinePaid)),
+			5.8f, FLinearColor(0.95f, 0.22f, 0.18f, 1.f));
+	}
+	if (IsInteractiveUIEnabled() && Prog)
+	{
+		Prog->SaveProfile();
+	}
+}
+
+int32 UBNStorySubsystem::EvaluateLivePursuitMilestones(const FBNPursuitState& PursuitState, FString& OutNewestTitle) const
+{
+	TArray<FString> Titles;
+	FBNStoryState Copy = State;
+	const int32 Mask = Copy.EvaluatePursuitMilestones(PursuitState, false, &Titles);
+	const int32 NewlyBit = Mask & ~PursuitState.PendingMilestonesMask;
+	if (NewlyBit != 0 && Titles.Num() > 0)
+	{
+		OutNewestTitle = Titles.Last();
+	}
+	return Mask;
+}
+
+void UBNStorySubsystem::NotifySpeedTrapRecorded(float SpeedKmh)
+{
+	TArray<FString> Completed;
+	if (State.EvaluateSpeedTrapMilestones(SpeedKmh, &Completed) > 0 && Completed.Num() > 0)
+	{
+		PostComms(TEXT("ARDA"),
+			FString::Printf(TEXT("DÖNÜM NOKTASI TAMAMLANDI: %s! Toplam Ödül: %s"),
+				*Completed[0], *FString::FormatAsNumber(State.TotalBounty)),
+			6.0f, FLinearColor(0.96f, 0.74f, 0.16f, 1.f));
+		if (IsInteractiveUIEnabled())
+		{
+			if (UBNProgressionSubsystem* Prog = GetGameInstance() ? GetGameInstance()->GetSubsystem<UBNProgressionSubsystem>() : nullptr)
+			{
+				Prog->SaveProfile();
+			}
+		}
+	}
+}
+
+void UBNStorySubsystem::GrantDebugBountyAndMilestonesForCurrentBoss()
+{
+	if (const FBNBossSpec* Boss = FBNStoryState::FindBossByRank(State.NextBossRank))
+	{
+		for (int32 i = 0; i < Boss->RequiredMilestones && i < 3; ++i)
+		{
+			State.CompleteMilestone(i);
+		}
+		if (State.TotalBounty < Boss->RequiredBounty)
+		{
+			State.TotalBounty = Boss->RequiredBounty;
+		}
 	}
 }
 
@@ -495,6 +634,11 @@ void UBNStorySubsystem::WriteToSaveGame(UBNSaveGame& SaveObj) const
 	SaveObj.bStoryCampaignCompleted = State.bCampaignCompleted;
 	SaveObj.StoryEscapedRouteIndex = State.EscapedRouteIndex;
 	SaveObj.StoryFinalCityDamageDollars = State.FinalCityDamageDollars;
+	SaveObj.StoryTotalBounty = State.TotalBounty;
+	SaveObj.StoryBossMilestonesMask = State.CurrentBossMilestonesMask;
+	SaveObj.StoryImpoundStrikes = State.ImpoundStrikes;
+	SaveObj.StoryPursuitsEscaped = State.TotalPursuitsEscaped;
+	SaveObj.StoryBustedCount = State.TotalBustedCount;
 }
 
 void UBNStorySubsystem::ReadFromSaveGame(const UBNSaveGame& SaveObj)
@@ -515,6 +659,11 @@ void UBNStorySubsystem::ReadFromSaveGame(const UBNSaveGame& SaveObj)
 	State.bCampaignCompleted = SaveObj.bStoryCampaignCompleted;
 	State.EscapedRouteIndex = SaveObj.StoryEscapedRouteIndex;
 	State.FinalCityDamageDollars = SaveObj.StoryFinalCityDamageDollars;
+	State.TotalBounty = FMath::Max(0, SaveObj.StoryTotalBounty);
+	State.CurrentBossMilestonesMask = SaveObj.StoryBossMilestonesMask & 0x7;
+	State.ImpoundStrikes = FMath::Clamp(SaveObj.StoryImpoundStrikes, 0, 3);
+	State.TotalPursuitsEscaped = FMath::Max(0, SaveObj.StoryPursuitsEscaped);
+	State.TotalBustedCount = FMath::Max(0, SaveObj.StoryBustedCount);
 	State.RebuildEvidenceNotes();
 
 	SelectedBossIndex = IndexFromRank(State.NextBossRank > 0 ? State.NextBossRank : 1);

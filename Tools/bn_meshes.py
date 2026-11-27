@@ -18,6 +18,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import bn_building_meshes as bm_bldg  # noqa: E402
 import bn_mesh_vehicles_landmarks as bm_extra  # noqa: E402
 
 PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -544,7 +545,7 @@ MESH_MANIFEST = [
     ("SM_BN_Aero_OffroadRack", bm_extra.build_aero_offroad_rack, ["MI_CarCarbon", "MI_LampGlow"], "none"),
     ("SM_BN_SkyDome", bm_extra.build_sky_dome, ["MI_SkyClouds"], "none"),
     ("SM_BN_JumpRamp", bm_extra.build_jump_ramp, ["MI_Concrete", "MI_HazardYellow", "MI_Metal_Dark"], "complex"),
-]
+] + bm_bldg.BUILDING_MESH_MANIFEST
 
 
 def generate_all_glbs(force=False):

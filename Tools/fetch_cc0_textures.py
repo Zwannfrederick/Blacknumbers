@@ -36,10 +36,14 @@ CC0_SURFACE_MAP = [
     ("BridgeSteel", "rusty_metal_02",       "neutralize"),
     ("WoodCrate",   "wood_planks",          "direct"),
     ("Bark",        "bark_brown_02",        "direct"),
-    ("Brick",         "red_brick_03",             "facade"),
-    ("Plaster",       "clay_plaster",             "facade"),
-    ("Cladding",      "exterior_wall_cladding_02","facade"),
-    ("ConcreteTower", "concrete_tile_facade",     "facade"),
+    ("Brick",             "red_brick_03",             "facade"),
+    ("Plaster",           "clay_plaster",             "facade"),
+    ("Cladding",          "exterior_wall_cladding_02","facade"),
+    ("ConcreteTower",     "concrete_tile_facade",     "facade"),
+    ("WallBrick",         "red_brick_03",             "direct"),
+    ("WallPlaster",       "clay_plaster",             "direct"),
+    ("WallCladding",      "exterior_wall_cladding_02","direct"),
+    ("WallConcretePanel", "concrete_tile_facade",     "direct"),
     ("PitAsphalt",    "asphalt_pit_lane",         "direct"),
     ("CliffRock",     "cliff_side",               "direct"),
     ("MountainGrass", "aerial_grass_rock",        "direct"),
@@ -62,7 +66,7 @@ UA = {"User-Agent": "BlackNumbers-UE5-CC0Fetcher/1.0"}
 
 
 def _manifest_signature():
-    payload = json.dumps([CC0_SURFACE_MAP, AMBIENTCG_FACADES], sort_keys=True) + "|v3_acg_facades"
+    payload = json.dumps([CC0_SURFACE_MAP, AMBIENTCG_FACADES], sort_keys=True) + "|v4_arch_walls"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
