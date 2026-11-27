@@ -36,70 +36,35 @@ void SBNTitleScreenWidget::Construct(const FArguments& InArgs)
 	ChildSlot
 	[
 		SNew(SOverlay)
-		// Subtle radial cinema vignette over the live 3D Karamara showcase viewport
+		// Subtle radial cinema vignette keeping the live 3D Karamara car bright and open
 		+ SOverlay::Slot()
 		[
 			SNew(SImage)
 			.Image(VigFull)
-			.ColorAndOpacity(bHasVigFull ? FLinearColor(1.f, 1.f, 1.f, 0.90f) : FLinearColor(0.f, 0.f, 0.f, 0.f))
+			.ColorAndOpacity(bHasVigFull ? FLinearColor(1.f, 1.f, 1.f, 0.72f) : FLinearColor(0.f, 0.f, 0.f, 0.f))
 		]
-		// Smooth exponential dark-left cinema fade (replaces harsh stepped boxes)
+		// Narrow smooth left-side fade leaving ~68% of the frame crystal clear for the 3D showcase car
 		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
 		[
-			SNew(SBox).WidthOverride(780.f)
+			SNew(SBox).WidthOverride(640.f)
 			[
 				SNew(SImage)
 				.Image(VigLeft)
-				.ColorAndOpacity(bHasVigLeft ? FLinearColor::White : FLinearColor(0.025f, 0.028f, 0.036f, 0.90f))
+				.ColorAndOpacity(bHasVigLeft ? FLinearColor::White : FLinearColor(0.020f, 0.024f, 0.032f, 0.88f))
 			]
 		]
-		// Top & bottom cinema framing anchor bars
-		+ SOverlay::Slot().VAlign(VAlign_Top)
+		// Minimal bottom-left shortcut legend (clean, zero clutter)
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Bottom).Padding(FMargin(56.f, 0.f, 0.f, 28.f))
 		[
-			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				SNew(SBox).HeightOverride(18.f)
-				[
-					SNew(SBorder).BorderImage(BNUITheme::WhiteBrush()).BorderBackgroundColor(BNUITheme::AsphaltDark)
-				]
-			]
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				BNUITheme::MakeHazardBar(4.f)
-			]
+			SNew(STextBlock)
+			.Text(FText::FromString(TEXT("ESC  MENÜ    •    G  GARAJ    •    B  LİSTE    •    M  HARİTA")))
+			.Font(BNUITheme::Font(11, true))
+			.ColorAndOpacity(FLinearColor(0.76f, 0.74f, 0.70f, 0.78f))
 		]
-		+ SOverlay::Slot().VAlign(VAlign_Bottom)
+		// Left-docked car-forward Most Wanted title stack (wide enough at 720p and 1080p so title never clips)
+		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill).Padding(FMargin(52.f, 52.f, 0.f, 64.f))
 		[
-			SNew(SBox).HeightOverride(26.f)
-			[
-				SNew(SBorder)
-				.BorderImage(BNUITheme::WhiteBrush())
-				.BorderBackgroundColor(BNUITheme::AsphaltDark)
-				.Padding(FMargin(44.f, 5.f))
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(TEXT("ESC / START: Kariyer   •   G: Selin'in Garajı   •   B: Black Numbers Listesi")))
-						.Font(BNUITheme::Font(9, false))
-						.ColorAndOpacity(BNUITheme::SteelMuted)
-					]
-					+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
-					[
-						SNew(STextBlock)
-						.Text(FText::FromString(TEXT("KARAMARA EDITION  //  UE 5.8")))
-						.Font(BNUITheme::Font(9, true))
-						.ColorAndOpacity(BNUITheme::AmberGold)
-					]
-				]
-			]
-		]
-		// Main left-docked Most Wanted title menu
-		+ SOverlay::Slot().HAlign(HAlign_Left).VAlign(VAlign_Fill).Padding(FMargin(42.f, 44.f, 0.f, 42.f))
-		[
-			SNew(SBox).WidthOverride(448.f)
+			SNew(SBox).WidthOverride(470.f)
 			[
 				SAssignNew(SidebarSlot, SVerticalBox)
 			]
@@ -125,86 +90,62 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildCampaignStatusCard()
 	const UBNProgressionSubsystem* Prog = GI ? GI->GetSubsystem<UBNProgressionSubsystem>() : nullptr;
 	const UBNStorySubsystem* Story = GI ? GI->GetSubsystem<UBNStorySubsystem>() : nullptr;
 
-	FString ActLine = TEXT("PERDE 1 - DÖNÜŞ");
-	FString TargetLine = TEXT("#16 — Sıradaki Hedef");
+	FString TargetPill = TEXT("#16  SIRADAKİ HEDEF");
 	int32 DefeatedCount = 0;
-	const TCHAR* ArtKey = TEXT("T_UI_Art_HeroCar");
 	if (Story)
 	{
 		const FBNStoryState& S = Story->GetState();
-		ActLine = FBNStoryState::ActLabel(S.Act);
 		DefeatedCount = S.GetDefeatedCount();
 		if (S.bCampaignCompleted)
 		{
-			TargetLine = TEXT("Kampanya Tamamlandı — Serbest Sürüş");
+			TargetPill = TEXT("KARAMARA HÜKÜMDARI");
 		}
 		else if (S.bFinalChaseActive)
 		{
-			TargetLine = TEXT("ÖZEL KADEME — Karamara'dan Kaçış");
-			ArtKey = TEXT("T_UI_Art_Pursuit");
+			TargetPill = TEXT("ÖZEL KADEME  •  KAÇIŞ");
 		}
 		else if (const FBNBossSpec* NextBoss = FBNStoryState::FindBossByRank(S.NextBossRank))
 		{
-			TargetLine = FString::Printf(TEXT("#%02d %s  •  %s"), NextBoss->Rank, *NextBoss->Name, *NextBoss->VehicleName);
-			if (NextBoss->Rank <= 4)
-			{
-				ArtKey = TEXT("T_UI_Art_Boss01");
-			}
+			TargetPill = FString::Printf(TEXT("#%02d %s"), NextBoss->Rank, *NextBoss->Name.ToUpper());
 		}
 	}
 
 	const int32 Cash = Prog ? Prog->GetProfile().Cash : 4000;
-	const int32 Rep = Prog ? Prog->GetProfile().Reputation : 0;
+	const int32 TotalBounty = Story ? Story->GetState().TotalBounty : 0;
 	const FBNVehicleSpec ActiveCarSpec = Prog
 		? FBNVehicleSpec::ForCar(Prog->GetProfile().ActiveCar)
 		: FBNVehicleSpec::ForCar(EBNCarId::KuroganeMSpec);
-	const FSlateBrush* ArtBrush = BNUITheme::GetArtBrush(ArtKey);
 
-	return SNew(SBorder)
-		.BorderImage(BNUITheme::GetPanelBevelBrush())
-		.BorderBackgroundColor(FLinearColor(0.96f, 0.96f, 0.96f, 0.94f))
-		.Padding(FMargin(12.f, 11.f))
+	// MW 2005 transparent bracketed [ ] status readout (ZERO grey rectangle card!)
+	return BNUITheme::MakePanel(
+		SNew(SVerticalBox)
+		+ SVerticalBox::Slot().AutoHeight()
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 12.f, 0.f))
-			[
-				SNew(SBox).WidthOverride(104.f).HeightOverride(66.f)
-				[
-					SNew(SImage)
-					.Image(ArtBrush)
-					.ColorAndOpacity(ArtBrush != BNUITheme::WhiteBrush() ? FLinearColor::White : BNUITheme::AmberDarkCard)
-				]
-			]
 			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 			[
-				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-					SNew(SHorizontalBox)
-					+ SHorizontalBox::Slot().FillWidth(1.f)
-					[
-						SNew(STextBlock).Text(FText::FromString(ActLine)).Font(BNUITheme::Font(9, true)).ColorAndOpacity(BNUITheme::NosCyan)
-					]
-					+ SHorizontalBox::Slot().AutoWidth()
-					[
-						SNew(STextBlock).Text(FText::FromString(FString::Printf(TEXT("LİSTE %d/16"), DefeatedCount)))
-						.Font(BNUITheme::Font(9, true)).ColorAndOpacity(BNUITheme::AmberGold)
-					]
-				]
-				+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 3.f, 0.f, 2.f))
-				[
-					SNew(STextBlock).Text(FText::FromString(TargetLine)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::ChalkWhite).AutoWrapText(true)
-				]
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-					SNew(STextBlock)
-					.Text(FText::FromString(FString::Printf(TEXT("$%s  •  %s İtibar  •  %s"),
-						*FString::FormatAsNumber(Cash), *FString::FormatAsNumber(Rep), *ActiveCarSpec.DisplayName)))
-					.Font(BNUITheme::Font(9, false))
-					.ColorAndOpacity(BNUITheme::EmeraldGreen)
-				]
+				SNew(STextBlock)
+				.Text(FText::FromString(TargetPill))
+				.Font(BNUITheme::Font(13))
+				.ColorAndOpacity(BNUITheme::Bone)
 			]
-		];
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(FString::Printf(TEXT("%d / 16"), DefeatedCount)))
+				.Font(BNUITheme::DisplayFont(18))
+				.ColorAndOpacity(BNUITheme::AccentHi)
+			]
+		]
+		+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 3.f, 0.f, 0.f))
+		[
+			SNew(STextBlock)
+			.Text(FText::FromString(FString::Printf(TEXT("$%s   •   ÖDÜL %s   •   %s"),
+				*FString::FormatAsNumber(Cash), *FString::FormatAsNumber(TotalBounty), *ActiveCarSpec.DisplayName.ToUpper())))
+			.Font(BNUITheme::Font(11, true))
+			.ColorAndOpacity(BNUITheme::Muted)
+		],
+		FMargin(16.f, 10.f), BNUITheme::Ink, BNUITheme::Accent);
 }
 
 TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
@@ -231,52 +172,45 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
 
 	TSharedRef<SVerticalBox> Col = SNew(SVerticalBox);
 
-	// Iconic Most Wanted Masthead
+	// Wordmark: stacked display type, the second word in sodium.
 	Col->AddSlot().AutoHeight()
 	[
 		SNew(STextBlock)
-		.Text(FText::FromString(TEXT("KARAMARA  /  GECE YARIŞLARI")))
-		.Font(BNUITheme::Font(10, true))
-		.ColorAndOpacity(BNUITheme::AmberGold)
+		.Text(FText::FromString(TEXT("KARAMARA  /  PORT MARA")))
+		.Font(BNUITheme::Font(12))
+		.ColorAndOpacity(BNUITheme::Muted)
 	];
-	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 6.f))
+	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, -4.f, 0.f, 0.f))
 	[
-		SNew(STextBlock)
-		.Text(FText::FromString(TEXT("BLACK NUMBERS")))
-		.Font(BNUITheme::Font(38, true))
-		.ColorAndOpacity(BNUITheme::ChalkWhite)
+		SNew(STextBlock).Text(FText::FromString(TEXT("BLACK"))).Font(BNUITheme::DisplayFont(78)).ColorAndOpacity(BNUITheme::Bone)
 	];
-	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 16.f))
+	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, -34.f, 0.f, 26.f))
 	[
-		BNUITheme::MakeHazardBar(7.f)
+		SNew(STextBlock).Text(FText::FromString(TEXT("NUMBERS"))).Font(BNUITheme::DisplayFont(78)).ColorAndOpacity(BNUITheme::Accent)
 	];
 
-	// Compact visual campaign dossier strip
-	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 16.f))
+	// Slim career pill
+	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 22.f))
 	[
 		BuildCampaignStatusCard()
 	];
 
-	// Hover-lit Most Wanted navigation blades
-	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 9.f))
+	// Clean, bold, minimal-copy Most Wanted navigation blades (zero verbose subtitle clutter)
+	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))
 	[
-		BNUITheme::MakeNavBladeButton(StartLabel, FText::FromString(TEXT("Black Numbers Listesi ve sokak yarışı programı")), true,
-			OpenTabAction(EBNMenuTab::BlackNumbers))
+		BNUITheme::MakeNavBladeButton(StartLabel, FText::GetEmpty(), true, OpenTabAction(EBNMenuTab::BlackNumbers))
 	];
-	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 7.f))
+	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 6.f))
 	[
-		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("HIZLI YARIŞ")),
-			FText::FromString(TEXT("Sprint, Pist Turu ve Drift etkinliklerine doğrudan geç")), false, OpenTabAction(EBNMenuTab::Races))
+		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("HIZLI YARIŞ")), FText::GetEmpty(), false, OpenTabAction(EBNMenuTab::Races))
 	];
-	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 7.f))
+	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 6.f))
 	[
-		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("SELİN'İN GARAJI")),
-			FText::FromString(TEXT("360° canlı araç vitrini, 6 araç ve Tier 1-6 parça geliştirme")), false, OpenTabAction(EBNMenuTab::Garage))
+		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("SELİN'İN GARAJI")), FText::GetEmpty(), false, OpenTabAction(EBNMenuTab::Garage))
 	];
-	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 7.f))
+	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 6.f))
 	[
-		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("SERBEST SÜRÜŞ")),
-			FText::FromString(TEXT("Karamara sokaklarına çık")), false, FOnClicked::CreateLambda([this]()
+		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("SERBEST SÜRÜŞ")), FText::GetEmpty(), false, FOnClicked::CreateLambda([this]()
 			{
 				if (OwnerHUD.IsValid())
 				{
@@ -285,10 +219,9 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
 				return FReply::Handled();
 			}))
 	];
-	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 12.f))
+	Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 22.f))
 	[
-		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("GRAFİK & AYARLAR")),
-			FText::FromString(TEXT("RTX 3050 Ti ön ayarları, sivil trafik ve ses seviyesi")), false, OpenTabAction(EBNMenuTab::Settings))
+		BNUITheme::MakeNavBladeButton(FText::FromString(TEXT("AYARLAR")), FText::GetEmpty(), false, OpenTabAction(EBNMenuTab::Settings))
 	];
 
 	// Utility row: New Career (2-step safe confirm) + Quit
@@ -306,11 +239,11 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
 						StatusNotice.Reset();
 						Refresh();
 						return FReply::Handled();
-					}), true, 10, FMargin(12.f, 9.f))
+					}), true, 12, FMargin(12.f, 9.f))
 			]
 			+ SHorizontalBox::Slot().FillWidth(1.f)
 			[
-				BNUITheme::MakeMWButton(FText::FromString(TEXT("OYUNDAN ÇIK")), EBNButtonVariant::SecondarySteel,
+				BNUITheme::MakeMWButton(FText::FromString(TEXT("ÇIKIŞ")), EBNButtonVariant::SecondarySteel,
 					FOnClicked::CreateLambda([this]()
 					{
 						UWorld* W = SBNGameMenuWidget::GetHUDWorld(OwnerHUD);
@@ -324,7 +257,7 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
 							PC->ConsoleCommand(TEXT("quit"));
 						}
 						return FReply::Handled();
-					}), true, 10, FMargin(12.f, 9.f))
+					}), true, 12, FMargin(12.f, 9.f))
 			]
 		];
 	}
@@ -372,7 +305,7 @@ TSharedRef<SWidget> SBNTitleScreenWidget::BuildSidebarContent()
 	{
 		Col->AddSlot().AutoHeight().Padding(FMargin(0.f, 8.f, 0.f, 0.f))
 		[
-			SNew(STextBlock).Text(FText::FromString(StatusNotice)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::EmeraldGreen).AutoWrapText(true)
+			SNew(STextBlock).Text(FText::FromString(StatusNotice)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::Ok).AutoWrapText(true)
 		];
 	}
 

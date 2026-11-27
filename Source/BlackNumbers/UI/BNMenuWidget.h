@@ -76,6 +76,8 @@ private:
 	EBNMenuTab ActiveTab = EBNMenuTab::Races;
 	TOptional<EBNCarId> PreviewedCar;
 	int32 SelectedBlacklistRank = 0;
+	/** MW 2005 Blacklist bottom icon carousel mode: 0=Races, 1=Milestones, 2=Bounty/RapSheet, 3=Evidence. */
+	int32 BlacklistSubMode = 0;
 	TSharedPtr<SVerticalBox> RootSlot;
 	FString ActionFeedback;
 };

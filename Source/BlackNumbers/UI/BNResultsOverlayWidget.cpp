@@ -63,53 +63,47 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::MakeMetricTile(const TCHAR* Label, 
 	TSharedRef<SVerticalBox> Box = SNew(SVerticalBox)
 	+ SVerticalBox::Slot().AutoHeight()
 	[
-		SNew(STextBlock).Text(FText::FromString(Label)).Font(BNUITheme::Font(9, true)).ColorAndOpacity(BNUITheme::SteelMuted)
+		SNew(STextBlock).Text(FText::FromString(Label)).Font(BNUITheme::Font(11, true)).ColorAndOpacity(BNUITheme::Muted)
 	]
 	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 0.f))
 	[
-		SNew(STextBlock).Text(FText::FromString(Value)).Font(BNUITheme::Font(18, true)).ColorAndOpacity(ValueColor)
+		SNew(STextBlock).Text(FText::FromString(Value)).Font(BNUITheme::DisplayFont(26)).ColorAndOpacity(ValueColor)
 	];
 
 	if (!SubNote.IsEmpty())
 	{
 		Box->AddSlot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 0.f))
 		[
-			SNew(STextBlock).Text(FText::FromString(SubNote)).Font(BNUITheme::Font(9, false)).ColorAndOpacity(BNUITheme::SteelMuted)
+			SNew(STextBlock).Text(FText::FromString(SubNote)).Font(BNUITheme::Font(9, false)).ColorAndOpacity(BNUITheme::Muted)
 		];
 	}
 
-	return SNew(SBorder)
-		.BorderImage(BNUITheme::GetPanelBevelBrush())
-		.BorderBackgroundColor(FLinearColor(0.95f, 0.95f, 0.95f, 0.96f))
-		.Padding(FMargin(16.f, 12.f))
-		[
-			Box
-		];
+	return BNUITheme::MakePanel(Box, FMargin(16.f, 12.f), BNUITheme::Panel);
 }
 
 TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 {
 	const FBNRaceResultSummary& R = RaceSummary;
 	FString BannerText;
-	FLinearColor AccentCol = BNUITheme::AmberBright;
+	FLinearColor AccentCol = BNUITheme::AccentHi;
 	bool bDangerRibbon = false;
 
 	if (R.bBlownEngine)
 	{
 		BannerText = TEXT("MOTOR PATLADI!  //  BLOWN ENGINE");
-		AccentCol = BNUITheme::CrimsonRed;
+		AccentCol = BNUITheme::Danger;
 		bDangerRibbon = true;
 	}
 	else if (R.bTotaled)
 	{
 		BannerText = TEXT("ARAÇ PERT!  //  TOTALED");
-		AccentCol = BNUITheme::CrimsonRed;
+		AccentCol = BNUITheme::Danger;
 		bDangerRibbon = true;
 	}
 	else if (!R.bCompleted)
 	{
 		BannerText = TEXT("YARIŞ İPTAL EDİLDİ");
-		AccentCol = BNUITheme::CrimsonRed;
+		AccentCol = BNUITheme::Danger;
 		bDangerRibbon = true;
 	}
 	else if (R.bIsDrift)
@@ -117,29 +111,29 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 		if (R.BossRank > 0 && R.bBossVictory)
 		{
 			BannerText = TEXT("DRİFT ZAFERİ // BLACKLIST");
-			AccentCol = BNUITheme::AmberBright;
+			AccentCol = BNUITheme::AccentHi;
 		}
 		else if (R.BossRank > 0)
 		{
 			BannerText = TEXT("DRİFT HEDEFİ TUTMADI");
-			AccentCol = BNUITheme::CrimsonRed;
+			AccentCol = BNUITheme::Danger;
 			bDangerRibbon = true;
 		}
 		else
 		{
 			BannerText = TEXT("DRİFT TAMAMLANDI");
-			AccentCol = BNUITheme::NosCyan;
+			AccentCol = BNUITheme::Nos;
 		}
 	}
 	else if (R.Position == 1)
 	{
 		BannerText = TEXT("1. SIRA  //  ZAFER");
-		AccentCol = BNUITheme::AmberBright;
+		AccentCol = BNUITheme::AccentHi;
 	}
 	else
 	{
 		BannerText = FString::Printf(TEXT("%d. SIRA  //  BİTİŞ"), R.Position);
-		AccentCol = BNUITheme::NosCyan;
+		AccentCol = BNUITheme::Nos;
 	}
 
 	const FString SubHeader = R.DisciplineLabel.IsEmpty()
@@ -168,11 +162,11 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 	TSharedRef<SVerticalBox> Inner = SNew(SVerticalBox)
 	+ SVerticalBox::Slot().AutoHeight()
 	[
-		SNew(STextBlock).Text(FText::FromString(SubHeader)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::SteelMuted)
+		SNew(STextBlock).Text(FText::FromString(SubHeader)).Font(BNUITheme::Font(12, true)).ColorAndOpacity(BNUITheme::Muted)
 	]
 	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 14.f))
 	[
-		SNew(STextBlock).Text(FText::FromString(BannerText)).Font(BNUITheme::Font(34, true)).ColorAndOpacity(AccentCol)
+		SNew(STextBlock).Text(FText::FromString(BannerText)).Font(BNUITheme::DisplayFont(48)).ColorAndOpacity(AccentCol)
 	];
 
 	if (R.BossRank > 0)
@@ -184,13 +178,13 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 		[
 			SNew(SBorder)
 			.BorderImage(BNUITheme::WhiteBrush())
-			.BorderBackgroundColor(R.bBossVictory ? FLinearColor(0.09f, 0.24f, 0.14f, 0.96f) : BNUITheme::CrimsonDarkCard)
+			.BorderBackgroundColor(R.bBossVictory ? FLinearColor(0.008f, 0.04f, 0.015f, 0.96f) : BNUITheme::DangerDark)
 			.Padding(FMargin(16.f, 10.f))
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(BossBadgeText))
 				.Font(BNUITheme::Font(12, true))
-				.ColorAndOpacity(R.bBossVictory ? BNUITheme::EmeraldGreen : BNUITheme::ChalkWhite)
+				.ColorAndOpacity(R.bBossVictory ? BNUITheme::Ok : BNUITheme::Bone)
 				.AutoWrapText(true)
 			]
 		];
@@ -201,7 +195,7 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
 		[
-			MakeMetricTile(*PrimaryMetricLabel, PrimaryMetricVal, BNUITheme::ChalkWhite, PrimarySubNote)
+			MakeMetricTile(*PrimaryMetricLabel, PrimaryMetricVal, BNUITheme::Bone, PrimarySubNote)
 		]
 		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
 		[
@@ -211,13 +205,13 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 		[
 			MakeMetricTile(TEXT("NAKİT ÖDÜLÜ"),
 				FString::Printf(TEXT("+$%s"), *FString::FormatAsNumber(R.CashEarned)),
-				R.CashEarned > 0 ? BNUITheme::EmeraldGreen : BNUITheme::SteelMuted)
+				R.CashEarned > 0 ? BNUITheme::Ok : BNUITheme::Muted)
 		]
 		+ SHorizontalBox::Slot().FillWidth(1.f)
 		[
 			MakeMetricTile(TEXT("İTİBAR"),
 				FString::Printf(TEXT("+%s"), *FString::FormatAsNumber(R.RepEarned)),
-				R.RepEarned > 0 ? BNUITheme::NosCyan : BNUITheme::SteelMuted)
+				R.RepEarned > 0 ? BNUITheme::Nos : BNUITheme::Muted)
 		]
 	];
 
@@ -279,9 +273,9 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 	{
 		if (bDangerRibbon)
 		{
-			return SNew(SBox).HeightOverride(8.f)[SNew(SBorder).BorderImage(BNUITheme::WhiteBrush()).BorderBackgroundColor(BNUITheme::CrimsonRed)];
+			return SNew(SBox).HeightOverride(8.f)[SNew(SBorder).BorderImage(BNUITheme::WhiteBrush()).BorderBackgroundColor(BNUITheme::Danger)];
 		}
-		return BNUITheme::MakeHazardBar(9.f);
+		return BNUITheme::MakeAccentRule(9.f);
 	};
 
 	return SNew(SVerticalBox)
@@ -289,8 +283,8 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 	+ SVerticalBox::Slot().AutoHeight()
 	[
 		SNew(SBorder)
-		.BorderImage(BNUITheme::GetBrushedMetalBrush())
-		.BorderBackgroundColor(FLinearColor(0.85f, 0.85f, 0.85f, 0.96f))
+		.BorderImage(BNUITheme::WhiteBrush())
+		.BorderBackgroundColor(BNUITheme::Panel)
 		.Padding(FMargin(48.f, 28.f))
 		[
 			SNew(SBox).MaxDesiredWidth(840.f).HAlign(HAlign_Center)
@@ -305,7 +299,7 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildRaceSummary()
 TSharedRef<SWidget> SBNResultsOverlayWidget::BuildPursuitSummary()
 {
 	const FBNPursuitResultSummary& P = PursuitSummary;
-	const FLinearColor AccentCol = P.bEscaped ? BNUITheme::AmberBright : BNUITheme::CrimsonRed;
+	const FLinearColor AccentCol = P.bEscaped ? BNUITheme::AccentHi : BNUITheme::Danger;
 	const FString BannerText = P.bEscaped ? TEXT("KAÇIŞ BAŞARILI  //  EVADED") : TEXT("YAKALANDIN  //  BUSTED");
 	const FString SubLine = FString::Printf(TEXT("KARAMARA POLİS RAPORU   •   %s   •   SÜRE %s"),
 		*P.HeatLabel, *ABNHUD::FormatRaceTime(P.DurationSeconds));
@@ -317,28 +311,33 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildPursuitSummary()
 	TSharedRef<SVerticalBox> Inner = SNew(SVerticalBox)
 	+ SVerticalBox::Slot().AutoHeight()
 	[
-		SNew(STextBlock).Text(FText::FromString(SubLine)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::NosCyan)
+		SNew(STextBlock).Text(FText::FromString(SubLine)).Font(BNUITheme::Font(12, true)).ColorAndOpacity(BNUITheme::Nos)
 	]
 	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 16.f))
 	[
-		SNew(STextBlock).Text(FText::FromString(BannerText)).Font(BNUITheme::Font(34, true)).ColorAndOpacity(AccentCol)
+		SNew(STextBlock).Text(FText::FromString(BannerText)).Font(BNUITheme::DisplayFont(48)).ColorAndOpacity(AccentCol)
 	]
 	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 16.f))
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
 		[
-			MakeMetricTile(TEXT("ULAŞILAN HEAT"), HeatDisplay, P.HeatLevel >= 6 ? BNUITheme::CrimsonRed : BNUITheme::AmberGold)
+			MakeMetricTile(TEXT("ULAŞILAN HEAT"), HeatDisplay, P.HeatLevel >= 6 ? BNUITheme::Danger : BNUITheme::Accent,
+				FString::Printf(TEXT("Devre Dışı: %d Birim"), P.UnitsDisabled))
 		]
-		+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
+		+ SHorizontalBox::Slot().FillWidth(1.1f).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
 		[
-			MakeMetricTile(TEXT("DEVRE DIŞI BİRİM"), FString::Printf(TEXT("%d"), P.UnitsDisabled), BNUITheme::ChalkWhite)
+			MakeMetricTile(P.bEscaped ? TEXT("BANKALANAN ÖDÜL") : TEXT("YANAN ÖDÜL"),
+				FString::Printf(TEXT("%s%s"), P.bEscaped ? TEXT("+") : TEXT("-"), *FString::FormatAsNumber(P.Bounty)),
+				P.bEscaped ? BNUITheme::AccentHi : BNUITheme::Danger,
+				P.bEscaped ? FString::Printf(TEXT("Toplam Ödül: %s"), *FString::FormatAsNumber(P.TotalCareerBounty))
+				           : FString::Printf(TEXT("Bağlama İhtarı: %d / 3"), P.ImpoundStrikes))
 		]
-		+ SHorizontalBox::Slot().FillWidth(1.25f)
+		+ SHorizontalBox::Slot().FillWidth(1.15f)
 		[
 			MakeMetricTile(TEXT("ŞEHİR FATURASI"),
 				FString::Printf(TEXT("$%s"), *FString::FormatAsNumber(P.TotalCityDamageDollars)),
-				BNUITheme::AmberBright, ThisPursuitNote)
+				BNUITheme::Bone, ThisPursuitNote)
 		]
 	];
 
@@ -359,11 +358,11 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildPursuitSummary()
 			FMath::RoundToInt(P.TopSpeedKmh), P.RoadblocksDodged, P.SpikeStripsDodged, P.BreakersTriggered);
 		Inner->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 6.f))
 		[
-			SNew(STextBlock).Text(FText::FromString(ChargeLine)).Font(BNUITheme::Font(11, true)).ColorAndOpacity(BNUITheme::CrimsonRed).AutoWrapText(true)
+			SNew(STextBlock).Text(FText::FromString(ChargeLine)).Font(BNUITheme::Font(11, true)).ColorAndOpacity(BNUITheme::Danger).AutoWrapText(true)
 		];
 		Inner->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 16.f))
 		[
-			SNew(STextBlock).Text(FText::FromString(MilestoneLine)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::ChalkWhite)
+			SNew(STextBlock).Text(FText::FromString(MilestoneLine)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::Bone)
 		];
 	}
 
@@ -373,14 +372,14 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildPursuitSummary()
 		[
 			SNew(SBorder)
 			.BorderImage(BNUITheme::WhiteBrush())
-			.BorderBackgroundColor(FLinearColor(0.09f, 0.24f, 0.14f, 0.96f))
+			.BorderBackgroundColor(FLinearColor(0.008f, 0.04f, 0.015f, 0.96f))
 			.Padding(FMargin(16.f, 10.f))
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(FString::Printf(TEXT("KAÇIŞ ÖDÜLÜ:  +%s İtibar   •   Ödül Puanı: %s"),
 					*FString::FormatAsNumber(P.RepEarned), *FString::FormatAsNumber(P.Bounty))))
 				.Font(BNUITheme::Font(11, true))
-				.ColorAndOpacity(BNUITheme::EmeraldGreen)
+				.ColorAndOpacity(BNUITheme::Ok)
 			]
 		];
 	}
@@ -406,9 +405,9 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildPursuitSummary()
 	{
 		if (!P.bEscaped)
 		{
-			return SNew(SBox).HeightOverride(8.f)[SNew(SBorder).BorderImage(BNUITheme::WhiteBrush()).BorderBackgroundColor(BNUITheme::CrimsonRed)];
+			return SNew(SBox).HeightOverride(8.f)[SNew(SBorder).BorderImage(BNUITheme::WhiteBrush()).BorderBackgroundColor(BNUITheme::Danger)];
 		}
-		return BNUITheme::MakeHazardBar(9.f);
+		return BNUITheme::MakeAccentRule(9.f);
 	};
 
 	return SNew(SVerticalBox)
@@ -416,8 +415,8 @@ TSharedRef<SWidget> SBNResultsOverlayWidget::BuildPursuitSummary()
 	+ SVerticalBox::Slot().AutoHeight()
 	[
 		SNew(SBorder)
-		.BorderImage(BNUITheme::GetBrushedMetalBrush())
-		.BorderBackgroundColor(FLinearColor(0.85f, 0.85f, 0.85f, 0.96f))
+		.BorderImage(BNUITheme::WhiteBrush())
+		.BorderBackgroundColor(BNUITheme::Panel)
 		.Padding(FMargin(48.f, 28.f))
 		[
 			SNew(SBox).MaxDesiredWidth(820.f).HAlign(HAlign_Center)
@@ -675,6 +674,8 @@ void ABNHUD::UpdateRaceAndPursuitTracking(const UBNProgressionSubsystem* Prog, c
 				PSum.TopSpeedKmh = PS.TopSpeedKmh;
 				PSum.RoadblocksDodged = PS.RoadblocksDodged;
 				PSum.SpikeStripsDodged = PS.SpikeStripsDodged;
+				PSum.ImpoundStrikes = Story ? Story->GetState().ImpoundStrikes : 0;
+				PSum.TotalCareerBounty = Story ? Story->GetState().TotalBounty : 0;
 				PSum.RepEarned = (PSum.bEscaped && Prog) ? FMath::Max(0, Prog->GetProfile().Reputation - TrackedPursuitPreRep) : 0;
 				ShowPursuitResults(PSum);
 			}

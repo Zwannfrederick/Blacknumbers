@@ -1,19 +1,69 @@
 #include "UI/BNUITheme.h"
 
 #include "Audio/BNAudioSubsystem.h"
+#include "Engine/Engine.h"
+#include "Engine/Font.h"
 #include "Engine/Texture2D.h"
+#include "Fonts/CompositeFont.h"
+#include "HAL/FileManager.h"
 #include "Misc/App.h"
+#include "Misc/Paths.h"
+#include "Rendering/SlateRenderTransform.h"
 #include "Styling/CoreStyle.h"
+#include "UObject/Package.h"
 #include "Widgets/Images/SImage.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Layout/SBorder.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SBoxPanel.h"
 #include "Widgets/SCompoundWidget.h"
+#include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
 namespace
 {
+	constexpr const TCHAR* BodyBoldFile = TEXT("NotoSans-CondensedBold.ttf");
+	constexpr const TCHAR* BodyMediumFile = TEXT("NotoSans-CondensedMedium.ttf");
+	constexpr const TCHAR* DisplayFile = TEXT("NotoSans-ExtraCondensedBlackItalic.ttf");
+
+	FString BundledFontPath(const TCHAR* FileName)
+	{
+		const FString Candidate = FPaths::ProjectContentDir() / TEXT("UI/Fonts") / FileName;
+		return IFileManager::Get().FileExists(*Candidate) ? Candidate : FString();
+	}
+
+	TSharedPtr<const FCompositeFont> LoadBundledCompositeFont(const TCHAR* FileName)
+	{
+		const FString Path = BundledFontPath(FileName);
+		if (Path.IsEmpty())
+		{
+			UE_LOG(LogTemp, Warning, TEXT("BN UI: bundled font %s missing, falling back to engine font"), FileName);
+			return nullptr;
+		}
+		return MakeShared<FCompositeFont>(FName(FileName), Path, EFontHinting::Default, EFontLoadingPolicy::LazyLoad);
+	}
+
+	UFont* MakeRuntimeHudFont(const TCHAR* FileName, int32 LegacySize)
+	{
+		const FString Path = BundledFontPath(FileName);
+		if (Path.IsEmpty())
+		{
+			return nullptr;
+		}
+		// Unique name per face+size: NewObject with an existing name would replace the other cached font in place.
+		const FName ObjName = MakeUniqueObjectName(GetTransientPackage(), UFont::StaticClass(),
+			FName(*FString::Printf(TEXT("BNHudFont_%s_%d"), *FPaths::GetBaseFilename(FileName), LegacySize)));
+		UFont* NewFont = NewObject<UFont>(GetTransientPackage(), ObjName);
+		NewFont->FontCacheType = EFontCacheType::Runtime;
+		NewFont->RuntimeFontSource = ERuntimeFontSource::Asset;
+		NewFont->LegacyFontSize = LegacySize;
+		NewFont->LegacyFontName = FName(TEXT("Default"));
+		NewFont->GetMutableInternalCompositeFont().DefaultTypeface.Fonts.Add(
+			FTypefaceEntry(FName(TEXT("Default")), Path, EFontHinting::Default, EFontLoadingPolicy::LazyLoad));
+		NewFont->AddToRoot();
+		return NewFont;
+	}
+
 	struct FBNBrushCache
 	{
 		TMap<FName, TWeakObjectPtr<UTexture2D>> Textures;
@@ -40,9 +90,7 @@ namespace
 			return Loaded;
 		}
 
-		const FSlateBrush* GetOrMakeBrush(const TCHAR* CacheKey, const TCHAR* AssetName,
-			ESlateBrushDrawType::Type DrawType, ESlateBrushTileType::Type Tiling,
-			const FMargin& Margin, const FVector2D& Size)
+		const FSlateBrush* GetOrMakeBrush(const TCHAR* CacheKey, const TCHAR* AssetName, const FVector2D& Size)
 		{
 			const FName Key(CacheKey);
 			if (const TSharedPtr<FSlateBrush>* Found = Brushes.Find(Key))
@@ -56,9 +104,8 @@ namespace
 			}
 			TSharedPtr<FSlateBrush> Brush = MakeShared<FSlateBrush>();
 			Brush->SetResourceObject(Tex);
-			Brush->DrawAs = DrawType;
-			Brush->Tiling = Tiling;
-			Brush->Margin = Margin;
+			Brush->DrawAs = ESlateBrushDrawType::Image;
+			Brush->Tiling = ESlateBrushTileType::NoTile;
 			Brush->ImageSize = Size;
 			Brushes.Add(Key, Brush);
 			return Brush.Get();
@@ -71,70 +118,55 @@ namespace
 		return Cache;
 	}
 
+	FSlateRenderTransform SlabLean()
+	{
+		return FSlateRenderTransform(FShear2D::FromShearAngles(FVector2f(-BNUITheme::SlabLeanDeg, 0.f)));
+	}
+
 	struct FBNButtonPalette
 	{
 		FLinearColor BgIdle;
 		FLinearColor BgHover;
-		FLinearColor BgPress;
-		FLinearColor BladeIdle;
-		FLinearColor BladeHover;
 		FLinearColor TextIdle;
 		FLinearColor TextHover;
+		FLinearColor Tick; // left tick / underline shown on hover (or always for tabs/active)
+		bool bUnderline = false;
 	};
 
 	FBNButtonPalette PaletteFor(EBNButtonVariant Variant)
 	{
 		using namespace BNUITheme;
+		const FLinearColor None = FLinearColor::Transparent;
 		switch (Variant)
 		{
 		case EBNButtonVariant::PrimaryAmber:
-			return {
-				AmberGold, AmberBright, FLinearColor(0.80f, 0.50f, 0.04f, 1.f),
-				ObsidianInk, ChalkWhite, ObsidianInk, ObsidianInk
-			};
 		case EBNButtonVariant::ConfirmGreen:
-			return {
-				FLinearColor(0.11f, 0.44f, 0.25f, 1.f), FLinearColor(0.16f, 0.60f, 0.34f, 1.f), FLinearColor(0.08f, 0.34f, 0.19f, 1.f),
-				EmeraldGreen, ChalkWhite, ChalkWhite, ChalkWhite
-			};
+			return { Accent, AccentHi, InkSolid, InkSolid, None };
 		case EBNButtonVariant::DangerCrimson:
-			return {
-				FLinearColor(0.56f, 0.12f, 0.11f, 1.f), FLinearColor(0.78f, 0.16f, 0.14f, 1.f), FLinearColor(0.42f, 0.09f, 0.08f, 1.f),
-				CrimsonRed, AmberBright, ChalkWhite, ChalkWhite
-			};
+			return { DangerDark, FLinearColor(0.16f, 0.008f, 0.010f, 0.96f), Bone, Bone, Danger };
 		case EBNButtonVariant::CyanIntel:
-			return {
-				FLinearColor(0.10f, 0.34f, 0.52f, 1.f), FLinearColor(0.14f, 0.48f, 0.72f, 1.f), FLinearColor(0.08f, 0.26f, 0.40f, 1.f),
-				NosCyan, ChalkWhite, ChalkWhite, ChalkWhite
-			};
+			return { Card, FLinearColor(0.020f, 0.040f, 0.055f, 0.96f), Bone, Bone, Nos };
 		case EBNButtonVariant::ActiveTab:
-			return {
-				FLinearColor(0.19f, 0.14f, 0.055f, 0.98f), FLinearColor(0.24f, 0.18f, 0.07f, 1.f), FLinearColor(0.15f, 0.11f, 0.045f, 1.f),
-				AmberGold, AmberBright, AmberBright, ChalkWhite
-			};
+			return { None, None, Bone, Bone, Accent, true };
 		case EBNButtonVariant::IdleTab:
-			return {
-				FLinearColor(0.085f, 0.090f, 0.102f, 0.92f), FLinearColor(0.155f, 0.145f, 0.115f, 0.98f), FLinearColor(0.12f, 0.11f, 0.09f, 1.f),
-				HairlineSteel, AmberGold, SteelMuted, ChalkWhite
-			};
+			return { None, None, Muted, Bone, Hairline, true };
 		default: // SecondarySteel
-			return {
-				FLinearColor(0.115f, 0.122f, 0.138f, 0.96f), FLinearColor(0.195f, 0.175f, 0.130f, 1.f), FLinearColor(0.09f, 0.095f, 0.11f, 1.f),
-				FLinearColor(0.36f, 0.34f, 0.29f, 1.f), AmberGold, ChalkWhite, AmberBright
-			};
+			return { Card, FLinearColor(0.022f, 0.025f, 0.031f, 0.97f), Bone, AccentHi, Accent };
 		}
 	}
 
-	/** Hover & press reactive Most Wanted button with illuminated edge blade. */
-	class SBNMWButton : public SCompoundWidget
+	/** Leaning slab button: sheared background, upright text, hover tick. */
+	class SBNSlabButton : public SCompoundWidget
 	{
 	public:
-		SLATE_BEGIN_ARGS(SBNMWButton)
+		SLATE_BEGIN_ARGS(SBNSlabButton)
 			: _Variant(EBNButtonVariant::SecondarySteel)
 			, _bEnabled(true)
-			, _FontSize(11)
+			, _FontSize(12)
 			, _Padding(FMargin(14.f, 9.f))
 			, _Justification(ETextJustify::Center)
+			, _bDisplayFont(false)
+			, _bGhost(false)
 		{}
 			SLATE_ARGUMENT(FText, Label)
 			SLATE_ARGUMENT(FText, SubLabel)
@@ -144,46 +176,54 @@ namespace
 			SLATE_ARGUMENT(int32, FontSize)
 			SLATE_ARGUMENT(FMargin, Padding)
 			SLATE_ARGUMENT(ETextJustify::Type, Justification)
+			SLATE_ARGUMENT(bool, bDisplayFont)
+			SLATE_ARGUMENT(bool, bGhost) // no slab until hovered (menu lists)
 		SLATE_END_ARGS()
 
 		void Construct(const FArguments& InArgs)
 		{
-			VariantFlag = InArgs._Variant;
-			Palette = PaletteFor(InArgs._Variant);
+			Variant = InArgs._Variant;
+			Palette = PaletteFor(Variant);
 			bEnabledFlag = InArgs._bEnabled;
-			const bool bHasSub = !InArgs._SubLabel.IsEmpty();
+			if (InArgs._bGhost)
+			{
+				Palette.BgIdle = FLinearColor::Transparent;
+				Palette.BgHover = BNUITheme::Ink;
+				Palette.TextIdle = FLinearColor(BNUITheme::Bone.R, BNUITheme::Bone.G, BNUITheme::Bone.B, 0.78f);
+			}
 
+			const FText Label = InArgs._bDisplayFont ? InArgs._Label.ToUpper() : InArgs._Label;
 			TSharedRef<SVerticalBox> TextStack = SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SNew(STextBlock)
-				.Text(InArgs._Label)
-				.Font(BNUITheme::Font(InArgs._FontSize, true))
-				.ColorAndOpacity(this, &SBNMWButton::GetTextColor)
+				.Text(Label)
+				.Font(InArgs._bDisplayFont ? BNUITheme::DisplayFont(InArgs._FontSize) : BNUITheme::Font(InArgs._FontSize, true))
+				.ColorAndOpacity(this, &SBNSlabButton::GetTextColor)
 				.Justification(InArgs._Justification)
 			];
-			if (bHasSub)
+			if (!InArgs._SubLabel.IsEmpty())
 			{
-				TextStack->AddSlot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 0.f))
+				TextStack->AddSlot().AutoHeight().Padding(FMargin(0.f, 1.f, 0.f, 0.f))
 				[
 					SNew(STextBlock)
 					.Text(InArgs._SubLabel)
-					.Font(BNUITheme::Font(9, false))
-					.ColorAndOpacity(this, &SBNMWButton::GetSubTextColor)
+					.Font(BNUITheme::Font(11, false))
+					.ColorAndOpacity(this, &SBNSlabButton::GetSubTextColor)
 					.Justification(InArgs._Justification)
 				];
 			}
 
-			const EBNButtonVariant ChosenVariant = InArgs._Variant;
+			const EBNButtonVariant ChosenVariant = Variant;
 			const FOnClicked RawClicked = InArgs._OnClicked;
-			FOnClicked WrappedClicked = FOnClicked::CreateLambda([ChosenVariant, RawClicked]()
+			const FOnClicked WrappedClicked = FOnClicked::CreateLambda([ChosenVariant, RawClicked]()
 			{
-				const EBNSfxId Sfx = (ChosenVariant == EBNButtonVariant::PrimaryAmber || ChosenVariant == EBNButtonVariant::ConfirmGreen)
-					? EBNSfxId::UiConfirm : EBNSfxId::UiClick;
-				UBNAudioSubsystem::PlayUiSfx(Sfx, 0.85f);
+				const bool bConfirm = ChosenVariant == EBNButtonVariant::PrimaryAmber || ChosenVariant == EBNButtonVariant::ConfirmGreen;
+				UBNAudioSubsystem::PlayUiSfx(bConfirm ? EBNSfxId::UiConfirm : EBNSfxId::UiClick, 0.85f);
 				return RawClicked.IsBound() ? RawClicked.Execute() : FReply::Handled();
 			});
 
+			const bool bUnderline = Palette.bUnderline;
 			ChildSlot
 			[
 				SAssignNew(InnerButton, SButton)
@@ -200,75 +240,80 @@ namespace
 				})
 				.ContentPadding(FMargin(0.f))
 				[
-					SNew(SBorder)
-					.BorderImage(BNUITheme::WhiteBrush())
-					.BorderBackgroundColor(this, &SBNMWButton::GetBgColor)
-					.Padding(FMargin(0.f))
+					SNew(SOverlay)
+					+ SOverlay::Slot()
 					[
-						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth()
+						SNew(SBorder)
+						.BorderImage(BNUITheme::WhiteBrush())
+						.BorderBackgroundColor(this, &SBNSlabButton::GetBgColor)
+						.RenderTransform(SlabLean())
+						.RenderTransformPivot(FVector2D(0.5f, 0.5f))
+					]
+					+ SOverlay::Slot().HAlign(bUnderline ? HAlign_Fill : HAlign_Left).VAlign(bUnderline ? VAlign_Bottom : VAlign_Fill)
+					[
+						SNew(SBox)
+						.WidthOverride(bUnderline ? FOptionalSize() : FOptionalSize(3.f))
+						.HeightOverride(bUnderline ? FOptionalSize(3.f) : FOptionalSize())
+						.RenderTransform(SlabLean())
+						.RenderTransformPivot(FVector2D(0.5f, 0.5f))
 						[
-							SNew(SBox).WidthOverride(4.f)
-							[
-								SNew(SBorder)
-								.BorderImage(BNUITheme::WhiteBrush())
-								.BorderBackgroundColor(this, &SBNMWButton::GetBladeColor)
-							]
+							SNew(SBorder)
+							.BorderImage(BNUITheme::WhiteBrush())
+							.BorderBackgroundColor(this, &SBNSlabButton::GetTickColor)
 						]
-						+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center).Padding(InArgs._Padding)
-						[
-							TextStack
-						]
+					]
+					+ SOverlay::Slot().VAlign(VAlign_Center).Padding(InArgs._Padding)
+					[
+						TextStack
 					]
 				]
 			];
 		}
 
 	private:
-		bool IsBtnHovered() const { return bEnabledFlag && InnerButton.IsValid() && InnerButton->IsHovered(); }
-		bool IsBtnPressed() const { return bEnabledFlag && InnerButton.IsValid() && InnerButton->IsPressed(); }
+		bool IsHot() const { return bEnabledFlag && InnerButton.IsValid() && InnerButton->IsHovered(); }
 
 		FSlateColor GetBgColor() const
 		{
 			if (!bEnabledFlag)
 			{
-				return FLinearColor(0.08f, 0.085f, 0.095f, 0.65f);
+				return Palette.BgIdle.A > 0.f ? FLinearColor(0.008f, 0.009f, 0.011f, 0.70f) : FLinearColor::Transparent;
 			}
-			return IsBtnPressed() ? Palette.BgPress : IsBtnHovered() ? Palette.BgHover : Palette.BgIdle;
+			return IsHot() ? Palette.BgHover : Palette.BgIdle;
 		}
 
-		FSlateColor GetBladeColor() const
+		FSlateColor GetTickColor() const
 		{
 			if (!bEnabledFlag)
 			{
-				return FLinearColor(0.18f, 0.18f, 0.20f, 0.50f);
+				return FLinearColor::Transparent;
 			}
-			return (IsBtnHovered() || IsBtnPressed()) ? Palette.BladeHover : Palette.BladeIdle;
+			if (Palette.bUnderline)
+			{
+				return IsHot() && Variant == EBNButtonVariant::IdleTab ? BNUITheme::Muted : Palette.Tick;
+			}
+			return IsHot() ? Palette.Tick : FLinearColor::Transparent;
 		}
 
 		FSlateColor GetTextColor() const
 		{
 			if (!bEnabledFlag)
 			{
-				return FLinearColor(0.42f, 0.42f, 0.44f, 0.85f);
+				return FLinearColor(BNUITheme::Muted.R, BNUITheme::Muted.G, BNUITheme::Muted.B, 0.75f);
 			}
-			return IsBtnHovered() ? Palette.TextHover : Palette.TextIdle;
+			return IsHot() ? Palette.TextHover : Palette.TextIdle;
 		}
 
 		FSlateColor GetSubTextColor() const
 		{
-			if (!bEnabledFlag)
+			if (Variant == EBNButtonVariant::PrimaryAmber || Variant == EBNButtonVariant::ConfirmGreen)
 			{
-				return FLinearColor(0.35f, 0.35f, 0.37f, 0.75f);
+				return FLinearColor(0.f, 0.f, 0.f, 0.72f);
 			}
-			if (VariantFlag == EBNButtonVariant::PrimaryAmber)
-			{
-				return FLinearColor(0.10f, 0.09f, 0.07f, 0.92f);
-			}
-			return IsBtnHovered() ? BNUITheme::ChalkWhite : BNUITheme::SteelMuted;
+			return BNUITheme::Muted;
 		}
 
-		EBNButtonVariant VariantFlag = EBNButtonVariant::SecondarySteel;
+		EBNButtonVariant Variant = EBNButtonVariant::SecondarySteel;
 		FBNButtonPalette Palette;
 		bool bEnabledFlag = true;
 		TSharedPtr<SButton> InnerButton;
@@ -284,7 +329,38 @@ namespace BNUITheme
 
 	FSlateFontInfo Font(int32 Size, bool bBold)
 	{
+		static const TSharedPtr<const FCompositeFont> BoldFont = LoadBundledCompositeFont(BodyBoldFile);
+		static const TSharedPtr<const FCompositeFont> MedFont = LoadBundledCompositeFont(BodyMediumFile);
+		const TSharedPtr<const FCompositeFont>& Chosen = bBold ? BoldFont : MedFont;
+		if (Chosen.IsValid())
+		{
+			return FSlateFontInfo(Chosen, static_cast<float>(Size));
+		}
 		return FCoreStyle::GetDefaultFontStyle(bBold ? "Bold" : "Regular", Size);
+	}
+
+	FSlateFontInfo DisplayFont(int32 Size)
+	{
+		static const TSharedPtr<const FCompositeFont> Display = LoadBundledCompositeFont(DisplayFile);
+		if (Display.IsValid())
+		{
+			return FSlateFontInfo(Display, static_cast<float>(Size));
+		}
+		return Font(Size, true);
+	}
+
+	UFont* HudFont(bool bDisplay)
+	{
+		static UFont* const Body = MakeRuntimeHudFont(BodyBoldFile, 17);
+		static UFont* const Display = MakeRuntimeHudFont(DisplayFile, 44);
+		UFont* Chosen = bDisplay ? Display : Body;
+		return Chosen ? Chosen : GEngine->GetLargeFont();
+	}
+
+	UFont* HudNumeralFont()
+	{
+		static UFont* const Numeral = MakeRuntimeHudFont(DisplayFile, 120);
+		return Numeral ? Numeral : GEngine->GetLargeFont();
 	}
 
 	UTexture2D* LoadUITexture(const TCHAR* AssetName)
@@ -292,62 +368,98 @@ namespace BNUITheme
 		return BrushCache().GetOrLoadTexture(AssetName);
 	}
 
-	const FSlateBrush* GetPanelBevelBrush()
-	{
-		return BrushCache().GetOrMakeBrush(TEXT("PanelBevel"), TEXT("T_UI_PanelBevel"),
-			ESlateBrushDrawType::Box, ESlateBrushTileType::NoTile, FMargin(0.12f), FVector2D(256.f, 256.f));
-	}
-
-	const FSlateBrush* GetBrushedMetalBrush()
-	{
-		return BrushCache().GetOrMakeBrush(TEXT("BrushedMetal"), TEXT("T_UI_BrushedMetal"),
-			ESlateBrushDrawType::Image, ESlateBrushTileType::Both, FMargin(0.f), FVector2D(512.f, 512.f));
-	}
-
-	const FSlateBrush* GetHazardStripeBrush()
-	{
-		return BrushCache().GetOrMakeBrush(TEXT("HazardStripe"), TEXT("T_UI_HazardStripe"),
-			ESlateBrushDrawType::Image, ESlateBrushTileType::Horizontal, FMargin(0.f), FVector2D(512.f, 32.f));
-	}
-
 	const FSlateBrush* GetVignetteLeftBrush()
 	{
-		return BrushCache().GetOrMakeBrush(TEXT("VignetteLeft"), TEXT("T_UI_VignetteLeft"),
-			ESlateBrushDrawType::Image, ESlateBrushTileType::NoTile, FMargin(0.f), FVector2D(1024.f, 64.f));
+		return BrushCache().GetOrMakeBrush(TEXT("VignetteLeft"), TEXT("T_UI_VignetteLeft"), FVector2D(640.f, 1080.f));
 	}
 
 	const FSlateBrush* GetVignetteFullBrush()
 	{
-		return BrushCache().GetOrMakeBrush(TEXT("VignetteFull"), TEXT("T_UI_VignetteFull"),
-			ESlateBrushDrawType::Image, ESlateBrushTileType::NoTile, FMargin(0.f), FVector2D(512.f, 512.f));
+		return BrushCache().GetOrMakeBrush(TEXT("VignetteFull"), TEXT("T_UI_VignetteFull"), FVector2D(512.f, 512.f));
 	}
 
 	const FSlateBrush* GetArtBrush(const TCHAR* AssetName)
 	{
-		return BrushCache().GetOrMakeBrush(AssetName, AssetName,
-			ESlateBrushDrawType::Image, ESlateBrushTileType::NoTile, FMargin(0.f), FVector2D(1280.f, 720.f));
+		return BrushCache().GetOrMakeBrush(AssetName, AssetName, FVector2D(1280.f, 720.f));
 	}
 
-	UTexture2D* GetTachRingTexture()
+	TSharedRef<SWidget> MakePanel(TSharedRef<SWidget> InnerContent, FMargin InnerPadding,
+		const FLinearColor& Tint, const FLinearColor& EdgeAccent)
 	{
-		return LoadUITexture(TEXT("T_UI_TachRing"));
-	}
-
-	UTexture2D* GetRadarRingTexture()
-	{
-		return LoadUITexture(TEXT("T_UI_RadarRing"));
-	}
-
-	TSharedRef<SWidget> MakeHazardBar(float Height)
-	{
-		const FSlateBrush* Hazard = GetHazardStripeBrush();
-		const bool bHasTex = Hazard != WhiteBrush();
-		return SNew(SBox)
-			.HeightOverride(Height)
+		TSharedRef<SOverlay> Root = SNew(SOverlay)
+			+ SOverlay::Slot()
 			[
-				SNew(SImage)
-				.Image(Hazard)
-				.ColorAndOpacity(bHasTex ? FLinearColor::White : AmberGold)
+				SNew(SBorder)
+				.BorderImage(WhiteBrush())
+				.BorderBackgroundColor(Tint)
+				.Padding(InnerPadding)
+				[
+					InnerContent
+				]
+			];
+		if (EdgeAccent.A > 0.01f)
+		{
+			Root->AddSlot().HAlign(HAlign_Left).VAlign(VAlign_Fill)
+			[
+				SNew(SBox).WidthOverride(3.f)
+				[
+					SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(EdgeAccent)
+				]
+			];
+		}
+		return Root;
+	}
+
+	TSharedRef<SWidget> MakeIconTab(const TCHAR* IconAssetName, const FString& Caption, bool bSelected,
+		FOnClicked OnClicked, bool bEnabled, const FLinearColor& AccentColor)
+	{
+		const FSlateBrush* IconBrush = BrushCache().GetOrMakeBrush(IconAssetName, IconAssetName, FVector2D(34.f, 34.f));
+		const bool bHasIcon = IconBrush != WhiteBrush();
+		const FLinearColor TextTint = !bEnabled ? FLinearColor(Muted.R, Muted.G, Muted.B, 0.5f) : bSelected ? Bone : Muted;
+
+		const FOnClicked Wrapped = FOnClicked::CreateLambda([OnClicked, bSelected]()
+		{
+			UBNAudioSubsystem::PlayUiSfx(bSelected ? EBNSfxId::UiConfirm : EBNSfxId::UiClick, 0.80f);
+			return OnClicked.IsBound() ? OnClicked.Execute() : FReply::Handled();
+		});
+
+		TSharedRef<SVerticalBox> Stack = SNew(SVerticalBox);
+		if (bHasIcon)
+		{
+			Stack->AddSlot().AutoHeight().HAlign(HAlign_Center).Padding(FMargin(0.f, 0.f, 0.f, 4.f))
+			[
+				SNew(SImage).Image(IconBrush).ColorAndOpacity(TextTint)
+			];
+		}
+		Stack->AddSlot().AutoHeight().HAlign(HAlign_Center)
+		[
+			SNew(STextBlock).Text(FText::FromString(Caption.ToUpper())).Font(Font(11, true)).ColorAndOpacity(TextTint)
+		];
+		Stack->AddSlot().AutoHeight().Padding(FMargin(0.f, 6.f, 0.f, 0.f))
+		[
+			SNew(SBox).HeightOverride(3.f)
+			[
+				SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(bSelected ? AccentColor : FLinearColor::Transparent)
+			]
+		];
+
+		return SNew(SButton)
+			.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+			.IsFocusable(false)
+			.IsEnabled(bEnabled)
+			.ContentPadding(FMargin(10.f, 4.f))
+			.OnClicked(Wrapped)
+			[
+				Stack
+			];
+	}
+
+	TSharedRef<SWidget> MakeAccentRule(float Height)
+	{
+		return SNew(SBox)
+			.HeightOverride(FMath::Clamp(Height, 1.f, 3.f))
+			[
+				SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(Accent)
 			];
 	}
 
@@ -356,49 +468,51 @@ namespace BNUITheme
 		return SNew(SBox)
 			.HeightOverride(1.f)
 			[
-				SNew(SBorder)
-				.BorderImage(WhiteBrush())
-				.BorderBackgroundColor(Color)
+				SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(Color)
 			];
 	}
 
-	TSharedRef<SWidget> MakeSectionHeader(const FString& Title, const FString& RightTag, const FLinearColor& Accent)
+	TSharedRef<SWidget> MakeSectionHeader(const FString& Title, const FString& RightTag, const FLinearColor& AccentColor)
 	{
 		TSharedRef<SHorizontalBox> Row = SNew(SHorizontalBox)
-		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 2.f, 8.f, 2.f))
-		[
-			SNew(SBox).WidthOverride(4.f)
-			[
-				SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(Accent)
-			]
-		]
-		+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
+		+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 8.f, 0.f))
 		[
 			SNew(STextBlock)
-			.Text(FText::FromString(Title))
-			.Font(Font(12, true))
-			.ColorAndOpacity(ChalkWhite)
+			.Text(FText::FromString(Title.ToUpper()))
+			.Font(DisplayFont(17))
+			.ColorAndOpacity(Bone)
 		];
 		if (!RightTag.IsEmpty())
 		{
-			Row->AddSlot().AutoWidth().VAlign(VAlign_Center)
+			Row->AddSlot().AutoWidth().VAlign(VAlign_Bottom).Padding(FMargin(0.f, 0.f, 0.f, 2.f))
 			[
 				SNew(STextBlock)
-				.Text(FText::FromString(RightTag))
-				.Font(Font(10, true))
-				.ColorAndOpacity(Accent)
+				.Text(FText::FromString(RightTag.ToUpper()))
+				.Font(Font(11, true))
+				.ColorAndOpacity(AccentColor)
 			];
 		}
 
 		return SNew(SVerticalBox)
 		+ SVerticalBox::Slot().AutoHeight()[Row]
-		+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 5.f, 0.f, 0.f))[MakeHairline()];
+		+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 0.f))
+		[
+			SNew(SHorizontalBox)
+			+ SHorizontalBox::Slot().AutoWidth()
+			[
+				SNew(SBox).WidthOverride(28.f)[MakeAccentRule(2.f)]
+			]
+			+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Bottom)
+			[
+				MakeHairline()
+			]
+		];
 	}
 
 	TSharedRef<SWidget> MakeMWButton(const FText& Label, EBNButtonVariant Variant, FOnClicked OnClicked,
 		bool bEnabled, int32 FontSize, FMargin Padding)
 	{
-		return SNew(SBNMWButton)
+		return SNew(SBNSlabButton)
 			.Label(Label)
 			.Variant(Variant)
 			.OnClicked(OnClicked)
@@ -414,36 +528,39 @@ namespace BNUITheme
 		const EBNButtonVariant Variant = bDanger ? EBNButtonVariant::DangerCrimson
 			: bPrimary ? EBNButtonVariant::PrimaryAmber
 			: EBNButtonVariant::SecondarySteel;
-		return SNew(SBNMWButton)
+		return SNew(SBNSlabButton)
 			.Label(Label)
 			.SubLabel(SubLabel)
 			.Variant(Variant)
 			.OnClicked(OnClicked)
 			.bEnabled(true)
-			.FontSize(bPrimary ? 14 : 12)
-			.Padding(bPrimary ? FMargin(18.f, 13.f) : FMargin(16.f, 10.f))
-			.Justification(ETextJustify::Left);
+			.FontSize(bPrimary ? 26 : 22)
+			.Padding(FMargin(18.f, bPrimary ? 8.f : 5.f))
+			.Justification(ETextJustify::Left)
+			.bDisplayFont(true)
+			.bGhost(!bPrimary && !bDanger);
 	}
 
 	TSharedRef<SWidget> MakeSegmentedStatBar(const FString& Label, const FString& ValueText,
 		float Fraction, const FLinearColor& FillColor)
 	{
 		constexpr int32 NumSegments = 12;
-		const float Clamped = FMath::Clamp(Fraction, 0.f, 1.f);
-		const int32 LitCount = FMath::Clamp(FMath::RoundToInt(Clamped * NumSegments), 0, NumSegments);
+		const int32 LitCount = FMath::Clamp(FMath::RoundToInt(FMath::Clamp(Fraction, 0.f, 1.f) * NumSegments), 0, NumSegments);
 
 		TSharedRef<SHorizontalBox> SegRow = SNew(SHorizontalBox);
 		for (int32 i = 0; i < NumSegments; ++i)
 		{
-			const bool bLit = i < LitCount;
-			const FLinearColor SegCol = bLit ? FillColor : FLinearColor(0.16f, 0.16f, 0.18f, 0.85f);
 			SegRow->AddSlot()
 			.FillWidth(1.f)
-			.Padding(FMargin(0.f, 0.f, i < NumSegments - 1 ? 3.f : 0.f, 0.f))
+			.Padding(FMargin(0.f, 0.f, i < NumSegments - 1 ? 2.f : 0.f, 0.f))
 			[
-				SNew(SBox).HeightOverride(7.f)
+				SNew(SBox).HeightOverride(6.f)
 				[
-					SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(SegCol)
+					SNew(SBorder)
+					.BorderImage(WhiteBrush())
+					.BorderBackgroundColor(i < LitCount ? FillColor : Hairline)
+					.RenderTransform(SlabLean())
+					.RenderTransformPivot(FVector2D(0.5f, 0.5f))
 				]
 			];
 		}
@@ -454,14 +571,14 @@ namespace BNUITheme
 			SNew(SHorizontalBox)
 			+ SHorizontalBox::Slot().FillWidth(1.f)
 			[
-				SNew(STextBlock).Text(FText::FromString(Label)).Font(Font(9, false)).ColorAndOpacity(SteelMuted)
+				SNew(STextBlock).Text(FText::FromString(Label.ToUpper())).Font(Font(11, true)).ColorAndOpacity(Muted)
 			]
 			+ SHorizontalBox::Slot().AutoWidth()
 			[
-				SNew(STextBlock).Text(FText::FromString(ValueText)).Font(Font(10, true)).ColorAndOpacity(ChalkWhite)
+				SNew(STextBlock).Text(FText::FromString(ValueText)).Font(Font(12, true)).ColorAndOpacity(Bone)
 			]
 		]
-		+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 3.f, 0.f, 7.f))
+		+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 8.f))
 		[
 			SegRow
 		];

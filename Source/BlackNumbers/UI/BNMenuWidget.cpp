@@ -23,15 +23,15 @@
 #include "Widgets/SOverlay.h"
 #include "Widgets/Text/STextBlock.h"
 
-const FLinearColor SBNGameMenuWidget::BackdropColor(0.015f, 0.017f, 0.022f, 0.72f);
-const FLinearColor SBNGameMenuWidget::PanelBgColor = BNUITheme::GunmetalPanel;
-const FLinearColor SBNGameMenuWidget::CardBgColor = BNUITheme::GunmetalCard;
-const FLinearColor SBNGameMenuWidget::CardActiveBgColor = BNUITheme::AmberDarkCard;
-const FLinearColor SBNGameMenuWidget::AccentAmberColor = BNUITheme::AmberGold;
-const FLinearColor SBNGameMenuWidget::AccentCyanColor = BNUITheme::NosCyan;
-const FLinearColor SBNGameMenuWidget::AccentGreenColor = BNUITheme::EmeraldGreen;
-const FLinearColor SBNGameMenuWidget::MutedTextColor = BNUITheme::SteelMuted;
-const FLinearColor SBNGameMenuWidget::WhiteTextColor = BNUITheme::ChalkWhite;
+const FLinearColor SBNGameMenuWidget::BackdropColor(0.015f, 0.017f, 0.022f, 0.62f);
+const FLinearColor SBNGameMenuWidget::PanelBgColor = BNUITheme::Panel;
+const FLinearColor SBNGameMenuWidget::CardBgColor = BNUITheme::Card;
+const FLinearColor SBNGameMenuWidget::CardActiveBgColor = BNUITheme::AccentDark;
+const FLinearColor SBNGameMenuWidget::AccentAmberColor = BNUITheme::Accent;
+const FLinearColor SBNGameMenuWidget::AccentCyanColor = BNUITheme::Nos;
+const FLinearColor SBNGameMenuWidget::AccentGreenColor = BNUITheme::Ok;
+const FLinearColor SBNGameMenuWidget::MutedTextColor = BNUITheme::Muted;
+const FLinearColor SBNGameMenuWidget::WhiteTextColor = BNUITheme::Bone;
 
 const FSlateBrush* SBNGameMenuWidget::WhiteBrush()
 {
@@ -135,8 +135,36 @@ void SBNGameMenuWidget::Refresh()
 	}
 
 	const bool bTransparentSafehouse = (!ActiveRace && ActiveTab == EBNMenuTab::Garage);
+	const bool bFullBleedBlacklist = (!ActiveRace && ActiveTab == EBNMenuTab::BlackNumbers);
 	const FSlateBrush* VigFull = BNUITheme::GetVignetteFullBrush();
 	const bool bHasVig = VigFull != BNUITheme::WhiteBrush();
+
+	if (bFullBleedBlacklist)
+	{
+		// Full-bleed Blacklist: flat ink over the live world, nothing decorative competing with the rival.
+		RootSlot->AddSlot().FillHeight(1.f)
+		[
+			SNew(SOverlay)
+			+ SOverlay::Slot()
+			[
+				SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(BNUITheme::Ink)
+			]
+			+ SOverlay::Slot()
+			[
+				SNew(SVerticalBox)
+				// Ultra-minimal top strip so user can still switch Garage / Races / Settings / Resume without cluttering the Blacklist art!
+				+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(36.f, 14.f, 36.f, 4.f))
+				[
+					BuildHeaderBar()
+				]
+				+ SVerticalBox::Slot().FillHeight(1.f).Padding(FMargin(36.f, 6.f, 36.f, 20.f))
+				[
+					TabBody
+				]
+			]
+		];
+		return;
+	}
 
 	if (bTransparentSafehouse)
 	{
@@ -156,16 +184,12 @@ void SBNGameMenuWidget::Refresh()
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SNew(SBorder)
-					.BorderImage(BNUITheme::GetBrushedMetalBrush())
-					.BorderBackgroundColor(FLinearColor(0.85f, 0.85f, 0.85f, 0.94f))
-					.Padding(FMargin(28.f, 14.f, 28.f, 10.f))
+					.BorderImage(WhiteBrush())
+					.BorderBackgroundColor(BNUITheme::Panel)
+					.Padding(FMargin(32.f, 14.f, 32.f, 10.f))
 					[
 						BuildHeaderBar()
 					]
-				]
-				+ SVerticalBox::Slot().AutoHeight()
-				[
-					BNUITheme::MakeHazardBar(6.f)
 				]
 				+ SVerticalBox::Slot().FillHeight(1.f).Padding(FMargin(24.f, 16.f, 24.f, 20.f))
 				[
@@ -176,50 +200,28 @@ void SBNGameMenuWidget::Refresh()
 		return;
 	}
 
-	// Standard Most Wanted Tactical Frame over smoked Karamara backdrop
+	// Races / Settings / Controls / Pause: flat ink shell over the live world.
 	RootSlot->AddSlot().FillHeight(1.f)
 	[
 		SNew(SOverlay)
 		+ SOverlay::Slot()
 		[
-			SNew(SBorder)
-			.BorderImage(WhiteBrush())
-			.BorderBackgroundColor(BackdropColor)
+			SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(BNUITheme::Ink)
 		]
-		+ SOverlay::Slot()
-		[
-			SNew(SImage)
-			.Image(VigFull)
-			.ColorAndOpacity(bHasVig ? FLinearColor(1.f, 1.f, 1.f, 0.90f) : FLinearColor(0.f, 0.f, 0.f, 0.f))
-		]
-		+ SOverlay::Slot().Padding(FMargin(44.f, 28.f))
+		+ SOverlay::Slot().Padding(FMargin(44.f, 22.f, 44.f, 26.f))
 		[
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				BNUITheme::MakeHazardBar(7.f)
+				BuildHeaderBar()
+			]
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 10.f, 0.f, 14.f))
+			[
+				BNUITheme::MakeAccentRule(2.f)
 			]
 			+ SVerticalBox::Slot().FillHeight(1.f)
 			[
-				SNew(SBorder)
-				.BorderImage(BNUITheme::GetPanelBevelBrush())
-				.BorderBackgroundColor(FLinearColor(0.95f, 0.95f, 0.95f, 0.96f))
-				.Padding(FMargin(24.f, 18.f))
-				[
-					SNew(SVerticalBox)
-					+ SVerticalBox::Slot().AutoHeight()
-					[
-						BuildHeaderBar()
-					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 12.f, 0.f, 12.f))
-					[
-						BNUITheme::MakeHairline()
-					]
-					+ SVerticalBox::Slot().FillHeight(1.f)
-					[
-						TabBody
-					]
-				]
+				TabBody
 			]
 		]
 	];
@@ -278,7 +280,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 				SetActiveTab(Tab);
 				return FReply::Handled();
 			}),
-			true, 11, FMargin(16.f, 9.f));
+			true, 13, FMargin(18.f, 10.f));
 	};
 
 	const ABNRaceEvent* ActiveRace = ABNRaceEvent::FindActiveRace(GetHUDWorld(OwnerHUD));
@@ -297,20 +299,20 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("YARIŞ DURAKLATILDI")))
-					.Font(BNUITheme::Font(20, true))
-					.ColorAndOpacity(BNUITheme::ChalkWhite)
+					.Font(BNUITheme::DisplayFont(34))
+					.ColorAndOpacity(BNUITheme::Bone)
 				]
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(FString::Printf(TEXT("BLACK NUMBERS  //  %s"), *RaceTitle)))
-					.Font(BNUITheme::Font(9, true))
-					.ColorAndOpacity(BNUITheme::AmberGold)
+					.Font(BNUITheme::Font(11, true))
+					.ColorAndOpacity(BNUITheme::Accent)
 				]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 			[
-				BNUITheme::MakeMWButton(FText::FromString(TEXT("YARIŞA DEVAM ET [ESC]")), EBNButtonVariant::PrimaryAmber,
+				BNUITheme::MakeMWButton(FText::FromString(TEXT("DEVAM ET [ESC]")), EBNButtonVariant::PrimaryAmber,
 					FOnClicked::CreateLambda([this]()
 					{
 						if (OwnerHUD.IsValid())
@@ -318,7 +320,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 							OwnerHUD->CloseMenu();
 						}
 						return FReply::Handled();
-					}))
+					}), true, 13, FMargin(18.f, 10.f))
 			]
 		]
 		+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 10.f, 0.f, 0.f))
@@ -330,6 +332,32 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 		];
 	}
 
+	const int32 TotalBounty = Story ? Story->GetState().TotalBounty : 0;
+
+	if (ActiveTab == EBNMenuTab::BlackNumbers)
+	{
+		// Ultra-clean single-row navigation strip so full-bleed MW Blacklist art dominates 100% of the canvas
+		return SNew(SHorizontalBox)
+		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 6.f, 0.f))[TabBtn(EBNMenuTab::BlackNumbers, TEXT("KARA LİSTE"))]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 6.f, 0.f))[TabBtn(EBNMenuTab::Races, TEXT("YARIŞLAR"))]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 6.f, 0.f))[TabBtn(EBNMenuTab::Garage, TEXT("GARAJ"))]
+		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 6.f, 0.f))[TabBtn(EBNMenuTab::Settings, TEXT("AYARLAR"))]
+		+ SHorizontalBox::Slot().AutoWidth()[TabBtn(EBNMenuTab::Controls, TEXT("KONTROLLER"))]
+		+ SHorizontalBox::Slot().FillWidth(1.f)[SNew(SSpacer)]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 8.f, 0.f))
+		[
+			BNUITheme::MakeMWButton(FText::FromString(TEXT("ANA EKRAN")), EBNButtonVariant::SecondarySteel,
+				FOnClicked::CreateLambda([this]() { if (OwnerHUD.IsValid()) { OwnerHUD->OpenTitleScreen(); } return FReply::Handled(); }),
+				true, 11, FMargin(12.f, 7.f))
+		]
+		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
+		[
+			BNUITheme::MakeMWButton(FText::FromString(TEXT("SÜRÜŞE DÖN [ESC]")), EBNButtonVariant::PrimaryAmber,
+				FOnClicked::CreateLambda([this]() { if (OwnerHUD.IsValid()) { OwnerHUD->CloseMenu(); } return FReply::Handled(); }),
+				true, 11, FMargin(14.f, 7.f))
+		];
+	}
+
 	return SNew(SVerticalBox)
 	+ SVerticalBox::Slot().AutoHeight()
 	[
@@ -337,47 +365,53 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 		+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 		[
 			SNew(SHorizontalBox)
-			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 16.f, 0.f))
+			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 20.f, 0.f))
 			[
 				SNew(SVerticalBox)
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SNew(STextBlock)
-					.Text(FText::FromString(TEXT("BLACK NUMBERS")))
-					.Font(BNUITheme::Font(20, true))
-					.ColorAndOpacity(BNUITheme::ChalkWhite)
+					.Text(FText::FromString(ActiveTab == EBNMenuTab::Garage ? TEXT("SELİN'İN GARAJI")
+						: ActiveTab == EBNMenuTab::Settings ? TEXT("AYARLAR")
+						: ActiveTab == EBNMenuTab::Controls ? TEXT("KONTROLLER")
+						: TEXT("SOKAK YARIŞLARI")))
+					.Font(BNUITheme::DisplayFont(34))
+					.ColorAndOpacity(BNUITheme::Bone)
 				]
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SNew(STextBlock)
-					.Text(FText::FromString(FString::Printf(TEXT("KARAMARA  //  %s  •  LİSTE %d/16"), *ActStr, Defeated)))
-					.Font(BNUITheme::Font(9, true))
-					.ColorAndOpacity(BNUITheme::AmberGold)
+					.Text(FText::FromString(FString::Printf(TEXT("KARAMARA  //  %s  •  KARA LİSTE %d/16"), *ActStr, Defeated)))
+					.Font(BNUITheme::Font(11, true))
+					.ColorAndOpacity(BNUITheme::Accent)
 				]
 			]
 			+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(8.f, 0.f, 0.f, 0.f))
 			[
-				SNew(SBorder)
-				.BorderImage(BNUITheme::GetPanelBevelBrush())
-				.BorderBackgroundColor(FLinearColor(0.95f, 0.95f, 0.95f, 0.92f))
-				.Padding(FMargin(14.f, 6.f))
-				[
+				BNUITheme::MakePanel(
 					SNew(SHorizontalBox)
 					+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 14.f, 0.f))
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(FString::Printf(TEXT("$%s"), *FString::FormatAsNumber(Cash))))
-						.Font(BNUITheme::Font(12, true))
-						.ColorAndOpacity(BNUITheme::EmeraldGreen)
+						.Font(BNUITheme::Font(14))
+						.ColorAndOpacity(BNUITheme::Bone)
+					]
+					+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 14.f, 0.f))
+					[
+						SNew(STextBlock)
+						.Text(FText::FromString(FString::Printf(TEXT("ÖDÜL %s"), *FString::FormatAsNumber(TotalBounty))))
+						.Font(BNUITheme::Font(13))
+						.ColorAndOpacity(BNUITheme::Accent)
 					]
 					+ SHorizontalBox::Slot().AutoWidth()
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(FString::Printf(TEXT("%s İTİBAR"), *FString::FormatAsNumber(Rep))))
-						.Font(BNUITheme::Font(11, true))
-						.ColorAndOpacity(BNUITheme::NosCyan)
-					]
-				]
+						.Font(BNUITheme::Font(12, true))
+						.ColorAndOpacity(BNUITheme::Nos)
+					],
+					FMargin(14.f, 6.f), FLinearColor::Transparent)
 			]
 		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 8.f, 0.f))
@@ -390,7 +424,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 						OwnerHUD->OpenTitleScreen();
 					}
 					return FReply::Handled();
-				}))
+				}), true, 12, FMargin(16.f, 10.f))
 		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 		[
@@ -402,10 +436,10 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildHeaderBar()
 						OwnerHUD->CloseMenu();
 					}
 					return FReply::Handled();
-				}))
+				}), true, 12, FMargin(16.f, 10.f))
 		]
 	]
-	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 10.f, 0.f, 0.f))
+	+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 12.f, 0.f, 0.f))
 	[
 		SNew(SHorizontalBox)
 		+ SHorizontalBox::Slot().AutoWidth().Padding(FMargin(0.f, 0.f, 8.f, 0.f))[TabBtn(EBNMenuTab::Races, TEXT("YARIŞLAR"))]
@@ -451,13 +485,13 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacePauseView(ABNRaceEvent& ActiveRa
 			SNew(SVerticalBox)
 			+ SVerticalBox::Slot().AutoHeight()
 			[
-				BNUITheme::MakeHazardBar(5.f)
+				BNUITheme::MakeAccentRule(5.f)
 			]
 			+ SVerticalBox::Slot().AutoHeight()
 			[
 				SNew(SBorder)
-				.BorderImage(BNUITheme::GetPanelBevelBrush())
-				.BorderBackgroundColor(FLinearColor(0.95f, 0.95f, 0.95f, 0.96f))
+				.BorderImage(BNUITheme::WhiteBrush())
+				.BorderBackgroundColor(BNUITheme::Panel)
 				.Padding(FMargin(24.f, 20.f))
 				[
 					SNew(SVerticalBox)
@@ -465,19 +499,19 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacePauseView(ABNRaceEvent& ActiveRa
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(RaceTitle.ToUpper()))
-						.Font(BNUITheme::Font(18, true))
-						.ColorAndOpacity(BNUITheme::ChalkWhite)
+						.Font(BNUITheme::DisplayFont(28))
+						.ColorAndOpacity(BNUITheme::Bone)
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 16.f))
+					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 18.f))
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(StatusLine))
-						.Font(BNUITheme::Font(11, true))
-						.ColorAndOpacity(BNUITheme::NosCyan)
+						.Font(BNUITheme::Font(13, true))
+						.ColorAndOpacity(BNUITheme::Nos)
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 8.f))
 					[
-						PauseBtn(TEXT("YARIŞA DEVAM ET"), TEXT("Kaldığın yerden sürüşe dön  [ESC]"), true, false,
+						PauseBtn(TEXT("YARIŞA DEVAM ET"), TEXT(""), true, false,
 							FOnClicked::CreateLambda([this]()
 							{
 								if (OwnerHUD.IsValid())
@@ -489,7 +523,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacePauseView(ABNRaceEvent& ActiveRa
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 8.f))
 					[
-						PauseBtn(TEXT("YARIŞI YENİDEN BAŞLAT"), TEXT("Başlangıç çizgisinden sıfırdan başla"), false, false,
+						PauseBtn(TEXT("YENİDEN BAŞLAT"), TEXT(""), false, false,
 							FOnClicked::CreateLambda([this, WeakRace]()
 							{
 								if (OwnerHUD.IsValid())
@@ -505,7 +539,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacePauseView(ABNRaceEvent& ActiveRa
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 8.f))
 					[
-						PauseBtn(TEXT("YARIŞTAN ÇIK"), TEXT("Yarışı terk et ve Karamara serbest sürüşe dön"), false, true,
+						PauseBtn(TEXT("YARIŞTAN ÇIK"), TEXT(""), false, true,
 							FOnClicked::CreateLambda([this, WeakRace]()
 							{
 								if (OwnerHUD.IsValid())
@@ -570,13 +604,13 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 			[
 				SNew(SBorder)
 				.BorderImage(WhiteBrush())
-				.BorderBackgroundColor(BNUITheme::CrimsonDarkCard)
+				.BorderBackgroundColor(BNUITheme::DangerDark)
 				.Padding(FMargin(16.f, 14.f))
 				[
 					SNew(STextBlock)
 					.Text(FText::FromString(TEXT("ÖZEL KADEME KOVALAMACA AKTİF: Polisleri atlat ve Liman Tünelleri (Rota A) veya Kuzey Geçidi (Rota B) çıkışına ulaş!")))
 					.Font(BNUITheme::Font(12, true))
-					.ColorAndOpacity(BNUITheme::ChalkWhite)
+					.ColorAndOpacity(BNUITheme::Bone)
 					.AutoWrapText(true)
 				]
 			];
@@ -586,21 +620,21 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 			RaceList->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 14.f))
 			[
 				SNew(SVerticalBox)
-				+ SVerticalBox::Slot().AutoHeight()[BNUITheme::MakeHazardBar(5.f)]
+				+ SVerticalBox::Slot().AutoHeight()[BNUITheme::MakeAccentRule(5.f)]
 				+ SVerticalBox::Slot().AutoHeight()
 				[
 					SNew(SBorder)
-					.BorderImage(BNUITheme::GetPanelBevelBrush())
-					.BorderBackgroundColor(FLinearColor(1.0f, 0.88f, 0.65f, 0.98f))
+					.BorderImage(BNUITheme::WhiteBrush())
+					.BorderBackgroundColor(BNUITheme::AccentDark)
 					.Padding(FMargin(18.f, 14.f))
 					[
 						SNew(SHorizontalBox)
-						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 16.f, 0.f))
+						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 18.f, 0.f))
 						[
 							SNew(STextBlock)
 							.Text(FText::FromString(FString::Printf(TEXT("#%02d"), NextBoss->Rank)))
-							.Font(BNUITheme::Font(28, true))
-							.ColorAndOpacity(BNUITheme::AmberGold)
+							.Font(BNUITheme::DisplayFont(42))
+							.ColorAndOpacity(BNUITheme::Accent)
 						]
 						+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 						[
@@ -609,16 +643,16 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 							[
 								SNew(STextBlock)
 								.Text(FText::FromString(FString::Printf(TEXT("SIRADAKİ RAKİP  //  %s"), *NextBoss->Name.ToUpper())))
-								.Font(BNUITheme::Font(13, true))
-								.ColorAndOpacity(BNUITheme::ChalkWhite)
+								.Font(BNUITheme::DisplayFont(22))
+								.ColorAndOpacity(BNUITheme::Bone)
 							]
 							+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 3.f, 0.f, 0.f))
 							[
 								SNew(STextBlock)
-								.Text(FText::FromString(FString::Printf(TEXT("%s   •   %d/%d ELEME   •   %s DÜELLOSU"),
+								.Text(FText::FromString(FString::Printf(TEXT("%s   •   %d/%d ELEME   •   %s"),
 									*NextBoss->VehicleName, S.QualifiersWon, NextBoss->Qualifiers.Num(), *NextBoss->DisciplineLabel)))
-								.Font(BNUITheme::Font(10, false))
-								.ColorAndOpacity(BNUITheme::SteelMuted)
+								.Font(BNUITheme::Font(12, false))
+								.ColorAndOpacity(BNUITheme::Muted)
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -657,9 +691,9 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 			const FString Tag = Def->Discipline == EBNRaceDiscipline::Drift ? TEXT("DRİFT")
 				: Def->Discipline == EBNRaceDiscipline::Drag ? TEXT("DRAG")
 				: Def->Discipline == EBNRaceDiscipline::Circuit ? TEXT("PİST TURU") : TEXT("SPRINT");
-			const FLinearColor TagCol = Def->Discipline == EBNRaceDiscipline::Drift ? BNUITheme::NosCyan
-				: Def->Discipline == EBNRaceDiscipline::Drag ? BNUITheme::CrimsonRed
-				: Def->Discipline == EBNRaceDiscipline::Circuit ? BNUITheme::AmberGold : BNUITheme::EmeraldGreen;
+			const FLinearColor TagCol = Def->Discipline == EBNRaceDiscipline::Drift ? BNUITheme::Nos
+				: Def->Discipline == EBNRaceDiscipline::Drag ? BNUITheme::Danger
+				: Def->Discipline == EBNRaceDiscipline::Circuit ? BNUITheme::Accent : BNUITheme::Ok;
 			const FString Meta = Def->Discipline == EBNRaceDiscipline::Drift
 				? FString::Printf(TEXT("Süre: %.0f sn  •  Serbest Drift Puanı"), Def->TimeLimitSeconds)
 				: Def->Discipline == EBNRaceDiscipline::Drag
@@ -672,8 +706,8 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 			RaceList->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 6.f, 8.f))
 			[
 				SNew(SBorder)
-				.BorderImage(BNUITheme::GetPanelBevelBrush())
-				.BorderBackgroundColor(FLinearColor(0.92f, 0.92f, 0.92f, 0.95f))
+				.BorderImage(BNUITheme::WhiteBrush())
+				.BorderBackgroundColor(BNUITheme::Panel)
 				.Padding(FMargin(0.f))
 				[
 					SNew(SHorizontalBox)
@@ -692,16 +726,16 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 								SNew(SHorizontalBox)
 								+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
 								[
-									SNew(STextBlock).Text(FText::FromString(Tag)).Font(BNUITheme::Font(9, true)).ColorAndOpacity(TagCol)
+									SNew(STextBlock).Text(FText::FromString(Tag)).Font(BNUITheme::Font(11, true)).ColorAndOpacity(TagCol)
 								]
 								+ SHorizontalBox::Slot().FillWidth(1.f).VAlign(VAlign_Center)
 								[
-									SNew(STextBlock).Text(FText::FromString(Def->DisplayName.ToString())).Font(BNUITheme::Font(13, true)).ColorAndOpacity(BNUITheme::ChalkWhite)
+									SNew(STextBlock).Text(FText::FromString(Def->DisplayName.ToString())).Font(BNUITheme::Font(15, true)).ColorAndOpacity(BNUITheme::Bone)
 								]
 							]
 							+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 3.f, 0.f, 0.f))
 							[
-								SNew(STextBlock).Text(FText::FromString(Meta)).Font(BNUITheme::Font(10, false)).ColorAndOpacity(BNUITheme::SteelMuted)
+								SNew(STextBlock).Text(FText::FromString(Meta)).Font(BNUITheme::Font(11, false)).ColorAndOpacity(BNUITheme::Muted)
 							]
 						]
 						+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
@@ -730,7 +764,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 	TSharedRef<SVerticalBox> WorldTools = SNew(SVerticalBox);
 	WorldTools->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))
 	[
-		BNUITheme::MakeSectionHeader(TEXT("ŞEHİR & ATMOSFER"), TEXT("SERBEST SÜRÜŞ"), BNUITheme::NosCyan)
+		BNUITheme::MakeSectionHeader(TEXT("ŞEHİR & ATMOSFER"), TEXT("SERBEST SÜRÜŞ"), BNUITheme::Nos)
 	];
 
 	auto TimeBtn = [this](const TCHAR* Label, float Hour)
@@ -869,7 +903,7 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 	{
 		WorldTools->AddSlot().AutoHeight().Padding(FMargin(0.f, 8.f, 0.f, 0.f))
 		[
-			SNew(STextBlock).Text(FText::FromString(ActionFeedback)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::EmeraldGreen)
+			SNew(STextBlock).Text(FText::FromString(ActionFeedback)).Font(BNUITheme::Font(10, true)).ColorAndOpacity(BNUITheme::Ok)
 		];
 	}
 
@@ -881,8 +915,8 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildRacesTab()
 	+ SHorizontalBox::Slot().FillWidth(0.38f)
 	[
 		SNew(SBorder)
-		.BorderImage(BNUITheme::GetPanelBevelBrush())
-		.BorderBackgroundColor(FLinearColor(0.92f, 0.92f, 0.92f, 0.96f))
+		.BorderImage(BNUITheme::WhiteBrush())
+		.BorderBackgroundColor(BNUITheme::Panel)
 		.Padding(FMargin(16.f))
 		[
 			WorldTools
@@ -918,25 +952,15 @@ TSharedRef<SWidget> SBNGameMenuWidget::BuildControlsTab()
 	];
 	for (const FBind& Row : Binds)
 	{
-		List->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 6.f))
+		List->AddSlot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 4.f))
 		[
-			SNew(SBorder)
-			.BorderImage(BNUITheme::GetPanelBevelBrush())
-			.BorderBackgroundColor(FLinearColor(0.92f, 0.92f, 0.92f, 0.95f))
-			.Padding(FMargin(14.f, 9.f))
+			SNew(SBorder).BorderImage(WhiteBrush()).BorderBackgroundColor(BNUITheme::Panel).Padding(FMargin(14.f, 8.f))
 			[
 				SNew(SHorizontalBox)
-				+ SHorizontalBox::Slot().FillWidth(0.36f).VAlign(VAlign_Center)
-				[
-					SNew(STextBlock).Text(FText::FromString(Row.Key)).Font(BNUITheme::Font(11, true)).ColorAndOpacity(BNUITheme::AmberGold)
-				]
-				+ SHorizontalBox::Slot().FillWidth(0.64f).VAlign(VAlign_Center)
-				[
-					SNew(STextBlock).Text(FText::FromString(Row.Desc)).Font(BNUITheme::Font(11, false)).ColorAndOpacity(BNUITheme::ChalkWhite)
-				]
+				+ SHorizontalBox::Slot().FillWidth(0.36f).VAlign(VAlign_Center)[SNew(STextBlock).Text(FText::FromString(Row.Key)).Font(BNUITheme::Font(11)).ColorAndOpacity(BNUITheme::Accent)]
+				+ SHorizontalBox::Slot().FillWidth(0.64f).VAlign(VAlign_Center)[SNew(STextBlock).Text(FText::FromString(Row.Desc)).Font(BNUITheme::Font(11, false)).ColorAndOpacity(BNUITheme::Bone)]
 			]
 		];
 	}
-
 	return SNew(SScrollBox) + SScrollBox::Slot()[List];
 }

@@ -55,6 +55,8 @@ struct FBNPursuitResultSummary
 	float TopSpeedKmh = 0.f;
 	int32 RoadblocksDodged = 0;
 	int32 SpikeStripsDodged = 0;
+	int32 ImpoundStrikes = 0;
+	int32 TotalCareerBounty = 0;
 };
 
 /**

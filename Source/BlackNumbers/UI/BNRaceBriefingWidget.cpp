@@ -38,10 +38,10 @@ namespace
 	{
 		switch (Discipline)
 		{
-		case EBNRaceDiscipline::Circuit: return BNUITheme::AmberBright;
-		case EBNRaceDiscipline::Drift:   return BNUITheme::NosCyan;
+		case EBNRaceDiscipline::Circuit: return BNUITheme::AccentHi;
+		case EBNRaceDiscipline::Drift:   return BNUITheme::Nos;
 		case EBNRaceDiscipline::Drag:    return FLinearColor(0.96f, 0.34f, 0.24f, 1.f);
-		default:                         return BNUITheme::EmeraldGreen;
+		default:                         return BNUITheme::Ok;
 		}
 	}
 
@@ -50,13 +50,13 @@ namespace
 		switch (Discipline)
 		{
 		case EBNRaceDiscipline::Drag:
-			return TEXT("MANUEL VİTES ZORUNLU: [E] Vites Yükselt / [Q] Vites Düşür. Yeşil devir aralığında vites atarak fırlama kazan; kırmızı bölgede uzun süre tutarsan MOTOR PATLAR!");
+			return TEXT("DRAG KURALLARI: [E] Vites Yükselt / [Q] Düşür. Yeşil devirde vites at; kırmızı bölgede uzun kalırsan MOTOR PATLAR, ağır çarpışmalarda ARAÇ PERT (TOTALED) olur!");
 		case EBNRaceDiscipline::Drift:
 			return TEXT("El freni ([SPACE]) ve gaz dengesiyle yüksek açılı drift zinciri kur. Duvarlara çarpmadan puanları katla!");
 		case EBNRaceDiscipline::Circuit:
 			return TEXT("Karamara sokaklarında turluk kapışma. Viraj çıkışında NOS ve geç frenle rakipleri geride bırak.");
 		default:
-			return TEXT("Noktadan noktaya sokak sprinti. Trafiğe ve yüksek hızlı çarpışmalara (TOTALED) dikkat et!");
+			return TEXT("Noktadan noktaya sokak sprinti. Trafiği yar, polisten sıyrıl ve bitiş çizgisine ilk ulaş!");
 		}
 	}
 
@@ -185,14 +185,14 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 			.WidthOverride(760.f)
 			[
 				SNew(SBorder)
-				.BorderImage(BNUITheme::GetPanelBevelBrush())
-				.BorderBackgroundColor(FLinearColor(0.95f, 0.95f, 0.95f, 0.98f))
+				.BorderImage(BNUITheme::WhiteBrush())
+				.BorderBackgroundColor(BNUITheme::Panel)
 				.Padding(FMargin(0.f))
 				[
 					SNew(SVerticalBox)
 					+ SVerticalBox::Slot().AutoHeight()
 					[
-						BNUITheme::MakeHazardBar(7.f)
+						BNUITheme::MakeAccentRule(7.f)
 					]
 					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(32.f, 24.f, 32.f, 26.f))
 					[
@@ -210,7 +210,7 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 									SNew(STextBlock)
 									.Text(FText::FromString(BriefingDisciplineTag(Disc)))
 									.Font(BNUITheme::Font(10, true))
-									.ColorAndOpacity(BNUITheme::ObsidianInk)
+									.ColorAndOpacity(BNUITheme::InkSolid)
 								]
 							]
 							+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(14.f, 0.f, 0.f, 0.f))
@@ -218,29 +218,29 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 								SNew(STextBlock)
 								.Text(FText::FromString(FString::Printf(TEXT("BÖLGE: %s%s"), *DistrictName, *RulerTag)))
 								.Font(BNUITheme::Font(10, true))
-								.ColorAndOpacity(BNUITheme::SteelMuted)
+								.ColorAndOpacity(BNUITheme::Muted)
 							]
 						]
-						+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 12.f, 0.f, 6.f))
+						+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 12.f, 0.f, 4.f))
 						[
 							SNew(STextBlock)
 							.Text(FText::FromString(Title))
-							.Font(BNUITheme::Font(28, true))
-							.ColorAndOpacity(BNUITheme::ChalkWhite)
+							.Font(BNUITheme::DisplayFont(42))
+							.ColorAndOpacity(BNUITheme::Bone)
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 18.f))
 						[
 							SNew(STextBlock)
-							.Text(FText::FromString(TEXT("YARIŞ ÖZETİ  —  BU ETKİNLİĞE GİRMEK İSTER MİSİN?")))
-							.Font(BNUITheme::Font(11, true))
-							.ColorAndOpacity(BNUITheme::AmberBright)
+							.Text(FText::FromString(TEXT("ETKİNLİK BRİFİNGİ")))
+							.Font(BNUITheme::Font(12, true))
+							.ColorAndOpacity(BNUITheme::AccentHi)
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 16.f))
 						[
 							SNew(SHorizontalBox)
 							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
 							[
-								MakeTile(TEXT("PARKUR / SÜRE"), FormatVal, BNUITheme::ChalkWhite)
+								MakeTile(TEXT("PARKUR / SÜRE"), FormatVal, BNUITheme::Bone)
 							]
 							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
 							[
@@ -248,24 +248,24 @@ void SBNRaceBriefingWidget::Construct(const FArguments& InArgs)
 							]
 							+ SHorizontalBox::Slot().FillWidth(1.f).Padding(FMargin(0.f, 0.f, 10.f, 0.f))
 							[
-								MakeTile(TEXT("1. / 2. NAKİT"), CashReward, BNUITheme::EmeraldGreen)
+								MakeTile(TEXT("1. / 2. NAKİT"), CashReward, BNUITheme::Ok)
 							]
 							+ SHorizontalBox::Slot().FillWidth(1.f)
 							[
-								MakeTile(TEXT("İTİBAR"), RepReward, BNUITheme::NosCyan)
+								MakeTile(TEXT("İTİBAR"), RepReward, BNUITheme::Nos)
 							]
 						]
 						+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 22.f))
 						[
 							SNew(SBorder)
 							.BorderImage(BNUITheme::WhiteBrush())
-							.BorderBackgroundColor(Disc == EBNRaceDiscipline::Drag ? BNUITheme::CrimsonDarkCard : BNUITheme::GunmetalCard)
+							.BorderBackgroundColor(Disc == EBNRaceDiscipline::Drag ? BNUITheme::DangerDark : BNUITheme::Card)
 							.Padding(FMargin(16.f, 12.f))
 							[
 								SNew(STextBlock)
 								.Text(FText::FromString(BriefingFlavorNote(Disc)))
 								.Font(BNUITheme::Font(11, Disc == EBNRaceDiscipline::Drag))
-								.ColorAndOpacity(BNUITheme::ChalkWhite)
+								.ColorAndOpacity(BNUITheme::Bone)
 								.AutoWrapText(true)
 							]
 						]
@@ -300,7 +300,7 @@ TSharedRef<SWidget> SBNRaceBriefingWidget::MakeTile(const TCHAR* Label, const FS
 {
 	return SNew(SBorder)
 		.BorderImage(BNUITheme::WhiteBrush())
-		.BorderBackgroundColor(BNUITheme::GunmetalCard)
+		.BorderBackgroundColor(BNUITheme::Card)
 		.Padding(FMargin(12.f, 10.f))
 		[
 			SNew(SVerticalBox)
@@ -309,7 +309,7 @@ TSharedRef<SWidget> SBNRaceBriefingWidget::MakeTile(const TCHAR* Label, const FS
 				SNew(STextBlock)
 				.Text(FText::FromString(Label))
 				.Font(BNUITheme::Font(9, true))
-				.ColorAndOpacity(BNUITheme::SteelMuted)
+				.ColorAndOpacity(BNUITheme::Muted)
 			]
 			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 0.f))
 			[

@@ -123,7 +123,9 @@ private:
 	void DrawGaugeBar(const TCHAR* Label, float X, float Y, float Width, float Height, float Fraction, const FLinearColor& FillColour, bool bActive);
 	void DrawActionBanners(const ABNVehiclePawn& Car, const UBNPursuitSubsystem* Pursuit, float BaseY);
 	void DrawCameraModePill(const ABNVehiclePawn& Car);
-	void DrawCentred(const FString& Text, float Y, float Scale, const FLinearColor& Colour);
+	void DrawCentred(const FString& Text, float Y, float Scale, const FLinearColor& Colour, UFont* Font = nullptr);
+	/** Canvas text with a soft 1px drop shadow (legible over bright skies without backing slabs). */
+	void DrawTextShadowed(const FString& Text, const FLinearColor& Colour, float X, float Y, UFont* Font, float Scale);
 	void SyncStoryCardOverlay();
 	void SyncShowcaseCamera(ABNVehiclePawn* Car) const;
 	void UpdateRaceAndPursuitTracking(const UBNProgressionSubsystem* Prog, const UBNStorySubsystem* Story, const UBNPursuitSubsystem* Pursuit);
@@ -157,6 +159,8 @@ private:
 	FString DistrictBannerRuler;
 	bool bDistrictBannerLiberated = false;
 	double DistrictBannerUntil = 0.0;
+	FString LastCameraLabel;
+	double CameraLabelUntil = 0.0;
 
 	// Speed Trap & Stunt Jump HUD toast / strobe flash state (rendered in BNHUDTelemetry.cpp)
 	double SpeedTrapFlashUntil = 0.0;

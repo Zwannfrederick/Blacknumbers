@@ -1,4 +1,5 @@
 #include "UI/BNHUD.h"
+#include "UI/BNUITheme.h"
 
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
@@ -11,12 +12,12 @@
 
 namespace BNTelemetry
 {
-	const FLinearColor PanelBg(0.035f, 0.042f, 0.055f, 0.84f);
-	const FLinearColor Amber(1.f, 0.72f, 0.14f, 1.f);
+	const FLinearColor PanelBg(0.0030f, 0.0033f, 0.0040f, 0.74f);
+	const FLinearColor Amber = BNUITheme::Accent;
 	const FLinearColor Cyan(0.22f, 0.88f, 1.f, 1.f);
 	const FLinearColor Green(0.24f, 0.94f, 0.50f, 1.f);
 	const FLinearColor Red(0.96f, 0.22f, 0.18f, 1.f);
-	const FLinearColor Chalk(0.95f, 0.96f, 0.98f, 1.f);
+	const FLinearColor Chalk = BNUITheme::Bone;
 	const FLinearColor RainStreak(0.72f, 0.84f, 0.96f, 0.24f);
 }
 
@@ -53,7 +54,7 @@ void ABNHUD::DrawProTelemetry(const ABNVehiclePawn& Car, const ABNRaceEvent* Act
 	{
 		return;
 	}
-	UFont* Font = GEngine->GetLargeFont();
+	UFont* Font = BNUITheme::HudFont();
 	const double Now = GetWorld()->GetRealTimeSeconds();
 
 	// 1. Lightweight screen-space rain streaks when LightRain mode is active (0 actors, 0 particles, <0.05 ms GPU)
@@ -180,5 +181,58 @@ void ABNHUD::DrawProTelemetry(const ABNVehiclePawn& Car, const ABNRaceEvent* Act
 		const float Y = bPursuitVisible ? 204.f : 156.f;
 		DrawCentred(ActivityBannerTitle, Y, 1.24f, MainCol);
 		DrawCentred(ActivityBannerDetail, Y + 30.f, 0.82f, SubCol);
+	}
+}
+
+void ABNHUD::DrawDragShiftBar(const ABNVehiclePawn& Car)
+{
+	const FBNDragState& D = Car.GetDragState();
+	if (!D.bActive || !Canvas)
+	{
+		return;
+	}
+	const float BarW = 420.f;
+	const float BarH = 18.f;
+	const float BarX = (Canvas->ClipX - BarW) * 0.5f;
+	const float BarY = 100.f;
+
+	const float Health = Car.GetVehicleHealth();
+	const bool bShowDragDmg = Health < 0.99f;
+	DrawRect(BNTelemetry::PanelBg, BarX - 14.f, BarY - 24.f, BarW + 28.f, bShowDragDmg ? 88.f : 68.f);
+	DrawRect(D.GetOverheatFraction() > 0.35f ? BNTelemetry::Red : BNTelemetry::Amber, BarX - 14.f, BarY - 24.f, BarW + 28.f, 3.f);
+
+	const FString TopLabel = FString::Printf(TEXT("DRAG MANUEL VİTES: %d / 6   •   [E] YÜKSELT   [Q] DÜŞÜR"), D.Gear);
+	DrawCentred(TopLabel, BarY - 20.f, 0.78f, BNTelemetry::Chalk);
+
+	const FLinearColor TrackBg(0.06f, 0.07f, 0.06f, 0.90f);
+	DrawRect(TrackBg, BarX, BarY, BarW, BarH);
+	DrawRect(FLinearColor(0.10f, 0.42f, 0.22f, 0.72f), BarX + BarW * 0.80f, BarY, BarW * 0.14f, BarH);
+	DrawRect(FLinearColor(0.55f, 0.10f, 0.10f, 0.75f), BarX + BarW * 0.94f, BarY, BarW * 0.06f, BarH);
+
+	const float ClampedRpm = FMath::Clamp(D.RpmFraction, 0.f, 1.f);
+	const FLinearColor FillCol = ClampedRpm >= 0.94f ? BNTelemetry::Red
+		: (ClampedRpm >= 0.80f ? BNTelemetry::Green : BNTelemetry::Cyan);
+	DrawRect(FillCol, BarX, BarY, BarW * ClampedRpm, BarH);
+
+	float ExtraY = BarY + BarH + 6.f;
+	if (bShowDragDmg)
+	{
+		DrawGaugeBar(TEXT("ŞASİ"), BarX, ExtraY, BarW, 8.f, Health, Health < 0.35f ? BNTelemetry::Red : BNTelemetry::Amber, Health < 0.35f);
+		ExtraY += 16.f;
+	}
+
+	const float Heat = D.GetOverheatFraction();
+	if (Heat > 0.02f)
+	{
+		const bool bBlink = GetWorld() && FMath::Fmod(GetWorld()->GetTimeSeconds() * 10.0, 1.0) < 0.55;
+		DrawRect(TrackBg, BarX, ExtraY, BarW, 8.f);
+		DrawRect(bBlink ? BNTelemetry::Red : BNTelemetry::Amber, BarX, ExtraY, BarW * Heat, 8.f);
+		DrawCentred(TEXT("MOTOR AŞIRI ISINIYOR!  [E] İLE VİTES AT!"), ExtraY + 12.f, 0.95f, bBlink ? BNTelemetry::Red : BNTelemetry::Amber);
+	}
+	else if (D.ShiftFeedbackRemaining > 0.f && D.LastShiftGrade != EBNDragShiftGrade::None)
+	{
+		const FLinearColor GradeCol = D.LastShiftGrade == EBNDragShiftGrade::Perfect ? BNTelemetry::Green
+			: D.LastShiftGrade == EBNDragShiftGrade::Good ? BNTelemetry::Amber : BNTelemetry::Red;
+		DrawCentred(FBNDragState::GradeLabel(D.LastShiftGrade), ExtraY + 8.f, 1.25f, GradeCol);
 	}
 }

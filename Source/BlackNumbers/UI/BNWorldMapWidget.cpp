@@ -67,8 +67,8 @@ namespace
 	{
 		switch (Disc)
 		{
-		case EBNRaceDiscipline::Circuit: return BNUITheme::AmberBright;
-		case EBNRaceDiscipline::Drift:   return BNUITheme::NosCyan;
+		case EBNRaceDiscipline::Circuit: return BNUITheme::AccentHi;
+		case EBNRaceDiscipline::Drift:   return BNUITheme::Nos;
 		case EBNRaceDiscipline::Drag:    return FLinearColor(0.96f, 0.30f, 0.42f, 1.f);
 		default:                         return FLinearColor(0.98f, 0.56f, 0.12f, 1.f);
 		}
@@ -102,7 +102,7 @@ namespace
 		for (TActorIterator<ABNGarageZone> It(World); It; ++It)
 		{
 			OutPins.Add({ It->GetActorLocation(), It->GarageName.ToUpper(), TEXT("GARAJ"),
-				TEXT("Ücretsiz Tamir • 6 Araç • Tier 1-6 Modifiye"), BNUITheme::EmeraldGreen, 8.5f, false });
+				TEXT("Ücretsiz Tamir • 6 Araç • Tier 1-6 Modifiye"), BNUITheme::Ok, 8.5f, false });
 		}
 		for (TActorIterator<ABNRaceEvent> It(World); It; ++It)
 		{
@@ -306,7 +306,7 @@ namespace
 			const FSlateBrush* Brush = BNUITheme::WhiteBrush();
 			// Deep tactical asphalt map background
 			FSlateDrawElement::MakeBox(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(), Brush,
-				ESlateDrawEffect::None, FLinearColor(0.036f, 0.042f, 0.052f, 0.98f));
+				ESlateDrawEffect::None, FLinearColor(0.0035f, 0.0040f, 0.0050f, 0.98f));
 			++LayerId;
 
 			// Mara Sea shoreline tint on the east side (X > 62000)
@@ -315,12 +315,12 @@ namespace
 			{
 				FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
 					AllottedGeometry.ToPaintGeometry(FVector2D(Size.X - SeaX, Size.Y), FSlateLayoutTransform(FVector2D(SeaX, 0.f))),
-					Brush, ESlateDrawEffect::None, FLinearColor(0.05f, 0.14f, 0.22f, 0.72f));
+					Brush, ESlateDrawEffect::None, FLinearColor(0.003f, 0.010f, 0.022f, 0.95f));
 			}
 			++LayerId;
 
 			// Subtle 200 m tactical grid
-			const FLinearColor GridCol(0.14f, 0.16f, 0.20f, 0.35f);
+			const FLinearColor GridCol(0.02f, 0.022f, 0.026f, 0.8f);
 			for (float gx = -80000.f; gx <= 100000.f; gx += 20000.f)
 			{
 				const float Sx = Origin.X + (gx - MapMinX) * Scale;
@@ -354,13 +354,13 @@ namespace
 					const FVector2D BoxSize = MaxPt - MinPt;
 					if (BoxSize.X > 8.f && BoxSize.Y > 8.f)
 					{
-						FLinearColor ZoneFill = Terr.bDistrictLiberated ? BNUITheme::EmeraldGreen : Terr.TerritoryColor;
-						ZoneFill.A = Terr.bDistrictLiberated ? 0.11f : 0.085f;
+						FLinearColor ZoneFill = Terr.bDistrictLiberated ? BNUITheme::Ok : Terr.TerritoryColor;
+						ZoneFill.A = Terr.bDistrictLiberated ? 0.07f : 0.04f;
 						FSlateDrawElement::MakeBox(OutDrawElements, LayerId,
 							AllottedGeometry.ToPaintGeometry(BoxSize, FSlateLayoutTransform(MinPt)),
 							Brush, ESlateDrawEffect::None, ZoneFill);
-						FLinearColor BorderCol = Terr.bDistrictLiberated ? BNUITheme::EmeraldGreen : Terr.TerritoryColor;
-						BorderCol.A = 0.42f;
+						FLinearColor BorderCol = Terr.bDistrictLiberated ? BNUITheme::Ok : Terr.TerritoryColor;
+						BorderCol.A = 0.28f;
 						TArray<FVector2D> RectLines = {
 							MinPt, FVector2D(MaxPt.X, MinPt.Y), MaxPt, FVector2D(MinPt.X, MaxPt.Y), MinPt
 						};
@@ -387,7 +387,7 @@ namespace
 						Poly.Add(WorldToScreen(P, Origin, Scale));
 					}
 					const FLinearColor Col = Edge.bDirt ? FLinearColor(0.54f, 0.40f, 0.24f, 0.90f)
-						: (Edge.bHighway ? FLinearColor(0.60f, 0.56f, 0.48f, 0.95f) : FLinearColor(0.38f, 0.42f, 0.48f, 0.88f));
+						: (Edge.bHighway ? BNUITheme::Bone : FLinearColor(0.16f, 0.16f, 0.17f, 0.95f));
 					const float Thick = Edge.bHighway ? 4.2f : (Edge.WidthCm >= 1600.f ? 3.0f : 2.2f);
 					FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(), Poly, ESlateDrawEffect::None, Col, true, Thick);
 				}
@@ -408,7 +408,7 @@ namespace
 						FSlateDrawElement::MakeLines(OutDrawElements, LayerId, AllottedGeometry.ToPaintGeometry(), Poly,
 							ESlateDrawEffect::None, FLinearColor(0.04f, 0.22f, 0.30f, 0.95f), true, 8.5f);
 						FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 1, AllottedGeometry.ToPaintGeometry(), Poly,
-							ESlateDrawEffect::None, BNUITheme::NosCyan, true, 4.5f);
+							ESlateDrawEffect::None, BNUITheme::Nos, true, 4.5f);
 					}
 					const FVector2D TargetPt = WorldToScreen(RoadGraph->GetGpsTargetLocation(), Origin, Scale);
 					TArray<FVector2D> Diamond = {
@@ -417,13 +417,13 @@ namespace
 						TargetPt + FVector2D(0.f, -12.f)
 					};
 					FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, AllottedGeometry.ToPaintGeometry(), Diamond,
-						ESlateDrawEffect::None, BNUITheme::NosCyan, true, 3.0f);
+						ESlateDrawEffect::None, BNUITheme::Nos, true, 3.0f);
 				}
 				LayerId += 3;
 
 				// District Borough Titles & District Ruler status neatly placed near the top of each territory box
-				const FSlateFontInfo DistFont = BNUITheme::Font(10, true);
-				const FSlateFontInfo RulerFont = BNUITheme::Font(8, true);
+				const FSlateFontInfo DistFont = BNUITheme::DisplayFont(15);
+				const FSlateFontInfo RulerFont = BNUITheme::Font(10, true);
 				for (const FBNDistrictBounds& D : RoadGraph->GetDistricts())
 				{
 					const FBNDistrictTerritoryInfo Terr = Story
@@ -432,21 +432,21 @@ namespace
 					const FVector2D TopAnchor = WorldToScreen(
 						FVector(D.CenterCm.X - D.HalfExtentCm.X * 0.85f, D.CenterCm.Y - D.HalfExtentCm.Y * 0.82f, 0.f), Origin, Scale);
 					const FVector2D LabelPos(FMath::Clamp(TopAnchor.X, 14.f, Size.X - 230.f), FMath::Clamp(TopAnchor.Y, 10.f, Size.Y - 40.f));
-					const FLinearColor TitleCol = Terr.bDistrictLiberated ? BNUITheme::EmeraldGreen : Terr.TerritoryColor;
+					const FLinearColor TitleCol = Terr.bDistrictLiberated ? BNUITheme::Ok : Terr.TerritoryColor;
 					FSlateDrawElement::MakeText(OutDrawElements, LayerId,
 						AllottedGeometry.ToPaintGeometry(FVector2D(240.f, 18.f), FSlateLayoutTransform(LabelPos)),
 						Terr.BoroughTitle, DistFont, ESlateDrawEffect::None, TitleCol);
 					const FString RulerLine = Terr.bDistrictLiberated
-						? TEXT("✓ BÖLGE ELE GEÇİRİLDİ")
+						? TEXT("BÖLGE ELE GEÇİRİLDİ")
 						: FString::Printf(TEXT("HÜKÜMDAR #%02d %s"), Terr.RulerRank, *Terr.RulerName);
 					FSlateDrawElement::MakeText(OutDrawElements, LayerId,
-						AllottedGeometry.ToPaintGeometry(FVector2D(320.f, 14.f), FSlateLayoutTransform(LabelPos + FVector2D(0.f, 14.f))),
+						AllottedGeometry.ToPaintGeometry(FVector2D(320.f, 16.f), FSlateLayoutTransform(LabelPos + FVector2D(0.f, 22.f))),
 						RulerLine, RulerFont, ESlateDrawEffect::None,
 						Terr.bDistrictLiberated ? FLinearColor(0.55f, 0.96f, 0.72f, 0.85f) : FLinearColor(0.92f, 0.90f, 0.84f, 0.75f));
 				}
 				FSlateDrawElement::MakeText(OutDrawElements, LayerId,
 					AllottedGeometry.ToPaintGeometry(FVector2D(180.f, 22.f), FSlateLayoutTransform(WorldToScreen(FVector(86000.f, 36000.f, 0.f), Origin, Scale))),
-					TEXT("MARA DENİZİ"), DistFont, ESlateDrawEffect::None, FLinearColor(0.32f, 0.72f, 0.96f, 0.55f));
+					TEXT("MARA DENİZİ"), DistFont, ESlateDrawEffect::None, FLinearColor(0.05f, 0.18f, 0.35f, 0.8f));
 				++LayerId;
 			}
 
@@ -493,10 +493,10 @@ namespace
 						Pt + FVector2D(0.f, -Pulse)
 					};
 					FSlateDrawElement::MakeLines(OutDrawElements, LayerId + 2, AllottedGeometry.ToPaintGeometry(), BossRing,
-						ESlateDrawEffect::None, BNUITheme::CrimsonRed, true, 3.0f);
+						ESlateDrawEffect::None, BNUITheme::Danger, true, 3.0f);
 					FSlateDrawElement::MakeText(OutDrawElements, LayerId + 2,
 						AllottedGeometry.ToPaintGeometry(FVector2D(110.f, 16.f), FSlateLayoutTransform(Pt + FVector2D(12.f, -18.f))),
-						TEXT("★ SIRADAKİ"), BNUITheme::Font(9, true), ESlateDrawEffect::None, BNUITheme::AmberBright);
+						TEXT("SIRADAKİ"), BNUITheme::Font(10, true), ESlateDrawEffect::None, BNUITheme::AccentHi);
 				}
 			}
 			LayerId += 3;
@@ -542,7 +542,7 @@ namespace
 					BNUITheme::Font(9, true), ESlateDrawEffect::None, HoveredPin->Color);
 				FSlateDrawElement::MakeText(OutDrawElements, LayerId + 1,
 					AllottedGeometry.ToPaintGeometry(FVector2D(CardW - 16.f, 16.f), FSlateLayoutTransform(TipPos + FVector2D(10.f, 26.f))),
-					HoveredPin->Detail, BNUITheme::Font(8, false), ESlateDrawEffect::None, BNUITheme::ChalkWhite);
+					HoveredPin->Detail, BNUITheme::Font(8, false), ESlateDrawEffect::None, BNUITheme::Bone);
 				LayerId += 2;
 			}
 
@@ -568,14 +568,35 @@ void SBNWorldMapWidget::Construct(const FArguments& InArgs)
 		Filters->AddSlot().FillWidth(1.f).Padding(2.f, 0.f)
 		[
 			SNew(SButton)
-			.IsEnabled_Lambda([this, Filter]() { return MapFilter != Filter; })
-			.Text(FText::FromString(Label))
+			.ButtonStyle(FCoreStyle::Get(), "NoBorder")
+			.IsFocusable(false)
+			.ContentPadding(FMargin(0.f))
 			.OnClicked_Lambda([this, Filter]()
 			{
+				UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiClick, 0.7f);
 				MapFilter = Filter;
 				Invalidate(EInvalidateWidgetReason::Paint);
 				return FReply::Handled();
 			})
+			[
+				SNew(SBorder)
+				.BorderImage(BNUITheme::WhiteBrush())
+				.BorderBackgroundColor_Lambda([this, Filter]()
+				{
+					return MapFilter == Filter ? BNUITheme::Accent : BNUITheme::Card;
+				})
+				.Padding(FMargin(8.f, 7.f))
+				[
+					SNew(STextBlock)
+					.Text(FText::FromString(Label))
+					.Font(BNUITheme::Font(11, true))
+					.Justification(ETextJustify::Center)
+					.ColorAndOpacity_Lambda([this, Filter]()
+					{
+						return MapFilter == Filter ? BNUITheme::InkSolid : BNUITheme::Bone;
+					})
+				]
+			]
 		];
 	};
 	AddFilter(TEXT("PROGRAM"), EBNMapFilter::Program);
@@ -630,7 +651,7 @@ void SBNWorldMapWidget::Construct(const FArguments& InArgs)
 		]
 		+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center).Padding(FMargin(0.f, 0.f, 12.f, 0.f))
 		[
-			SNew(STextBlock).Text(FText::FromString(Name)).Font(BNUITheme::Font(9, true)).ColorAndOpacity(BNUITheme::SteelMuted)
+			SNew(STextBlock).Text(FText::FromString(Name)).Font(BNUITheme::Font(9, true)).ColorAndOpacity(BNUITheme::Muted)
 		];
 	};
 
@@ -644,15 +665,11 @@ void SBNWorldMapWidget::Construct(const FArguments& InArgs)
 	[
 		SNew(SBorder)
 		.BorderImage(BNUITheme::WhiteBrush())
-		.BorderBackgroundColor(FLinearColor(0.018f, 0.022f, 0.028f, 0.94f))
+		.BorderBackgroundColor(BNUITheme::InkSolid)
 		.Padding(FMargin(24.f, 20.f))
 		[
 			SNew(SVerticalBox)
-			+ SVerticalBox::Slot().AutoHeight()
-			[
-				BNUITheme::MakeHazardBar(6.f)
-			]
-			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 10.f, 0.f, 10.f))
+			+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))
 			[
 				SNew(SHorizontalBox)
 				+ SHorizontalBox::Slot().FillWidth(1.f)
@@ -661,29 +678,29 @@ void SBNWorldMapWidget::Construct(const FArguments& InArgs)
 					+ SVerticalBox::Slot().AutoHeight()
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(TEXT("KARAMARA BÖLGE HARİTASI & GPS NAVİGASYON")))
-						.Font(BNUITheme::Font(18, true))
-						.ColorAndOpacity(BNUITheme::AmberBright)
+						.Text(FText::FromString(TEXT("KARAMARA HARİTASI")))
+						.Font(BNUITheme::DisplayFont(36))
+						.ColorAndOpacity(BNUITheme::Bone)
 					]
-					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 3.f, 0.f, 0.f))
+					+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 2.f, 0.f, 0.f))
 					[
 						SNew(STextBlock)
-						.Text(FText::FromString(TEXT("Bir hedefe tıklayarak rota çiz.")))
-						.Font(BNUITheme::Font(10, false))
-						.ColorAndOpacity(BNUITheme::NosCyan)
+						.Text(FText::FromString(TEXT("Hedefe tıkla ve GPS rotası çiz")))
+						.Font(BNUITheme::Font(11, false))
+						.ColorAndOpacity(BNUITheme::Muted)
 					]
 				]
 				+ SHorizontalBox::Slot().AutoWidth().VAlign(VAlign_Center)
 				[
 					SNew(SBorder)
 					.BorderImage(BNUITheme::WhiteBrush())
-					.BorderBackgroundColor(LiberatedCount >= 6 ? BNUITheme::EmeraldGreen : BNUITheme::CrimsonDarkCard)
+					.BorderBackgroundColor(LiberatedCount >= 6 ? BNUITheme::Ok : BNUITheme::DangerDark)
 					.Padding(FMargin(14.f, 7.f))
 					[
 						SNew(STextBlock)
 						.Text(FText::FromString(FString::Printf(TEXT("BÖLGE HAKİMİYETİ:  %d / 6"), LiberatedCount)))
 						.Font(BNUITheme::Font(11, true))
-						.ColorAndOpacity(LiberatedCount >= 6 ? BNUITheme::ObsidianInk : BNUITheme::AmberBright)
+						.ColorAndOpacity(LiberatedCount >= 6 ? BNUITheme::InkSolid : BNUITheme::AccentHi)
 					]
 				]
 			]
@@ -695,7 +712,7 @@ void SBNWorldMapWidget::Construct(const FArguments& InArgs)
 				[
 					SNew(SBorder)
 					.BorderImage(BNUITheme::WhiteBrush())
-					.BorderBackgroundColor(BNUITheme::HairlineSteel)
+					.BorderBackgroundColor(BNUITheme::Hairline)
 					.Padding(FMargin(2.f))
 					[
 						SNew(SBNKaramaraMapCanvas)
@@ -713,14 +730,14 @@ void SBNWorldMapWidget::Construct(const FArguments& InArgs)
 					SNew(SBox).WidthOverride(340.f)
 					[
 						SNew(SBorder)
-						.BorderImage(BNUITheme::GetPanelBevelBrush())
-						.BorderBackgroundColor(FLinearColor(0.95f, 0.95f, 0.95f, 0.96f))
+						.BorderImage(BNUITheme::WhiteBrush())
+						.BorderBackgroundColor(BNUITheme::Panel)
 						.Padding(FMargin(16.f, 14.f))
 						[
 							SNew(SVerticalBox)
 							+ SVerticalBox::Slot().AutoHeight()
 							[
-								BNUITheme::MakeSectionHeader(TEXT("GPS ROTASI"), TEXT(""), BNUITheme::NosCyan)
+								BNUITheme::MakeSectionHeader(TEXT("GPS ROTASI"), TEXT(""), BNUITheme::Nos)
 							]
 							+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 10.f, 0.f, 12.f))
 							[
@@ -751,15 +768,15 @@ void SBNWorldMapWidget::Construct(const FArguments& InArgs)
 							+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 6.f))
 							[
 								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("PİST"), BNUITheme::AmberBright) ]
+								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("PİST"), BNUITheme::AccentHi) ]
 								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("SPRINT"), FLinearColor(0.98f, 0.56f, 0.12f, 1.f)) ]
-								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("DRİFT"), BNUITheme::NosCyan) ]
+								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("DRİFT"), BNUITheme::Nos) ]
 								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("DRAG"), FLinearColor(0.96f, 0.30f, 0.42f, 1.f)) ]
 							]
 							+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 0.f, 0.f, 10.f))
 							[
 								SNew(SHorizontalBox)
-								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("GARAJ"), BNUITheme::EmeraldGreen) ]
+								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("GARAJ"), BNUITheme::Ok) ]
 								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("SAKLANMA"), CooldownPinCol) ]
 								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("TUZAK"), SpeedTrapPinCol) ]
 								+ SHorizontalBox::Slot().AutoWidth()[ MakeLegendDot(TEXT("RAMPA"), JumpRampPinCol) ]
@@ -768,7 +785,7 @@ void SBNWorldMapWidget::Construct(const FArguments& InArgs)
 							[
 								BNUITheme::MakeMWButton(
 									FText::FromString(TEXT("HARİTAYI KAPAT  [M / ESC]")),
-									EBNButtonVariant::PrimaryAmber,
+									EBNButtonVariant::SecondarySteel,
 									FOnClicked::CreateSP(this, &SBNWorldMapWidget::HandleClose),
 									true, 11, FMargin(14.f, 11.f))
 							]
@@ -806,7 +823,7 @@ void SBNWorldMapWidget::RefreshGpsSidebar()
 		[
 			SNew(SBorder)
 			.BorderImage(BNUITheme::WhiteBrush())
-			.BorderBackgroundColor(FLinearColor(0.06f, 0.16f, 0.22f, 0.96f))
+			.BorderBackgroundColor(BNUITheme::Card)
 			.Padding(FMargin(12.f, 10.f))
 			[
 				SNew(SVerticalBox)
@@ -815,7 +832,7 @@ void SBNWorldMapWidget::RefreshGpsSidebar()
 					SNew(STextBlock)
 					.Text(FText::FromString(RoadGraph->GetGpsTargetLabel().ToUpper()))
 					.Font(BNUITheme::Font(12, true))
-					.ColorAndOpacity(BNUITheme::NosCyan)
+					.ColorAndOpacity(BNUITheme::Nos)
 					.AutoWrapText(true)
 				]
 				+ SVerticalBox::Slot().AutoHeight().Padding(FMargin(0.f, 4.f, 0.f, 0.f))
@@ -823,7 +840,7 @@ void SBNWorldMapWidget::RefreshGpsSidebar()
 					SNew(STextBlock)
 					.Text(FText::FromString(FString::Printf(TEXT("KALAN MESAFE: %s  (Radarda parlıyor)"), *DistStr)))
 					.Font(BNUITheme::Font(10, false))
-					.ColorAndOpacity(BNUITheme::ChalkWhite)
+					.ColorAndOpacity(BNUITheme::Bone)
 				]
 			]
 		];
@@ -853,13 +870,13 @@ void SBNWorldMapWidget::RefreshGpsSidebar()
 		[
 			SNew(SBorder)
 			.BorderImage(BNUITheme::WhiteBrush())
-			.BorderBackgroundColor(BNUITheme::GunmetalCard)
+			.BorderBackgroundColor(BNUITheme::Card)
 			.Padding(FMargin(12.f, 10.f))
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(TEXT("Aktif GPS hedefi yok. Haritada bir yarışa, garaja veya yola tıkla.")))
 				.Font(BNUITheme::Font(10, false))
-				.ColorAndOpacity(BNUITheme::SteelMuted)
+				.ColorAndOpacity(BNUITheme::Muted)
 				.AutoWrapText(true)
 			]
 		];
@@ -869,15 +886,12 @@ void SBNWorldMapWidget::RefreshGpsSidebar()
 void SBNWorldMapWidget::SetDestination(const FVector& WorldPos, const FString& Label)
 {
 	UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiConfirm);
-	if (ABNHUD* HUD = OwnerHUD.Get())
+	if (ABNHUD* HUD = OwnerHUD.Get(); HUD && HUD->GetWorld())
 	{
-		if (UWorld* World = HUD->GetWorld())
+		if (UBNRoadGraphSubsystem* RoadGraph = HUD->GetWorld()->GetSubsystem<UBNRoadGraphSubsystem>())
 		{
-			if (UBNRoadGraphSubsystem* RoadGraph = World->GetSubsystem<UBNRoadGraphSubsystem>())
-			{
-				const FVector PlayerPos = HUD->GetOwningPawn() ? HUD->GetOwningPawn()->GetActorLocation() : FVector::ZeroVector;
-				RoadGraph->SetGpsDestination(WorldPos, Label, PlayerPos);
-			}
+			const FVector PlayerPos = HUD->GetOwningPawn() ? HUD->GetOwningPawn()->GetActorLocation() : FVector::ZeroVector;
+			RoadGraph->SetGpsDestination(WorldPos, Label, PlayerPos);
 		}
 	}
 	RefreshGpsSidebar();
@@ -887,17 +901,10 @@ FReply SBNWorldMapWidget::HandlePlotNextBossGps()
 {
 	ABNHUD* HUD = OwnerHUD.Get();
 	UWorld* World = HUD ? HUD->GetWorld() : nullptr;
-	const UBNStorySubsystem* Story = World && World->GetGameInstance()
-		? World->GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr;
-	if (!World || !Story)
-	{
-		return FReply::Handled();
-	}
+	const UBNStorySubsystem* Story = World && World->GetGameInstance() ? World->GetGameInstance()->GetSubsystem<UBNStorySubsystem>() : nullptr;
+	if (!World || !Story) { return FReply::Handled(); }
 	const FBNBossSpec* NextBoss = FBNStoryState::FindBossByRank(Story->GetState().NextBossRank);
-	if (!NextBoss || Story->GetState().bFinalChaseActive || Story->GetState().bCampaignCompleted)
-	{
-		return FReply::Handled();
-	}
+	if (!NextBoss || Story->GetState().bFinalChaseActive || Story->GetState().bCampaignCompleted) { return FReply::Handled(); }
 	const FName Qualifier = Story->GetState().GetNextQualifier();
 	const FName NextRace = Qualifier.IsNone() ? FName(*NextBoss->RaceAssetName) : Qualifier;
 	if (const ABNRaceEvent* Event = UBNStorySubsystem::FindProgramRace(World, NextRace))
@@ -914,10 +921,7 @@ FReply SBNWorldMapWidget::HandleFastTravel()
 	UBNRoadGraphSubsystem* RoadGraph = World ? World->GetSubsystem<UBNRoadGraphSubsystem>() : nullptr;
 	const UBNPursuitSubsystem* Pursuit = World ? World->GetSubsystem<UBNPursuitSubsystem>() : nullptr;
 	ABNVehiclePawn* Car = HUD ? Cast<ABNVehiclePawn>(HUD->GetOwningPawn()) : nullptr;
-	if (!HUD || !World || !RoadGraph || !RoadGraph->HasGpsDestination() || !Car)
-	{
-		return FReply::Handled();
-	}
+	if (!HUD || !World || !RoadGraph || !RoadGraph->HasGpsDestination() || !Car) { return FReply::Handled(); }
 	if (Pursuit && Pursuit->GetState().IsPursuitRunning())
 	{
 		UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiError);
@@ -925,9 +929,7 @@ FReply SBNWorldMapWidget::HandleFastTravel()
 	}
 
 	FVector Dest = RoadGraph->GetGpsTargetLocation();
-	FRotator Heading = Car->GetActorRotation();
-	Heading.Pitch = 0.f;
-	Heading.Roll = 0.f;
+	FRotator Heading(0.f, Car->GetActorRotation().Yaw, 0.f);
 	if (RoadGraph->HasGraph())
 	{
 		FVector RoadPt, RoadTan;
@@ -936,10 +938,7 @@ FReply SBNWorldMapWidget::HandleFastTravel()
 		if (RoadGraph->FindNearestRoadPoint(Dest, RoadPt, RoadTan, Width, EdgeIdx, EdgeDist))
 		{
 			Dest = RoadPt;
-			if (!RoadTan.IsNearlyZero())
-			{
-				Heading = FRotator(0.f, RoadTan.Rotation().Yaw, 0.f);
-			}
+			if (!RoadTan.IsNearlyZero()) { Heading = FRotator(0.f, RoadTan.Rotation().Yaw, 0.f); }
 		}
 	}
 	Car->SetActorLocationAndRotation(Dest + FVector(0.f, 0.f, 95.f), Heading, false, nullptr, ETeleportType::TeleportPhysics);
@@ -949,10 +948,7 @@ FReply SBNWorldMapWidget::HandleFastTravel()
 		Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
 	}
 	RoadGraph->ClearGpsDestination();
-	if (UBNAudioSubsystem* Audio = World->GetSubsystem<UBNAudioSubsystem>())
-	{
-		Audio->PlaySfx2D(EBNSfxId::GpsArrive, 0.9f);
-	}
+	if (UBNAudioSubsystem* Audio = World->GetSubsystem<UBNAudioSubsystem>()) { Audio->PlaySfx2D(EBNSfxId::GpsArrive, 0.9f); }
 	HUD->CloseWorldMap();
 	return FReply::Handled();
 }
@@ -960,15 +956,9 @@ FReply SBNWorldMapWidget::HandleFastTravel()
 FReply SBNWorldMapWidget::HandleClearGps()
 {
 	UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiClick);
-	if (ABNHUD* HUD = OwnerHUD.Get())
+	if (ABNHUD* HUD = OwnerHUD.Get(); HUD && HUD->GetWorld())
 	{
-		if (UWorld* World = HUD->GetWorld())
-		{
-			if (UBNRoadGraphSubsystem* RoadGraph = World->GetSubsystem<UBNRoadGraphSubsystem>())
-			{
-				RoadGraph->ClearGpsDestination();
-			}
-		}
+		if (UBNRoadGraphSubsystem* RoadGraph = HUD->GetWorld()->GetSubsystem<UBNRoadGraphSubsystem>()) { RoadGraph->ClearGpsDestination(); }
 	}
 	RefreshGpsSidebar();
 	return FReply::Handled();
@@ -977,19 +967,13 @@ FReply SBNWorldMapWidget::HandleClearGps()
 FReply SBNWorldMapWidget::HandleClose()
 {
 	UBNAudioSubsystem::PlayUiSfx(EBNSfxId::UiClick);
-	if (ABNHUD* HUD = OwnerHUD.Get())
-	{
-		HUD->CloseWorldMap();
-	}
+	if (ABNHUD* HUD = OwnerHUD.Get()) { HUD->CloseWorldMap(); }
 	return FReply::Handled();
 }
 
 FReply SBNWorldMapWidget::OnKeyDown(const FGeometry& MyGeometry, const FKeyEvent& InKeyEvent)
 {
 	const FKey Key = InKeyEvent.GetKey();
-	if (Key == EKeys::M || Key == EKeys::Tab || Key == EKeys::Escape || Key == EKeys::Gamepad_FaceButton_Right)
-	{
-		return HandleClose();
-	}
+	if (Key == EKeys::M || Key == EKeys::Tab || Key == EKeys::Escape || Key == EKeys::Gamepad_FaceButton_Right) { return HandleClose(); }
 	return SCompoundWidget::OnKeyDown(MyGeometry, InKeyEvent);
 }

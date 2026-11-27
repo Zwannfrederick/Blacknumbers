@@ -32,18 +32,18 @@ namespace BNRadar
 	constexpr float LabelScale = 0.85f;
 	constexpr float BannerScale = 1.5f;
 
-	const FLinearColor RadarBg(0.032f, 0.036f, 0.045f, 0.84f);
-	const FLinearColor RadarRing(0.95f, 0.66f, 0.08f, 0.90f);
+	const FLinearColor RadarBg(0.0030f, 0.0033f, 0.0040f, 0.78f);
+	const FLinearColor RadarRing(0.8550f, 0.8228f, 0.7454f, 0.35f);
 	const FLinearColor RadarRoad(0.32f, 0.34f, 0.38f, 0.72f);
 	const FLinearColor RadarHighway(0.46f, 0.48f, 0.54f, 0.85f);
 	const FLinearColor RadarDirtRoad(0.48f, 0.36f, 0.22f, 0.72f);
 	const FLinearColor BlipCooldown(0.18f, 0.62f, 1.00f, 0.96f);
 	const FLinearColor RouteShadow(0.02f, 0.02f, 0.03f, 0.92f);
-	const FLinearColor RouteAmber(0.95f, 0.66f, 0.08f, 0.96f);
+	const FLinearColor RouteAmber = BNUITheme::Accent;
 	const FLinearColor RouteNextLeg(0.28f, 0.92f, 1.00f, 1.00f);
 	const FLinearColor DriftZoneRing(0.20f, 0.84f, 1.00f, 0.85f);
 	const FLinearColor BlipTraffic(0.70f, 0.72f, 0.76f, 0.55f);
-	const FLinearColor BlipRace(0.98f, 0.72f, 0.14f, 1.f);
+	const FLinearColor BlipRace = BNUITheme::Accent;
 	const FLinearColor BlipRival(0.96f, 0.28f, 0.14f, 1.f);
 	const FLinearColor BlipFinish(0.98f, 0.96f, 0.92f, 1.f);
 	const FLinearColor BlipGarage(0.16f, 0.86f, 0.44f, 1.f);
@@ -51,11 +51,11 @@ namespace BNRadar
 	const FLinearColor BlipEscape(0.22f, 0.88f, 1.0f, 1.f);
 	const FLinearColor BlipPoliceRed(1.f, 0.20f, 0.14f, 1.f);
 	const FLinearColor BlipPoliceBlue(0.18f, 0.60f, 1.f, 1.f);
-	const FLinearColor DashColour(0.96f, 0.72f, 0.16f, 1.f);
-	const FLinearColor SweetSpotColour(0.18f, 0.90f, 0.45f, 1.f);
+	const FLinearColor DashColour = BNUITheme::Accent;
+	const FLinearColor SweetSpotColour = BNUITheme::Ok;
 	const FLinearColor NosActiveColour(0.55f, 0.94f, 1.f, 1.f);
 	const FLinearColor SpeedbreakerActiveColour(1.f, 0.92f, 0.55f, 1.f);
-	const FLinearColor LegendColour(0.86f, 0.84f, 0.78f, 0.92f);
+	const FLinearColor LegendColour(0.8550f, 0.8228f, 0.7454f, 0.80f);
 
 	FVector2D ProjectUnclamped(const FVector& WorldPos, const FVector& PlayerPos, float CosY, float SinY,
 		float CenterX, float CenterY, float RangeCm)
@@ -123,17 +123,21 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 	const bool bRaceActive = ActiveRace && (ActiveRace->GetState() == EBNRaceState::Countdown || ActiveRace->GetState() == EBNRaceState::Racing);
 	const float ActiveRangeCm = bRaceActive ? BNRadar::RaceRouteRangeCm : BNRadar::FreeRoamRangeCm;
 
-	// Circular Most Wanted GPS Radar Housing
-	if (UTexture2D* RadarTex = BNUITheme::GetRadarRingTexture())
+	// Radar housing: ink disc with a thin bone ring (polyline), no ornament.
 	{
-		DrawTexture(RadarTex, Cx - BNRadar::RadarHalfSize, Cy - BNRadar::RadarHalfSize,
-			BNRadar::RadarHalfSize * 2.f, BNRadar::RadarHalfSize * 2.f,
-			0.f, 0.f, 1.f, 1.f, FLinearColor::White, BLEND_Translucent);
-	}
-	else
-	{
-		DrawRect(BNRadar::RadarBg, Cx - BNRadar::RadarHalfSize, Cy - BNRadar::RadarHalfSize,
-			BNRadar::RadarHalfSize * 2.f, BNRadar::RadarHalfSize * 2.f);
+		constexpr int32 RingSegs = 64;
+		const float R = BNRadar::RadarHalfSize;
+		for (float Dy = -R; Dy < R; Dy += 2.f)
+		{
+			const float HalfChord = FMath::Sqrt(FMath::Max(0.f, R * R - (Dy + 1.f) * (Dy + 1.f)));
+			DrawRect(BNRadar::RadarBg, Cx - HalfChord, Cy + Dy, HalfChord * 2.f, 2.f);
+		}
+		for (int32 i = 0; i < RingSegs; ++i)
+		{
+			const float A0 = 2.f * PI * i / RingSegs;
+			const float A1 = 2.f * PI * (i + 1) / RingSegs;
+			DrawLine(Cx + FMath::Cos(A0) * R, Cy + FMath::Sin(A0) * R, Cx + FMath::Cos(A1) * R, Cy + FMath::Sin(A1) * R, BNRadar::RadarRing, 1.5f);
+		}
 	}
 
 	const FVector PlayerLoc = Car.GetActorLocation();
@@ -532,14 +536,12 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 			}
 		}
 
-		UFont* Font = GEngine->GetLargeFont();
+		UFont* Font = BNUITheme::HudFont();
 		float W = 0.f, H = 0.f;
-		GetTextSize(DistName, W, H, Font, 0.72f);
+		GetTextSize(DistName, W, H, Font, 0.74f);
 		const float PillX = BNRadar::RadarMargin;
-		const float PillY = Cy - BNRadar::RadarHalfSize - H - 14.f;
-		DrawRect(BNRadar::RadarBg, PillX, PillY - 3.f, W + 18.f, H + 6.f);
-		DrawRect(BNRadar::RadarRing, PillX, PillY - 3.f, 3.f, H + 6.f);
-		DrawText(DistName, BNRadar::LegendColour, PillX + 10.f, PillY, Font, 0.72f);
+		const float PillY = Cy - BNRadar::RadarHalfSize - H - 10.f;
+		DrawTextShadowed(DistName.ToUpper(), BNRadar::LegendColour, PillX, PillY, Font, 0.74f);
 
 		if (Now < DistrictBannerUntil && !DistrictBannerName.IsEmpty() && !bRaceActive)
 		{
@@ -549,13 +551,13 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 			TitleCol.A = Alpha;
 			FLinearColor SubCol = BNRadar::LegendColour;
 			SubCol.A = Alpha * 0.9f;
-			DrawCentred(DistrictBannerName, 112.f, 1.25f, TitleCol);
-			DrawCentred(DistrictBannerSubtitle, 144.f, 0.78f, SubCol);
+			DrawCentred(DistrictBannerName, 92.f, 0.95f, FLinearColor(BNUITheme::Bone.R, BNUITheme::Bone.G, BNUITheme::Bone.B, Alpha), BNUITheme::HudFont(true));
+			DrawCentred(DistrictBannerSubtitle, 168.f, 0.78f, SubCol);
 			if (!DistrictBannerRuler.IsEmpty())
 			{
-				FLinearColor RulerCol = bDistrictBannerLiberated ? BNRadar::SweetSpotColour : BNRadar::BlipPoliceRed;
+				FLinearColor RulerCol = bDistrictBannerLiberated ? BNRadar::SweetSpotColour : BNRadar::DashColour;
 				RulerCol.A = Alpha * 0.95f;
-				DrawCentred(DistrictBannerRuler, 168.f, 0.80f, RulerCol);
+				DrawCentred(DistrictBannerRuler, 194.f, 0.74f, RulerCol);
 			}
 		}
 	}
@@ -563,7 +565,7 @@ void ABNHUD::DrawRadar(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace
 
 void ABNHUD::DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNStorySubsystem* Story)
 {
-	UFont* Font = GEngine->GetLargeFont();
+	UFont* Font = BNUITheme::HudFont();
 	const FVector PlayerLoc = Car.GetActorLocation();
 
 	auto DrawProjectedTag = [&](const FVector& WorldPos, const FString& Title, const FLinearColor& Col)
@@ -617,77 +619,55 @@ void ABNHUD::DrawWorldMarkers(const ABNVehiclePawn& Car, const ABNRaceEvent* Act
 
 void ABNHUD::DrawEconomyPill(const UBNProgressionSubsystem& Progression, const UBNStorySubsystem* Story, bool bRaceActive, bool bPursuitVisible)
 {
-	// Never collide with the centered Pursuit Heat/Busted or Race status bar at the top of the screen!
 	if (bPursuitVisible || bRaceActive)
 	{
 		return;
 	}
-	UFont* Font = GEngine->GetLargeFont();
+	UFont* Font = BNUITheme::HudFont();
 	const FBNPlayerProfile& P = Progression.GetProfile();
-	const int32 LibCount = Story ? Story->GetState().GetLiberatedDistrictCount() : 0;
-	const FString EconText = FString::Printf(TEXT("$%s  //  %s İTİBAR  //  BÖLGE %d/6  //  [M] HARİTA  //  [ESC] MENÜ"),
-		*FString::FormatAsNumber(P.Cash), *FString::FormatAsNumber(P.Reputation), LibCount);
+	const int32 Bounty = Story ? Story->GetState().TotalBounty : 0;
+	UFont* Digits = BNUITheme::HudFont(true);
+	const FString CashText = FString::Printf(TEXT("$%s"), *FString::FormatAsNumber(P.Cash));
+	const FString BountyText = FString::Printf(TEXT("ÖDÜL  %s"), *FString::FormatAsNumber(Bounty));
 	float W = 0.f, H = 0.f;
-	GetTextSize(EconText, W, H, Font, BNRadar::LabelScale);
-	const float X = BNRadar::RadarMargin - 6.f;
-	const float Y = BNRadar::RadarMargin - 6.f;
-	DrawRect(BNRadar::RadarBg, X, Y, W + 24.f, 30.f);
-	DrawRect(BNRadar::RadarRing, X, Y, 4.f, 30.f);
-	DrawText(EconText, BNRadar::DashColour, X + 12.f, Y + 5.f, Font, BNRadar::LabelScale);
+	GetTextSize(CashText, W, H, Digits, 0.62f);
+	const float X = BNRadar::RadarMargin;
+	const float Y = BNRadar::RadarMargin - 8.f;
+	DrawTextShadowed(CashText, BNUITheme::Bone, X, Y, Digits, 0.62f);
+	float BW = 0.f, BH = 0.f;
+	GetTextSize(BountyText, BW, BH, Font, 0.78f);
+	DrawTextShadowed(BountyText, BNRadar::DashColour, X + W + 16.f, Y + H - BH - 4.f, Font, 0.78f);
 
-	float NextY = Y + 36.f;
-	// Compact free-roam Story Objective Tracker Pill beneath Cash/Rep!
-	if (!bRaceActive && Story)
+	float NextY = Y + H + 2.f;
+	if (Story)
 	{
-		const FBNStoryState& S = Story->GetState();
-		FString ObjText;
-		FLinearColor ObjCol = BNRadar::LegendColour;
-		FLinearColor BarCol = BNRadar::RadarRing;
-		if (S.bFinalChaseActive)
-		{
-			ObjText = TEXT("HEDEF: KARAMARA'DAN KAÇ!  (ROTA A LİMAN / ROTA B KUZEY)");
-			ObjCol = BNRadar::BlipEscape;
-			BarCol = BNRadar::BlipEscape;
-		}
-		else if (S.NextBossRank > 0)
-		{
-			if (const FBNBossSpec* Boss = FBNStoryState::FindBossByRank(S.NextBossRank))
-			{
-				const bool bReady = S.CanChallengeBoss(S.NextBossRank);
-				const FString Stage = S.GetNextQualifier().IsNone() ? TEXT("DÜELLO")
-					: FString::Printf(TEXT("ELEME %d/%d"), S.QualifiersWon + 1, Boss->Qualifiers.Num());
-				ObjText = FString::Printf(TEXT("#%02d %s  •  %s  •  [B] YARIŞ PROGRAMI"), Boss->Rank, *Boss->Name, *Stage);
-				ObjCol = bReady ? BNRadar::SweetSpotColour : BNRadar::LegendColour;
-				BarCol = bReady ? BNRadar::SweetSpotColour : BNRadar::RadarRing;
-			}
-		}
+		const FString ObjText = Story->GetState().GetCurrentObjectiveLine();
 		if (!ObjText.IsEmpty())
 		{
+			const bool bDuelReady = Story->GetState().IsDuelUnlocked(Story->GetState().NextBossRank);
 			float OW = 0.f, OH = 0.f;
 			GetTextSize(ObjText, OW, OH, Font, 0.74f);
-			DrawRect(BNRadar::RadarBg, X, NextY, OW + 22.f, 24.f);
-			DrawRect(BarCol, X, NextY, 3.f, 24.f);
-			DrawText(ObjText, ObjCol, X + 11.f, NextY + 4.f, Font, 0.74f);
-			NextY += 28.f;
+			DrawTextShadowed(ObjText, bDuelReady ? BNRadar::SweetSpotColour : BNRadar::LegendColour, X, NextY, Font, 0.72f);
+			NextY += OH + 6.f;
 		}
 	}
 
 	if (Progression.GetRewardBannerSeconds() > 0.f && !Progression.GetRewardBanner().IsEmpty())
 	{
-		DrawText(Progression.GetRewardBanner(), BNRadar::SweetSpotColour, X + 12.f, NextY, Font, BNRadar::LabelScale * 1.05f);
+		DrawTextShadowed(Progression.GetRewardBanner(), BNRadar::SweetSpotColour, X, NextY, Font, 0.90f);
 	}
 }
 
 void ABNHUD::DrawLiveCommsAndPrompts(const ABNVehiclePawn& Car, const ABNRaceEvent* ActiveRace, const UBNStorySubsystem* Story)
 {
-	UFont* Font = GEngine->GetLargeFont();
+	UFont* Font = BNUITheme::HudFont();
 	const double Now = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.0;
 
 	// 1. GPS Arrival Banner (shifts cleanly below the 3-line District Entry Banner if both fire together)
 	if (Now < GpsArrivalBannerUntil)
 	{
-		const float GpsY = (Now < DistrictBannerUntil && !DistrictBannerName.IsEmpty()) ? 204.f : 168.f;
-		DrawCentred(TEXT("GPS HEDEFİNE ULAŞILDI!"), GpsY, 1.25f, BNRadar::RouteNextLeg);
+		const float GpsY = (Now < DistrictBannerUntil && !DistrictBannerName.IsEmpty()) ? 228.f : 168.f;
+		DrawCentred(TEXT("HEDEFE ULAŞILDI"), GpsY, 0.7f, BNRadar::RouteNextLeg, BNUITheme::HudFont(true));
 	}
 
 	// 2. Interactive Free-Roam Pre-Race Briefing Prompt Pill (when parked inside an idle race ring)
@@ -708,13 +688,12 @@ void ABNHUD::DrawLiveCommsAndPrompts(const ABNVehiclePawn& Car, const ABNRaceEve
 			const float BoxX = (Canvas->ClipX - BoxW) * 0.5f;
 			const float BoxY = Canvas->ClipY - 126.f;
 			DrawRect(BNRadar::RadarBg, BoxX, BoxY, BoxW, BoxH);
-			DrawRect(BNRadar::SweetSpotColour, BoxX, BoxY, BoxW, 3.f);
-			DrawRect(BNRadar::SweetSpotColour, BoxX, BoxY, 5.f, BoxH);
-			DrawText(Prompt, BNRadar::SweetSpotColour, BoxX + 18.f, BoxY + 8.f, Font, 1.02f);
+			DrawRect(BNRadar::DashColour, BoxX, BoxY + BoxH - 3.f, BoxW, 3.f);
+			DrawText(Prompt, BNUITheme::Bone, BoxX + 18.f, BoxY + 8.f, Font, 1.02f);
 		}
 	}
 
-	// 3. Non-blocking Live Crew / Rival Comms Banner stacked neatly above the bottom-left radar
+	// 3. Non-blocking Live Crew / Rival Comms Banner on an ink slab above the radar
 	if (Story)
 	{
 		if (const FBNLiveComms* Comms = Story->GetActiveComms())
@@ -722,15 +701,15 @@ void ABNHUD::DrawLiveCommsAndPrompts(const ABNVehiclePawn& Car, const ABNRaceEve
 			const FString Header = FString::Printf(TEXT("TELSİZ // %s"), *Comms->Speaker);
 			float HW = 0.f, HH = 0.f, MW = 0.f, MH = 0.f;
 			GetTextSize(Header, HW, HH, Font, 0.74f);
-			GetTextSize(Comms->Message, MW, MH, Font, 0.78f);
-			const float BoxW = FMath::Clamp(FMath::Max(HW, MW) + 28.f, 280.f, 640.f);
+			GetTextSize(Comms->Message, MW, MH, Font, 0.76f);
+			const float BoxW = FMath::Clamp(FMath::Max(HW, MW) + 56.f, 300.f, 660.f);
 			const float BoxH = HH + MH + 20.f;
 			const float BoxX = BNRadar::RadarMargin;
 			const float BoxY = Canvas->ClipY - BNRadar::RadarMargin - BNRadar::RadarHalfSize * 2.f - BoxH - 44.f;
 			DrawRect(BNRadar::RadarBg, BoxX, BoxY, BoxW, BoxH);
-			DrawRect(Comms->AccentColor, BoxX, BoxY, 4.f, BoxH);
-			DrawText(Header, Comms->AccentColor, BoxX + 12.f, BoxY + 6.f, Font, 0.74f);
-			DrawText(Comms->Message, FLinearColor(0.95f, 0.94f, 0.90f, 1.f), BoxX + 12.f, BoxY + HH + 10.f, Font, 0.78f);
+			DrawRect(Comms->AccentColor, BoxX, BoxY, 3.f, BoxH);
+			DrawText(Header, Comms->AccentColor, BoxX + 10.f, BoxY + 5.f, Font, 0.74f);
+			DrawText(Comms->Message, BNUITheme::Bone, BoxX + 10.f, BoxY + HH + 8.f, Font, 0.76f);
 		}
 	}
 }
@@ -783,13 +762,23 @@ void ABNHUD::DrawCameraModePill(const ABNVehiclePawn& Car)
 	{
 		return;
 	}
-	UFont* Font = GEngine->GetLargeFont();
+	const double Now = GetWorld() ? GetWorld()->GetRealTimeSeconds() : 0.0;
+	if (CamLabel != LastCameraLabel)
+	{
+		const bool bFirst = LastCameraLabel.IsEmpty();
+		LastCameraLabel = CamLabel;
+		CameraLabelUntil = bFirst ? 0.0 : Now + 2.0; // only announce real changes, not the spawn default
+	}
+	if (Now >= CameraLabelUntil)
+	{
+		return;
+	}
+	UFont* Font = BNUITheme::HudFont();
 	const FString Text = FString::Printf(TEXT("[C] %s"), *CamLabel);
 	float W = 0.f, H = 0.f;
-	GetTextSize(Text, W, H, Font, 0.76f);
+	GetTextSize(Text, W, H, Font, 0.72f);
 	const float RightEdge = Canvas->ClipX - BNRadar::RadarMargin;
-	const float Y = Canvas->ClipY - BNRadar::RadarMargin - 266.f;
-	DrawRect(BNRadar::RadarBg, RightEdge - W - 20.f, Y - 4.f, W + 20.f, H + 8.f);
-	DrawRect(BNRadar::RadarRing, RightEdge - 3.f, Y - 4.f, 3.f, H + 8.f);
-	DrawText(Text, BNRadar::LegendColour, RightEdge - W - 12.f, Y, Font, 0.76f);
+	const float Y = Canvas->ClipY - BNRadar::RadarMargin - 252.f;
+	DrawText(Text, FLinearColor(0.02f, 0.02f, 0.02f, 0.85f), RightEdge - W - 5.f, Y + 1.f, Font, 0.72f);
+	DrawText(Text, BNRadar::LegendColour, RightEdge - W - 6.f, Y, Font, 0.72f);
 }

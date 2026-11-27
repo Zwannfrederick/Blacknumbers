@@ -25,39 +25,37 @@
 namespace
 {
 	constexpr float Margin = 32.f;
-	constexpr float SpeedScale = 2.30f;
-	constexpr float GearScale = 1.35f;
+	constexpr float SpeedScale = 0.95f;  // numeral font (120 px cache) -> ~114 px digits, never upscaled
+	constexpr float GearScale = 0.95f;
 	constexpr float LabelScale = 0.88f;
 	constexpr float RedlineFraction = 0.82f;
-	constexpr int32 TachArcSegments = 36;
-	constexpr float TachStartDeg = 135.f;
-	constexpr float TachSweepDeg = 270.f;
-	constexpr float TachDiameter = 204.f;
-	constexpr float TachRadius = TachDiameter * 0.5f;
+	constexpr int32 RpmSegments = 28;
+	constexpr float ClusterWidth = 318.f;
+	constexpr float RpmWedgeMinH = 5.f;
+	constexpr float RpmWedgeMaxH = 30.f;
 
-	const FLinearColor DashColour(0.96f, 0.72f, 0.16f, 1.f);
-	const FLinearColor RedlineColour(0.96f, 0.20f, 0.14f, 1.f);
-	const FLinearColor SweetSpotColour(0.18f, 0.90f, 0.45f, 1.f);
-	const FLinearColor NosColour(0.16f, 0.78f, 1.f, 1.f);
-	const FLinearColor NosActiveColour(0.55f, 0.94f, 1.f, 1.f);
-	const FLinearColor SpeedbreakerColour(0.95f, 0.72f, 0.22f, 1.f);
-	const FLinearColor SpeedbreakerActiveColour(1.f, 0.92f, 0.55f, 1.f);
-	const FLinearColor SmokedPanelBg(0.032f, 0.036f, 0.045f, 0.82f);
-	const FLinearColor BarBackground(0.08f, 0.09f, 0.11f, 0.90f);
-	const FLinearColor FrameTrimColour(0.95f, 0.66f, 0.08f, 0.90f);
-	const FLinearColor LegendColour(0.84f, 0.82f, 0.76f, 0.92f);
-	const FLinearColor RaceColour(0.96f, 0.94f, 0.90f, 1.f);
-	const FLinearColor DriftColour(0.28f, 0.86f, 1.f, 1.f);
-	const FLinearColor PoliceRedColour(0.96f, 0.18f, 0.14f, 1.f);
-	const FLinearColor PoliceBlueColour(0.18f, 0.58f, 1.f, 1.f);
-	const FLinearColor RadioBgColour(0.025f, 0.028f, 0.036f, 0.88f);
+	// "Sodyum" HUD palette (shared with BNUITheme; police red/blue only for pursuit).
+	const FLinearColor DashColour = BNUITheme::Accent;
+	const FLinearColor RedlineColour = BNUITheme::Danger;
+	const FLinearColor SweetSpotColour = BNUITheme::Ok;
+	const FLinearColor NosColour = BNUITheme::Nos;
+	const FLinearColor NosActiveColour(0.35f, 0.90f, 1.f, 1.f);
+	const FLinearColor SpeedbreakerColour = BNUITheme::Bone;
+	const FLinearColor SpeedbreakerActiveColour = BNUITheme::AccentHi;
+	const FLinearColor SmokedPanelBg(0.0030f, 0.0033f, 0.0040f, 0.70f);
+	const FLinearColor BarBackground(0.02f, 0.022f, 0.026f, 0.80f);
+	const FLinearColor UnlitSegment(0.0030f, 0.0033f, 0.0040f, 0.55f);
+	const FLinearColor LegendColour(0.8550f, 0.8228f, 0.7454f, 0.80f);
+	const FLinearColor RaceColour = BNUITheme::Bone;
+	const FLinearColor DriftColour = BNUITheme::Nos;
+	const FLinearColor PoliceRedColour(0.96f, 0.05f, 0.04f, 1.f);
+	const FLinearColor PoliceBlueColour(0.04f, 0.30f, 1.f, 1.f);
+	const FLinearColor RadioBgColour = SmokedPanelBg;
 
-	constexpr float RaceTop = 26.f;
+	constexpr float RaceTop = 24.f;
 	constexpr float RaceLine = 38.f;
-	constexpr float PursuitBarWidth = 610.f;
-	constexpr float PursuitBarHeight = 24.f;
-	constexpr float CountdownScale = 4.6f;
-	constexpr float RaceScale = 1.45f;
+	constexpr float PursuitBarWidth = 660.f;
+	constexpr float PursuitBarHeight = 22.f;
 
 	/** Tracks which GameInstance already showed the launch Title Screen (survives map loads, resets per new session). */
 	TWeakObjectPtr<const UGameInstance> GTitleShownForGI;
@@ -507,11 +505,18 @@ FString ABNHUD::FormatRaceTime(float Seconds)
 	return FString::Printf(TEXT("%d:%05.2f"), Minutes, Rest);
 }
 
-void ABNHUD::DrawCentred(const FString& Text, float Y, float Scale, const FLinearColor& Colour)
+void ABNHUD::DrawCentred(const FString& Text, float Y, float Scale, const FLinearColor& Colour, UFont* Font)
 {
+	UFont* Used = Font ? Font : BNUITheme::HudFont();
 	float W = 0.f, H = 0.f;
-	GetTextSize(Text, W, H, GEngine->GetLargeFont(), Scale);
-	DrawText(Text, Colour, (Canvas->ClipX - W) * 0.5f, Y, GEngine->GetLargeFont(), Scale);
+	GetTextSize(Text, W, H, Used, Scale);
+	DrawTextShadowed(Text, Colour, (Canvas->ClipX - W) * 0.5f, Y, Used, Scale);
+}
+
+void ABNHUD::DrawTextShadowed(const FString& Text, const FLinearColor& Colour, float X, float Y, UFont* Font, float Scale)
+{
+	DrawText(Text, FLinearColor(0.f, 0.f, 0.f, 0.6f * Colour.A), X + 1.5f, Y + 1.5f, Font, Scale);
+	DrawText(Text, Colour, X, Y, Font, Scale);
 }
 
 void ABNHUD::DrawRace(const ABNRaceEvent& Race)
@@ -521,57 +526,59 @@ void ABNHUD::DrawRace(const ABNRaceEvent& Race)
 	{
 		return;
 	}
+	UFont* Font = BNUITheme::HudFont();
 	const FBNRaceProgress& Progress = Race.GetProgress();
 	const FBNDriftScorer& Drift = Race.GetDriftScore();
 	const bool bDrift = Def->Discipline == EBNRaceDiscipline::Drift;
 	const bool bRivals = Race.GetNumRivals() > 0;
 	const int32 BossRank = Race.GetActiveBossRank();
 	const FString Header = BossRank > 0
-		? FString::Printf(TEXT("BLACK NUMBERS #%02d  //  %s"), BossRank, *Def->DisplayName.ToString().ToUpper())
+		? FString::Printf(TEXT("KARA LİSTE #%02d  //  %s"), BossRank, *Def->DisplayName.ToString().ToUpper())
 		: Def->DisplayName.ToString().ToUpper();
 
-	// Sleek smoked Most Wanted race header ribbon so telemetry pops over bright skies
-	const float RibbonW = 540.f;
-	const float RibbonX = (Canvas->ClipX - RibbonW) * 0.5f;
-	DrawRect(SmokedPanelBg, RibbonX, RaceTop - 6.f, RibbonW, 74.f);
-	DrawRect(BossRank > 0 ? DashColour : FrameTrimColour, RibbonX, RaceTop - 6.f, RibbonW, 3.f);
-
-	DrawCentred(Header, RaceTop + 2.f, LabelScale * 1.05f, BossRank > 0 ? DashColour : LegendColour);
-	const float SubY = RaceTop + 28.f;
+	// Authentic MW 2005 corner-anchored race telemetry over organic ink slash (NO clunky top-center SaaS box!)
+	UFont* Digits = BNUITheme::HudFont(true);
+	DrawTextShadowed(Header, BossRank > 0 ? DashColour : LegendColour, Margin, RaceTop, Font, 0.82f);
 
 	switch (Race.GetState())
 	{
 	case EBNRaceState::Countdown:
-		DrawCentred(TEXT("HAZIRLAN..."), SubY, LabelScale * 1.15f, DashColour);
-		DrawCentred(FString::FromInt(FMath::CeilToInt(Race.GetRaceTime())), RaceTop + 90.f, CountdownScale, DashColour);
+		DrawTextShadowed(TEXT("HAZIRLAN"), RaceColour, Margin, RaceTop + 22.f, Digits, 0.65f);
+		DrawCentred(FString::FromInt(FMath::CeilToInt(Race.GetRaceTime())), RaceTop + 96.f, 1.0f, DashColour, BNUITheme::HudNumeralFont());
 		break;
 	case EBNRaceState::Racing:
 		if (bDrift)
 		{
 			const FString TargetPart = Race.GetActiveBossDriftTarget() > 0
-				? FString::Printf(TEXT(" / HEDEF %d"), Race.GetActiveBossDriftTarget()) : FString();
-			DrawCentred(FString::Printf(TEXT("%d%s PTS    |    %s"), Drift.Total(), *TargetPart, *FormatRaceTime(Race.GetTimeLeft())), SubY, RaceScale * 0.92f, RaceColour);
+				? FString::Printf(TEXT(" / %d"), Race.GetActiveBossDriftTarget()) : FString();
+			DrawTextShadowed(FString::Printf(TEXT("%d%s PTS   %s"), Drift.Total(), *TargetPart, *FormatRaceTime(Race.GetTimeLeft())),
+				RaceColour, Margin, RaceTop + 22.f, Digits, 0.75f);
 			if (Drift.IsDrifting())
 			{
-				DrawCentred(FString::Printf(TEXT("+%d   x%d"), FMath::RoundToInt(Drift.Current()), Drift.Multiplier()), RaceTop + 82.f, RaceScale * 1.35f, DriftColour);
+				DrawCentred(FString::Printf(TEXT("+%d   x%d"), FMath::RoundToInt(Drift.Current()), Drift.Multiplier()), RaceTop + 88.f, 0.98f, DriftColour, Digits);
 			}
 		}
 		else
 		{
-			const FString Position = bRivals
-				? FString::Printf(TEXT("POS %d/%d   |   "), Race.GetPlayerPosition(), Race.GetNumRivals() + 1) : FString();
-			const FString Laps = Def->Discipline == EBNRaceDiscipline::Circuit
-				? FString::Printf(TEXT("TUR %d/%d   |   "), Progress.CurrentLap(), Progress.TotalLaps()) : FString();
-			const FString GateStr = FString::Printf(TEXT("KAPI %d/%d   |   "),
+			const FString PosStr = bRivals ? FString::Printf(TEXT("POS %d/%d   •   "), Race.GetPlayerPosition(), Race.GetNumRivals() + 1) : FString();
+			const FString LapStr = Def->Discipline == EBNRaceDiscipline::Circuit
+				? FString::Printf(TEXT("TUR %d/%d   •   "), Progress.CurrentLap(), Progress.TotalLaps()) : FString();
+			const FString GateStr = FString::Printf(TEXT("KAPI %d/%d"),
 				FMath::Min(Progress.NextCheckpoint() + 1, Def->Checkpoints.Num()), FMath::Max(1, Def->Checkpoints.Num()));
-			DrawCentred(FString::Printf(TEXT("%s%s%s%s"), *Position, *Laps, *GateStr, *FormatRaceTime(Race.GetRaceTime())), SubY, RaceScale * 0.85f, RaceColour);
+			DrawTextShadowed(FString::Printf(TEXT("%s%s%s"), *PosStr, *LapStr, *GateStr), RaceColour, Margin, RaceTop + 22.f, Digits, 0.75f);
+
+			// Race clock, top right, display numerals
+			const FString TimeStr = FormatRaceTime(Race.GetRaceTime());
+			float TW = 0.f, TH = 0.f;
+			GetTextSize(TimeStr, TW, TH, Digits, 0.85f);
+			DrawTextShadowed(TimeStr, RaceColour, Canvas->ClipX - Margin - TW, RaceTop, Digits, 0.85f);
 		}
 		break;
 	case EBNRaceState::Finished:
 		DrawCentred(bDrift ? FString::Printf(TEXT("SKOR  %d"), Drift.Total())
 			: Progress.IsFinished() ? FString::Printf(TEXT("%s  —  %s"),
 				bRivals ? *Ordinal(Race.GetPlayerPosition()) : TEXT("BİTİŞ"), *FormatRaceTime(Progress.FinishTime()))
-			: FString(TEXT("YARIŞ İPTAL")), SubY, RaceScale * 1.05f, DashColour);
+			: FString(TEXT("YARIŞ İPTAL")), RaceTop + 60.f, 0.85f, DashColour, Digits);
 		break;
 	default:
 		break;
@@ -597,7 +604,7 @@ FBNDashReadout ABNHUD::MakeReadout(const ABNVehiclePawn& Car)
 
 void ABNHUD::DrawGaugeBar(const TCHAR* Label, float X, float Y, float Width, float Height, float Fraction, const FLinearColor& FillColour, bool bActive)
 {
-	UFont* Font = GEngine->GetLargeFont();
+	UFont* Font = BNUITheme::HudFont();
 	const float LabelW = 74.f;
 	const float BarX = X + LabelW;
 	const float BarW = Width - LabelW;
@@ -614,262 +621,201 @@ void ABNHUD::DrawGaugeBar(const TCHAR* Label, float X, float Y, float Width, flo
 
 void ABNHUD::DrawDashboard(const ABNVehiclePawn& Car, const FBNDashReadout& Dash, bool bMenuBlocking)
 {
-	UFont* Font = GEngine->GetLargeFont();
-	const float Cx = Canvas->ClipX - Margin - TachRadius - 4.f;
-	const float Cy = Canvas->ClipY - Margin - TachRadius - 36.f;
-
-	// Authentic Most Wanted circular metallic tachometer dial texture
-	if (UTexture2D* TachTex = BNUITheme::GetTachRingTexture())
-	{
-		DrawTexture(TachTex, Cx - TachRadius, Cy - TachRadius, TachDiameter, TachDiameter,
-			0.f, 0.f, 1.f, 1.f, FLinearColor::White, BLEND_Translucent);
-	}
-	else
-	{
-		DrawRect(SmokedPanelBg, Cx - TachRadius, Cy - TachRadius, TachDiameter, TachDiameter);
-	}
+	UFont* Digits = BNUITheme::HudFont(true);
+	UFont* Label = BNUITheme::HudFont(false);
+	const float Right = Canvas->ClipX - Margin;
+	const float Bottom = Canvas->ClipY - Margin;
+	const float Left = Right - ClusterWidth;
 
 	const bool bCountdownLaunch = Car.IsInputLocked() && !bMenuBlocking;
 	const bool bDrag = Car.IsDragModeActive();
+	const bool bNos = Car.IsNosActive();
 	const float LiveRpmFrac = bDrag ? FMath::Clamp(Car.GetDragState().RpmFraction, 0.f, 1.f) : Dash.RpmFraction;
 	const FString ShownGear = bDrag ? FString::FromInt(Car.GetDragState().Gear) : Dash.Gear;
 	const float ShiftFlash = Car.GetShiftFlashFraction();
 	const float ShownFraction = FMath::Clamp(bCountdownLaunch ? Car.GetLaunchRevFraction() : LiveRpmFrac, 0.f, 1.f);
-	const float ArcRadius = TachRadius * 0.855f;
 
-	// Dynamic glowing RPM sweep arc along the inside of the metallic bezel
-	for (int32 i = 0; i < TachArcSegments; ++i)
+	// 1. NOS + Speedbreaker: two slim bars on the bottom edge of the cluster.
+	const float BarH = 5.f;
+	const float HalfW = (ClusterWidth - 14.f) * 0.5f;
+	auto DrawResourceBar = [&](const TCHAR* Tag, float X, float Fraction, const FLinearColor& Col, bool bActive)
 	{
-		const float T0 = static_cast<float>(i) / TachArcSegments;
-		const float T1 = static_cast<float>(i + 1) / TachArcSegments;
-		const float A0 = FMath::DegreesToRadians(TachStartDeg + T0 * TachSweepDeg);
-		const float A1 = FMath::DegreesToRadians(TachStartDeg + T1 * TachSweepDeg);
-		const bool bLit = T0 < ShownFraction;
-		const bool bRed = T0 >= RedlineFraction;
-		const bool bLaunch = bCountdownLaunch && T0 >= Car.Boost.LaunchSweetSpotMin && T0 <= Car.Boost.LaunchSweetSpotMax;
-		if (!bLit && !bLaunch)
-		{
-			continue;
-		}
-		const FLinearColor SegCol = bLaunch ? (bLit ? SweetSpotColour : FLinearColor(0.18f, 0.90f, 0.45f, 0.40f))
-			: bRed ? RedlineColour : Car.IsNosActive() ? NosActiveColour : DashColour;
-		DrawLine(Cx + FMath::Cos(A0) * ArcRadius, Cy + FMath::Sin(A0) * ArcRadius,
-			Cx + FMath::Cos(A1) * ArcRadius, Cy + FMath::Sin(A1) * ArcRadius, SegCol, bLit ? 5.5f : 3.5f);
-	}
+		DrawText(Tag, bActive ? Col : LegendColour, X, Bottom - BarH - 18.f, Label, 0.62f);
+		DrawRect(BarBackground, X, Bottom - BarH, HalfW, BarH);
+		DrawRect(Col, X, Bottom - BarH, HalfW * FMath::Clamp(Fraction, 0.f, 1.f), BarH);
+	};
+	DrawResourceBar(TEXT("NOS"), Left, Car.GetNosFraction(), bNos ? NosActiveColour : NosColour, bNos);
+	DrawResourceBar(TEXT("SPEEDBREAKER"), Left + HalfW + 14.f, Car.GetSpeedbreakerFraction(),
+		Car.IsSpeedbreakerActive() ? SpeedbreakerActiveColour : SpeedbreakerColour, Car.IsSpeedbreakerActive());
 
-	// Analog tachometer needle sweeping cleanly over the tick ring
-	const float NeedleRad = FMath::DegreesToRadians(TachStartDeg + ShownFraction * TachSweepDeg);
-	const float CosN = FMath::Cos(NeedleRad);
-	const float SinN = FMath::Sin(NeedleRad);
-	const FLinearColor NeedleCol = ShownFraction >= RedlineFraction ? RedlineColour : Car.IsNosActive() ? NosActiveColour : DashColour;
-	DrawLine(Cx + CosN * 48.f, Cy + SinN * 48.f, Cx + CosN * (TachRadius * 0.87f), Cy + SinN * (TachRadius * 0.87f),
-		FLinearColor(NeedleCol.R, NeedleCol.G, NeedleCol.B, 0.45f), 6.f);
-	DrawLine(Cx + CosN * 46.f, Cy + SinN * 46.f, Cx + CosN * (TachRadius * 0.89f), Cy + SinN * (TachRadius * 0.89f),
-		RaceColour, 2.5f);
+	// 2. Speed: huge italic numerals, right aligned; KM/H tucked under the last digit.
+	const FString SpeedStr = FString::FromInt(Dash.SpeedKmh);
+	float SpeedW = 0.f, SpeedH = 0.f;
+	UFont* Numeral = BNUITheme::HudNumeralFont();
+	GetTextSize(SpeedStr, SpeedW, SpeedH, Numeral, SpeedScale);
+	const float SpeedY = Bottom - 60.f - SpeedH * 0.92f;
+	DrawText(SpeedStr, FLinearColor(0.f, 0.f, 0.f, 0.55f), Right - SpeedW + 2.f, SpeedY + 3.f, Numeral, SpeedScale);
+	DrawText(SpeedStr, bNos ? NosActiveColour : RaceColour, Right - SpeedW, SpeedY, Numeral, SpeedScale);
+	float UnitW = 0.f, UnitH = 0.f;
+	GetTextSize(TEXT("KM/H"), UnitW, UnitH, Label, 0.66f);
+	DrawText(TEXT("KM/H"), LegendColour, Right - UnitW, Bottom - 34.f - UnitH, Label, 0.66f);
+
+	// 3. Gear: square slab at the cluster's left, flashes sodium on shifts.
+	float GearW = 0.f, GearH = 0.f;
+	GetTextSize(ShownGear, GearW, GearH, Digits, GearScale);
+	const float GearBox = 58.f;
+	const float GearX = Left;
+	const float GearY = Bottom - 60.f - GearBox;
+	const FLinearColor GearBg = FMath::Lerp(SmokedPanelBg, bNos ? NosActiveColour : DashColour, FMath::Clamp(ShiftFlash, 0.f, 1.f));
+	DrawRect(GearBg, GearX, GearY, GearBox, GearBox);
+	DrawRect(bNos ? NosActiveColour : DashColour, GearX, GearY + GearBox - 3.f, GearBox, 3.f);
+	DrawText(ShownGear, ShiftFlash > 0.4f ? BNUITheme::InkSolid : RaceColour,
+		GearX + (GearBox - GearW) * 0.5f, GearY + (GearBox - GearH) * 0.5f, Digits, GearScale);
+
+	// 4. RPM: rising stepped wedge across the cluster top (taller = higher revs), redline in red.
+	const float WedgeBottom = FMath::Min(SpeedY + SpeedH * 0.22f, GearY) - 8.f;
+	const float SegGap = 3.f;
+	const float SegW = (ClusterWidth - SegGap * (RpmSegments - 1)) / RpmSegments;
+	for (int32 i = 0; i < RpmSegments; ++i)
+	{
+		const float T = (static_cast<float>(i) + 0.5f) / RpmSegments;
+		const float H = FMath::Lerp(RpmWedgeMinH, RpmWedgeMaxH, FMath::Pow(T, 1.35f));
+		const bool bLit = T <= ShownFraction;
+		const bool bRed = T >= RedlineFraction;
+		const bool bLaunch = bCountdownLaunch && T >= Car.Boost.LaunchSweetSpotMin && T <= Car.Boost.LaunchSweetSpotMax;
+		FLinearColor Col = bLaunch ? SweetSpotColour : bRed ? RedlineColour : bNos ? NosActiveColour : RaceColour;
+		if (!bLit)
+		{
+			Col = bLaunch ? FLinearColor(SweetSpotColour.R, SweetSpotColour.G, SweetSpotColour.B, 0.35f)
+				: bRed ? FLinearColor(RedlineColour.R, RedlineColour.G, RedlineColour.B, 0.30f) : UnlitSegment;
+		}
+		DrawRect(Col, Left + i * (SegW + SegGap), WedgeBottom - H, SegW, H);
+	}
 
 	if (bCountdownLaunch)
 	{
-		DrawCentred(TEXT("GAZ VER (W)  —  KALKIŞ BÖLGESİ"), Cy - TachRadius - 26.f, LabelScale,
+		DrawCentred(TEXT("GAZ VER (W)  —  KALKIŞ BÖLGESİ"), WedgeBottom - RpmWedgeMaxH - 34.f, LabelScale,
 			Car.IsInLaunchSweetSpot() ? SweetSpotColour : DashColour);
-	}
-
-	// Center digital KM/H + Gear badge inside the smoked dial core
-	const FString SpeedStr = FString::Printf(TEXT("%d"), Dash.SpeedKmh);
-	float SpeedW = 0.f, SpeedH = 0.f;
-	GetTextSize(SpeedStr, SpeedW, SpeedH, Font, SpeedScale);
-	DrawText(SpeedStr, RaceColour, Cx - SpeedW * 0.5f, Cy - SpeedH * 0.65f, Font, SpeedScale);
-
-	float UnitW = 0.f, UnitH = 0.f;
-	GetTextSize(TEXT("KM/H"), UnitW, UnitH, Font, 0.72f);
-	DrawText(TEXT("KM/H"), DashColour, Cx - UnitW * 0.5f, Cy + SpeedH * 0.16f, Font, 0.72f);
-
-	float GearW = 0.f, GearH = 0.f;
-	GetTextSize(ShownGear, GearW, GearH, Font, GearScale);
-	const float GearBoxW = FMath::Max(GearW + 18.f, 36.f);
-	const float GearY = Cy + 42.f;
-	const FLinearColor GearBg = ShiftFlash > 0.05f
-		? FMath::Lerp(BarBackground, Car.IsNosActive() ? NosActiveColour : DashColour, ShiftFlash * 0.55f)
-		: BarBackground;
-	DrawRect(GearBg, Cx - GearBoxW * 0.5f, GearY, GearBoxW, GearH + 4.f);
-	DrawRect((Car.IsNosActive() || ShiftFlash > 0.1f) ? NosActiveColour : FrameTrimColour, Cx - GearBoxW * 0.5f, GearY, GearBoxW, 2.5f);
-	DrawText(ShownGear, ShiftFlash > 0.15f ? RaceColour : (Car.IsNosActive() ? NosActiveColour : DashColour),
-		Cx - GearW * 0.5f, GearY + 2.f, Font, GearScale);
-
-	// Sleek NOS & Speedbreaker gauge dock tucked directly beneath the circular dial (+ HASAR bar when damaged!)
-	const float Health = Car.GetVehicleHealth();
-	const bool bShowDamage = Health < 0.85f;
-	const float DockW = TachDiameter + 6.f;
-	const float DockX = Cx - DockW * 0.5f;
-	const float DockH = bShowDamage ? 54.f : 38.f;
-	const float DockY = Cy + TachRadius + (bShowDamage ? -10.f : 4.f);
-	DrawRect(SmokedPanelBg, DockX, DockY, DockW, DockH);
-	DrawRect(bShowDamage && Health < 0.30f ? RedlineColour : FrameTrimColour, DockX, DockY, 3.f, DockH);
-	float RowY = DockY + 6.f;
-	if (bShowDamage)
-	{
-		const bool bCritFlash = Health < 0.30f && GetWorld() && FMath::Fmod(GetWorld()->GetTimeSeconds() * 8.0, 1.0) < 0.5;
-		const FLinearColor DmgCol = Health < 0.30f ? (bCritFlash ? RedlineColour : DashColour) : DashColour;
-		DrawGaugeBar(TEXT("GÖVDE"), DockX + 8.f, RowY, DockW - 14.f, 9.f, Health, DmgCol, Health < 0.30f);
-		RowY += 16.f;
-	}
-	DrawGaugeBar(TEXT("NOS [SHF]"), DockX + 8.f, RowY, DockW - 14.f, 9.f, Car.GetNosFraction(),
-		Car.IsNosActive() ? NosActiveColour : NosColour, Car.IsNosActive());
-	DrawGaugeBar(TEXT("SPD [X]"), DockX + 8.f, RowY + 16.f, DockW - 14.f, 9.f, Car.GetSpeedbreakerFraction(),
-		Car.IsSpeedbreakerActive() ? SpeedbreakerActiveColour : SpeedbreakerColour, Car.IsSpeedbreakerActive());
-}
-
-void ABNHUD::DrawDragShiftBar(const ABNVehiclePawn& Car)
-{
-	const FBNDragState& D = Car.GetDragState();
-	if (!D.bActive)
-	{
-		return;
-	}
-	UFont* Font = GEngine->GetLargeFont();
-	const float BarW = 420.f;
-	const float BarH = 18.f;
-	const float BarX = (Canvas->ClipX - BarW) * 0.5f;
-	const float BarY = RaceTop + 82.f;
-
-	DrawRect(SmokedPanelBg, BarX - 14.f, BarY - 24.f, BarW + 28.f, 68.f);
-	DrawRect(D.GetOverheatFraction() > 0.35f ? RedlineColour : FrameTrimColour, BarX - 14.f, BarY - 24.f, BarW + 28.f, 3.f);
-
-	const FString TopLabel = FString::Printf(TEXT("DRAG MANUEL VİTES: %d / 6   |   [E] YÜKSELT   [Q] DÜŞÜR"), D.Gear);
-	DrawCentred(TopLabel, BarY - 20.f, 0.78f, LegendColour);
-
-	// RPM background track + colored sweet-spot zone (80..94% green) + danger redline zone (94..100% red)
-	DrawRect(BarBackground, BarX, BarY, BarW, BarH);
-	DrawRect(FLinearColor(0.10f, 0.42f, 0.22f, 0.72f), BarX + BarW * 0.80f, BarY, BarW * 0.14f, BarH);
-	DrawRect(FLinearColor(0.55f, 0.10f, 0.10f, 0.75f), BarX + BarW * 0.94f, BarY, BarW * 0.06f, BarH);
-
-	const float ClampedRpm = FMath::Clamp(D.RpmFraction, 0.f, 1.f);
-	const FLinearColor FillCol = ClampedRpm >= 0.94f ? RedlineColour
-		: (ClampedRpm >= 0.80f ? SweetSpotColour : NosColour);
-	DrawRect(FillCol, BarX, BarY, BarW * ClampedRpm, BarH);
-
-	// Overheat danger strip beneath RPM bar
-	const float Heat = D.GetOverheatFraction();
-	if (Heat > 0.02f)
-	{
-		const bool bBlink = GetWorld() && FMath::Fmod(GetWorld()->GetTimeSeconds() * 10.0, 1.0) < 0.55;
-		DrawRect(BarBackground, BarX, BarY + BarH + 6.f, BarW, 8.f);
-		DrawRect(bBlink ? RedlineColour : DashColour, BarX, BarY + BarH + 6.f, BarW * Heat, 8.f);
-		DrawCentred(TEXT("MOTOR AŞIRI ISINIYOR!  [E] İLE VİTES AT!"), BarY + BarH + 18.f, 0.95f, bBlink ? RedlineColour : DashColour);
-	}
-	else if (D.ShiftFeedbackRemaining > 0.f && D.LastShiftGrade != EBNDragShiftGrade::None)
-	{
-		const FLinearColor GradeCol = D.LastShiftGrade == EBNDragShiftGrade::Perfect ? SweetSpotColour
-			: D.LastShiftGrade == EBNDragShiftGrade::Good ? DashColour : RedlineColour;
-		DrawCentred(FBNDragState::GradeLabel(D.LastShiftGrade), BarY + BarH + 16.f, 1.25f, GradeCol);
 	}
 }
 
 void ABNHUD::DrawPursuit(const UBNPursuitSubsystem& Pursuit, const UBNStorySubsystem* Story, bool bRaceActive)
 {
 	const FBNPursuitState& S = Pursuit.GetState();
-	UFont* Font = GEngine->GetLargeFont();
-	const FString CostText = FString::Printf(TEXT("ŞEHİR FATURASI: $%s"), *FString::FormatAsNumber(S.CostToStateDollars));
+	UFont* Font = BNUITheme::HudFont();
+	const FString CostText = FString::Printf(TEXT("FATURA: $%s"), *FString::FormatAsNumber(S.CostToStateDollars));
 
 	if (S.Phase == EBNPursuitPhase::None)
 	{
-		if (S.CostToStateDollars > 0)
+		if (S.CostToStateDollars > 0 && !bRaceActive)
 		{
 			float CostW = 0.f, CostH = 0.f;
-			GetTextSize(CostText, CostW, CostH, Font, 0.80f);
-			DrawRect(SmokedPanelBg, Canvas->ClipX - Margin - CostW - 18.f, Margin - 4.f, CostW + 18.f, 26.f);
-			DrawRect(FrameTrimColour, Canvas->ClipX - Margin - 3.f, Margin - 4.f, 3.f, 26.f);
-			DrawText(CostText, DashColour, Canvas->ClipX - Margin - CostW - 10.f, Margin, Font, 0.80f);
+			GetTextSize(CostText, CostW, CostH, Font, 0.78f);
+			DrawTextShadowed(CostText, LegendColour, Canvas->ClipX - Margin - CostW, Margin, Font, 0.78f);
 		}
 		return;
 	}
 
-	const float TopY = bRaceActive ? (RaceTop + 86.f) : RaceTop;
-	const float BarX = (Canvas->ClipX - PursuitBarWidth) * 0.5f;
+	const float TopY = bRaceActive ? (RaceTop + 68.f) : (RaceTop + 2.f);
+	const float RibbonW = PursuitBarWidth + 56.f;
+	const float RibbonH = 92.f;
+	const float RibbonX = (Canvas->ClipX - RibbonW) * 0.5f;
 	const FBNHeatTierSpec Spec = FBNHeatTierSpec::ForLevel(S.HeatLevel);
-	const bool bFlash = FMath::Fmod(GetWorld()->GetTimeSeconds() * 6.0, 1.0) < 0.5;
+	const bool bFlash = FMath::Fmod(GetWorld()->GetTimeSeconds() * 6.5, 1.0) < 0.5;
 
-	DrawRect(SmokedPanelBg, BarX - 16.f, TopY - 8.f, PursuitBarWidth + 32.f, 64.f);
-	// Most Wanted red/blue siren strobe endcaps
-	DrawRect(bFlash ? PoliceRedColour : PoliceBlueColour, BarX - 16.f, TopY - 8.f, 6.f, 64.f);
-	DrawRect(bFlash ? PoliceBlueColour : PoliceRedColour, BarX + PursuitBarWidth + 10.f, TopY - 8.f, 6.f, 64.f);
-	DrawRect(FrameTrimColour, BarX - 10.f, TopY - 8.f, PursuitBarWidth + 20.f, 2.f);
+	// Ink ribbon with a split red/blue siren edge that alternates on the strobe.
+	DrawRect(SmokedPanelBg, RibbonX, TopY - 6.f, RibbonW, RibbonH);
+	DrawRect(bFlash ? PoliceRedColour : PoliceBlueColour, RibbonX, TopY - 6.f, RibbonW * 0.5f, 3.f);
+	DrawRect(bFlash ? PoliceBlueColour : PoliceRedColour, RibbonX + RibbonW * 0.5f, TopY - 6.f, RibbonW * 0.5f, 3.f);
 
-	const FString LeftInfo = FString::Printf(TEXT("%s   //   BİRİM: %d"), *Spec.Label, Pursuit.GetActivePoliceCount());
-	DrawText(LeftInfo, Spec.bDemirInvolved ? PoliceRedColour : DashColour, BarX, TopY - 2.f, Font, LabelScale);
+	const float TrackX = (Canvas->ClipX - PursuitBarWidth) * 0.5f;
+	const FString LeftInfo = FString::Printf(TEXT("%s  •  BİRİM: %d"), *Spec.Label, Pursuit.GetActivePoliceCount());
+	DrawText(LeftInfo, Spec.bDemirInvolved ? PoliceRedColour : DashColour, TrackX + 18.f, TopY + 12.f, Font, 0.80f);
 
-	float CostW = 0.f, CostH = 0.f;
-	GetTextSize(CostText, CostW, CostH, Font, LabelScale);
-	DrawText(CostText, RaceColour, BarX + PursuitBarWidth - CostW, TopY - 2.f, Font, LabelScale);
+	const FString RightInfo = FString::Printf(TEXT("ÖDÜL: %s  •  %s"), *FString::FormatAsNumber(S.Bounty), *CostText);
+	float RightW = 0.f, RightH = 0.f;
+	GetTextSize(RightInfo, RightW, RightH, Font, 0.80f);
+	DrawText(RightInfo, RaceColour, TrackX + PursuitBarWidth - RightW - 18.f, TopY + 12.f, Font, 0.80f);
 
-	const float MeterY = TopY + 23.f;
-	DrawRect(BarBackground, BarX, MeterY, PursuitBarWidth, PursuitBarHeight);
+	// Classic MW 2005 BUSTED <---- | ----> EVADE Tug-of-War Bar!
+	const float MeterX = TrackX + 64.f;
+	const float MeterW = PursuitBarWidth - 128.f;
+	const float MeterY = TopY + 38.f;
+	const float CenterX = MeterX + MeterW * 0.5f;
+	DrawRect(BarBackground, MeterX, MeterY, MeterW, PursuitBarHeight);
 
 	FString StatusLabel;
-	FLinearColor FillColour = PoliceBlueColour;
-	float FillFraction = 0.f;
-	switch (S.Phase)
+	if (S.Phase == EBNPursuitPhase::Pursuit)
 	{
-	case EBNPursuitPhase::Pursuit:
-		FillFraction = S.BustMeter > 0.02f ? S.BustMeter : 1.f;
-		FillColour = bFlash ? PoliceRedColour : PoliceBlueColour;
-		StatusLabel = S.BustMeter > 0.02f ? TEXT("YAKALANIYORSUN  //  BUSTED RİSKİ") : FString::Printf(TEXT("POLİS TAKİBİ   %s"), *FormatRaceTime(S.PursuitTimeSeconds));
-		break;
-	case EBNPursuitPhase::Evade:
-		FillFraction = S.EvadeMeter;
-		FillColour = NosColour;
-		StatusLabel = TEXT("KAÇIŞ  //  EVADE");
-		break;
-	case EBNPursuitPhase::Cooldown:
-		FillFraction = S.PhaseProgress;
-		FillColour = S.bInsideCooldownSpot ? SweetSpotColour : PoliceBlueColour;
+		// Pulls LEFT toward crimson as BustMeter builds; otherwise subtle pulsing center indicator
+		if (S.BustMeter > 0.02f)
+		{
+			const float W = (MeterW * 0.5f) * FMath::Clamp(S.BustMeter, 0.f, 1.f);
+			DrawRect(bFlash ? PoliceRedColour : FLinearColor(0.75f, 0.10f, 0.08f, 1.f), CenterX - W, MeterY + 2.f, W, PursuitBarHeight - 4.f);
+			StatusLabel = TEXT("<<  YAKALANIYORSUN (BUSTED)  <<");
+		}
+		else
+		{
+			StatusLabel = FString::Printf(TEXT("TAKİP  %s  •  DEVRE DIŞI: %d"), *FormatRaceTime(S.PursuitTimeSeconds), S.UnitsDisabled);
+		}
+	}
+	else if (S.Phase == EBNPursuitPhase::Evade)
+	{
+		const float W = (MeterW * 0.5f) * FMath::Clamp(S.EvadeMeter, 0.f, 1.f);
+		DrawRect(NosColour, CenterX, MeterY + 2.f, W, PursuitBarHeight - 4.f);
+		StatusLabel = TEXT(">>  KAÇIŞ  //  EVADE  >>");
+	}
+	else if (S.Phase == EBNPursuitPhase::Cooldown)
+	{
+		const float W = MeterW * FMath::Clamp(S.PhaseProgress, 0.f, 1.f);
+		DrawRect(S.bInsideCooldownSpot ? SweetSpotColour : PoliceBlueColour, MeterX, MeterY + 2.f, W, PursuitBarHeight - 4.f);
 		StatusLabel = S.bInsideCooldownSpot
-			? FString::Printf(TEXT("SAKLANMA NOKTASI (3.5x): %s"), *S.ActiveCooldownSpotName.ToUpper())
+			? FString::Printf(TEXT("SAKLANMA (4x): %s"), *S.ActiveCooldownSpotName.ToUpper())
 			: FString(TEXT("SOĞUMA  //  SAKLAN"));
-		break;
-	case EBNPursuitPhase::Busted:
-		FillFraction = 1.f;
-		FillColour = PoliceRedColour;
-		StatusLabel = TEXT("YAKALANDIN");
-		break;
-	case EBNPursuitPhase::Escaped:
-		FillFraction = 1.f;
-		FillColour = DashColour;
-		StatusLabel = TEXT("KAÇIŞ BAŞARILI");
-		break;
-	default:
-		break;
 	}
-
-	if (FillFraction > 0.f)
+	else if (S.Phase == EBNPursuitPhase::Busted)
 	{
-		DrawRect(FillColour, BarX, MeterY, PursuitBarWidth * FMath::Clamp(FillFraction, 0.f, 1.f), PursuitBarHeight);
+		DrawRect(PoliceRedColour, MeterX, MeterY + 2.f, MeterW, PursuitBarHeight - 4.f);
+		StatusLabel = TEXT("YAKALANDIN  //  BUSTED");
 	}
-	DrawCentred(StatusLabel, MeterY + 1.f, LabelScale * 1.02f, RaceColour);
+	else if (S.Phase == EBNPursuitPhase::Escaped)
+	{
+		DrawRect(DashColour, MeterX, MeterY + 2.f, MeterW, PursuitBarHeight - 4.f);
+		StatusLabel = FString::Printf(TEXT("KAÇIŞ BAŞARILI  //  +%s ÖDÜL"), *FString::FormatAsNumber(S.Bounty));
+	}
 
-	float ExtraY = TopY + 62.f;
+	// Center tick + left/right strobe labels ("BUSTED" / "EVADE")
+	DrawRect(RaceColour, CenterX - 1.5f, MeterY - 2.f, 3.f, PursuitBarHeight + 4.f);
+	DrawText(TEXT("BUST"), bFlash ? PoliceRedColour : LegendColour, TrackX + 12.f, MeterY + 3.f, Font, 0.72f);
+	DrawText(TEXT("KAÇIŞ"), !bFlash ? PoliceBlueColour : LegendColour, TrackX + PursuitBarWidth - 56.f, MeterY + 3.f, Font, 0.72f);
+	DrawCentred(StatusLabel, MeterY + 1.f, 0.86f, RaceColour);
+
+	float ExtraY = TopY + RibbonH - 2.f;
+	if (S.MilestoneBannerSeconds > 0.f && !S.MilestoneBannerText.IsEmpty())
+	{
+		DrawCentred(S.MilestoneBannerText, ExtraY, 0.95f, DashColour);
+		ExtraY += 24.f;
+	}
 	if (Pursuit.IsPlayerTireSpiked())
 	{
-		DrawCentred(TEXT("DİKENLİ ŞERİT! LASTİKLER HASARLI (HIZ KISITLI)"), ExtraY, LabelScale * 1.02f,
-			bFlash ? PoliceRedColour : DashColour);
+		DrawCentred(TEXT("DİKENLİ ŞERİT! LASTİKLER PATLADI — HIZ KISITLI!"), ExtraY, 0.92f, bFlash ? PoliceRedColour : DashColour);
 		ExtraY += 24.f;
 	}
 	if (Story && Story->GetState().bFinalChaseActive)
 	{
 		const int32 DistA = FMath::RoundToInt(UBNStorySubsystem::GetDistanceToEscapeRouteCm(Cast<ABNVehiclePawn>(GetOwningPawn()), 0) / 100.f);
 		const int32 DistB = FMath::RoundToInt(UBNStorySubsystem::GetDistanceToEscapeRouteCm(Cast<ABNVehiclePawn>(GetOwningPawn()), 1) / 100.f);
-		DrawCentred(FString::Printf(TEXT("ÇIKIŞ ROTALARI:  [A] LİMAN %dm   |   [B] KUZEY %dm"), DistA, DistB), ExtraY, LabelScale, NosActiveColour);
-		ExtraY += 26.f;
+		DrawCentred(FString::Printf(TEXT("ÇIKIŞ ROTALARI:  [A] LİMAN %dm   •   [B] KUZEY %dm"), DistA, DistB), ExtraY, 0.88f, NosActiveColour);
+		ExtraY += 24.f;
 	}
 	if (S.ActiveRadio.RemainingSeconds > 0.f && !S.ActiveRadio.Message.IsEmpty())
 	{
 		const FString RadioText = FString::Printf(TEXT("[%s] %s"), *S.ActiveRadio.Speaker, *S.ActiveRadio.Message);
 		float RadioW = 0.f, RadioH = 0.f;
-		GetTextSize(RadioText, RadioW, RadioH, Font, LabelScale);
-		const float RadioBoxW = FMath::Max(PursuitBarWidth, RadioW + 28.f);
-		const float RadioX = (Canvas->ClipX - RadioBoxW) * 0.5f;
-		DrawRect(RadioBgColour, RadioX, ExtraY, RadioBoxW, RadioH + 10.f);
-		DrawRect(NosColour, RadioX, ExtraY, 4.f, RadioH + 10.f);
-		DrawCentred(RadioText, ExtraY + 4.f, LabelScale, NosActiveColour);
+		GetTextSize(RadioText, RadioW, RadioH, Font, 0.82f);
+		const float SlabW = RadioW + 40.f;
+		DrawRect(SmokedPanelBg, (Canvas->ClipX - SlabW) * 0.5f, ExtraY - 2.f, SlabW, RadioH + 10.f);
+		DrawCentred(RadioText, ExtraY + 3.f, 0.82f, LegendColour);
 	}
 }
 
